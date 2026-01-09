@@ -139,7 +139,6 @@ export default function InventoryScreen() {
               {item.quantity} {isLowStock && `(Low: ≤${item.lowStockThreshold})`}
             </Text>
           </View>
-
         </View>
       </TouchableOpacity>
     );

@@ -61,6 +61,25 @@ function RootLayoutNav() {
           title: "Part Details",
         }}
       />
+      <Stack.Screen
+        name="routines/index"
+        options={{
+          title: "Service Routines",
+        }}
+      />
+      <Stack.Screen
+        name="routines/add"
+        options={{
+          title: "New Routine",
+          presentation: "modal",
+        }}
+      />
+      <Stack.Screen
+        name="routines/edit/[id]"
+        options={{
+          title: "Edit Routine",
+        }}
+      />
     </Stack>
   );
 }

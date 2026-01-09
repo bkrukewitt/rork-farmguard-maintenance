@@ -86,7 +86,6 @@ export default function SettingsScreen() {
             <Text style={styles.statValue}>{maintenanceLogs.length}</Text>
             <Text style={styles.statLabel}>Service Logs</Text>
           </View>
-
         </View>
       </View>
 
