@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
-import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable } from '@/types/equipment';
+import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 
 const STORAGE_KEYS = {
@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
   MAINTENANCE_LOGS: 'farmguard_maintenance_logs',
   INTERVALS: 'farmguard_intervals',
   CONSUMABLES: 'farmguard_consumables',
+  SERVICE_ROUTINES: 'farmguard_service_routines',
 };
 
 async function loadData<T>(key: string): Promise<T[]> {
@@ -53,10 +54,16 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     queryFn: () => loadData<Consumable>(STORAGE_KEYS.CONSUMABLES),
   });
 
+  const serviceRoutinesQuery = useQuery({
+    queryKey: ['serviceRoutines'],
+    queryFn: () => loadData<ServiceRoutine>(STORAGE_KEYS.SERVICE_ROUTINES),
+  });
+
   const equipment = useMemo(() => equipmentQuery.data ?? [], [equipmentQuery.data]);
   const maintenanceLogs = useMemo(() => maintenanceLogsQuery.data ?? [], [maintenanceLogsQuery.data]);
   const intervals = useMemo(() => intervalsQuery.data ?? [], [intervalsQuery.data]);
   const consumables = useMemo(() => consumablesQuery.data ?? [], [consumablesQuery.data]);
+  const serviceRoutines = useMemo(() => serviceRoutinesQuery.data ?? [], [serviceRoutinesQuery.data]);
 
   const addEquipmentMutation = useMutation({
     mutationFn: async (newEquipment: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -251,17 +258,67 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     [consumables]
   );
 
+  const addServiceRoutineMutation = useMutation({
+    mutationFn: async (newRoutine: Omit<ServiceRoutine, 'id' | 'createdAt' | 'updatedAt'>) => {
+      const now = new Date().toISOString();
+      const routineItem: ServiceRoutine = {
+        ...newRoutine,
+        id: generateId(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const updated = [...serviceRoutines, routineItem];
+      await saveData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
+      return routineItem;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+    },
+  });
+
+  const updateServiceRoutineMutation = useMutation({
+    mutationFn: async (updates: Partial<ServiceRoutine> & { id: string }) => {
+      const updated = serviceRoutines.map(r =>
+        r.id === updates.id
+          ? { ...r, ...updates, updatedAt: new Date().toISOString() }
+          : r
+      );
+      await saveData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
+      return updated.find(r => r.id === updates.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+    },
+  });
+
+  const deleteServiceRoutineMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const updated = serviceRoutines.filter(r => r.id !== id);
+      await saveData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+    },
+  });
+
+  const getServiceRoutineById = useCallback(
+    (id: string) => serviceRoutines.find(r => r.id === id),
+    [serviceRoutines]
+  );
+
   const isLoading =
     equipmentQuery.isLoading ||
     maintenanceLogsQuery.isLoading ||
     intervalsQuery.isLoading ||
-    consumablesQuery.isLoading;
+    consumablesQuery.isLoading ||
+    serviceRoutinesQuery.isLoading;
 
   return {
     equipment,
     maintenanceLogs,
     intervals,
     consumables,
+    serviceRoutines,
     isLoading,
     addEquipment: addEquipmentMutation.mutateAsync,
     updateEquipment: updateEquipmentMutation.mutateAsync,
@@ -279,5 +336,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     deductConsumables: deductConsumablesMutation.mutateAsync,
     getConsumableById,
     getLowStockConsumables,
+    addServiceRoutine: addServiceRoutineMutation.mutateAsync,
+    updateServiceRoutine: updateServiceRoutineMutation.mutateAsync,
+    deleteServiceRoutine: deleteServiceRoutineMutation.mutateAsync,
+    getServiceRoutineById,
   };
 });

@@ -108,3 +108,47 @@ export const DEFAULT_MAINTENANCE_INTERVALS = [
   { name: 'Belt Inspection', intervalHours: 500 },
   { name: 'Annual Inspection', intervalDays: 365 },
 ];
+
+export interface ChecklistItem {
+  id: string;
+  text: string;
+  completed: boolean;
+}
+
+export interface ServiceRoutine {
+  id: string;
+  name: string;
+  description?: string;
+  equipmentTypes?: EquipmentType[];
+  checklistItems: Omit<ChecklistItem, 'completed'>[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const DEFAULT_SERVICE_ROUTINES: Omit<ServiceRoutine, 'id' | 'createdAt' | 'updatedAt'>[] = [
+  {
+    name: '250 Hour Service',
+    description: 'Standard 250 hour maintenance routine',
+    checklistItems: [
+      { id: '1', text: 'Change engine oil' },
+      { id: '2', text: 'Replace oil filter' },
+      { id: '3', text: 'Check air filter' },
+      { id: '4', text: 'Grease all fittings' },
+      { id: '5', text: 'Check coolant level' },
+      { id: '6', text: 'Inspect belts for wear' },
+      { id: '7', text: 'Check tire pressure' },
+    ],
+  },
+  {
+    name: 'Daily Pre-Operation Check',
+    description: 'Quick daily inspection before use',
+    checklistItems: [
+      { id: '1', text: 'Check engine oil level' },
+      { id: '2', text: 'Check coolant level' },
+      { id: '3', text: 'Check hydraulic fluid' },
+      { id: '4', text: 'Inspect for leaks' },
+      { id: '5', text: 'Check tire condition' },
+      { id: '6', text: 'Test lights and signals' },
+    ],
+  },
+];

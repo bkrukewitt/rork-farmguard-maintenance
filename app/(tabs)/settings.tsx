@@ -8,6 +8,7 @@ import {
   Alert,
   Switch,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { 
   Tractor, 
   Bell, 
@@ -17,6 +18,7 @@ import {
   Info,
   ChevronRight,
   Shield,
+  ClipboardList,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
@@ -24,7 +26,8 @@ import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 
 export default function SettingsScreen() {
-  const { equipment, maintenanceLogs } = useFarmData();
+  const router = useRouter();
+  const { equipment, maintenanceLogs, serviceRoutines } = useFarmData();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
@@ -44,6 +47,7 @@ export default function SettingsScreen() {
                 'farmguard_maintenance_logs',
                 'farmguard_intervals',
                 'farmguard_consumables',
+                'farmguard_service_routines',
               ]);
               queryClient.invalidateQueries();
               Alert.alert('Success', 'All data has been cleared.');
@@ -84,6 +88,28 @@ export default function SettingsScreen() {
           </View>
 
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Service</Text>
+        
+        <TouchableOpacity 
+          style={styles.settingRow} 
+          onPress={() => router.push('/routines' as any)}
+        >
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: Colors.primary + '15' }]}>
+              <ClipboardList color={Colors.primary} size={20} />
+            </View>
+            <View>
+              <Text style={styles.settingLabel}>Service Routines</Text>
+              <Text style={styles.settingDescription}>
+                {serviceRoutines.length} routine{serviceRoutines.length !== 1 ? 's' : ''} created
+              </Text>
+            </View>
+          </View>
+          <ChevronRight color={Colors.textSecondary} size={20} />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>

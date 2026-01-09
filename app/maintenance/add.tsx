@@ -18,10 +18,13 @@ import {
   ClipboardCheck,
   Check,
   ChevronDown,
+  Square,
+  CheckSquare,
+  ClipboardList,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
-import { MaintenanceLog, Consumable } from '@/types/equipment';
+import { MaintenanceLog, Consumable, ServiceRoutine, ChecklistItem } from '@/types/equipment';
 
 const SERVICE_TYPES: { value: MaintenanceLog['type']; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
   { value: 'routine', label: 'Routine Service', Icon: Wrench },
@@ -38,7 +41,7 @@ const PERFORMER_OPTIONS: { value: MaintenanceLog['performedBy']; label: string }
 export default function AddMaintenanceScreen() {
   const router = useRouter();
   const { equipmentId: preselectedEquipmentId } = useLocalSearchParams<{ equipmentId?: string }>();
-  const { equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables } = useFarmData();
+  const { equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines } = useFarmData();
 
   const [selectedEquipmentId, setSelectedEquipmentId] = useState(preselectedEquipmentId ?? '');
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
@@ -50,6 +53,9 @@ export default function AddMaintenanceScreen() {
   const [notes, setNotes] = useState('');
   const [showConsumablesPicker, setShowConsumablesPicker] = useState(false);
   const [selectedConsumables, setSelectedConsumables] = useState<{ consumableId: string; name: string; partNumber: string; quantity: number }[]>([]);
+  const [showRoutinePicker, setShowRoutinePicker] = useState(false);
+  const [selectedRoutine, setSelectedRoutine] = useState<ServiceRoutine | null>(null);
+  const [checklistState, setChecklistState] = useState<ChecklistItem[]>([]);
 
   const selectedEquipment = equipment.find(e => e.id === selectedEquipmentId);
 
@@ -58,6 +64,35 @@ export default function AddMaintenanceScreen() {
       setHoursAtService(selectedEquipment.currentHours.toString());
     }
   }, [selectedEquipment]);
+
+  const handleSelectRoutine = (routine: ServiceRoutine | null) => {
+    setSelectedRoutine(routine);
+    if (routine) {
+      setChecklistState(
+        routine.checklistItems.map(item => ({
+          id: item.id,
+          text: item.text,
+          completed: false,
+        }))
+      );
+      if (!description.trim()) {
+        setDescription(routine.name);
+      }
+    } else {
+      setChecklistState([]);
+    }
+    setShowRoutinePicker(false);
+  };
+
+  const toggleChecklistItem = (itemId: string) => {
+    setChecklistState(prev =>
+      prev.map(item =>
+        item.id === itemId ? { ...item, completed: !item.completed } : item
+      )
+    );
+  };
+
+  const completedCount = checklistState.filter(item => item.completed).length;
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -177,6 +212,93 @@ export default function AddMaintenanceScreen() {
                   No equipment added yet. Add equipment first.
                 </Text>
               )}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Service Routine (Optional)</Text>
+          <TouchableOpacity
+            style={styles.picker}
+            onPress={() => setShowRoutinePicker(!showRoutinePicker)}
+          >
+            <View style={styles.routinePickerContent}>
+              <ClipboardList color={selectedRoutine ? Colors.primary : Colors.textSecondary} size={18} />
+              <Text style={[
+                styles.pickerText,
+                !selectedRoutine && styles.pickerPlaceholder
+              ]}>
+                {selectedRoutine?.name ?? 'Select a service routine...'}
+              </Text>
+            </View>
+            <ChevronDown color={Colors.textSecondary} size={20} />
+          </TouchableOpacity>
+          
+          {showRoutinePicker && (
+            <View style={styles.pickerDropdown}>
+              <TouchableOpacity
+                style={styles.pickerOption}
+                onPress={() => handleSelectRoutine(null)}
+              >
+                <Text style={styles.pickerOptionText}>No routine</Text>
+              </TouchableOpacity>
+              {serviceRoutines.length === 0 ? (
+                <Text style={styles.noEquipmentText}>
+                  No service routines created yet. Create one in Settings → Service Routines.
+                </Text>
+              ) : (
+                serviceRoutines.map((routine: ServiceRoutine) => (
+                  <TouchableOpacity
+                    key={routine.id}
+                    style={[
+                      styles.pickerOption,
+                      selectedRoutine?.id === routine.id && styles.pickerOptionActive,
+                    ]}
+                    onPress={() => handleSelectRoutine(routine)}
+                  >
+                    <Text style={[
+                      styles.pickerOptionText,
+                      selectedRoutine?.id === routine.id && styles.pickerOptionTextActive,
+                    ]}>
+                      {routine.name}
+                    </Text>
+                    <Text style={styles.pickerOptionSubtext}>
+                      {routine.checklistItems.length} checklist items
+                    </Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </View>
+          )}
+
+          {selectedRoutine && checklistState.length > 0 && (
+            <View style={styles.checklistContainer}>
+              <View style={styles.checklistHeader}>
+                <Text style={styles.checklistTitle}>Checklist</Text>
+                <Text style={styles.checklistProgress}>
+                  {completedCount}/{checklistState.length} completed
+                </Text>
+              </View>
+              {checklistState.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.checklistItemRow}
+                  onPress={() => toggleChecklistItem(item.id)}
+                  activeOpacity={0.7}
+                >
+                  {item.completed ? (
+                    <CheckSquare color={Colors.success} size={22} />
+                  ) : (
+                    <Square color={Colors.textSecondary} size={22} />
+                  )}
+                  <Text style={[
+                    styles.checklistItemText,
+                    item.completed && styles.checklistItemTextCompleted,
+                  ]}>
+                    {item.text}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           )}
         </View>
@@ -503,6 +625,51 @@ const styles = StyleSheet.create({
     padding: 20,
     textAlign: 'center',
     color: Colors.textSecondary,
+  },
+  routinePickerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  checklistContainer: {
+    marginTop: 12,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: 12,
+    padding: 14,
+  },
+  checklistHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  checklistTitle: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  checklistProgress: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '500' as const,
+  },
+  checklistItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 12,
+  },
+  checklistItemText: {
+    flex: 1,
+    fontSize: 15,
+    color: Colors.text,
+  },
+  checklistItemTextCompleted: {
+    color: Colors.textSecondary,
+    textDecorationLine: 'line-through',
   },
   consumableRow: {
     flexDirection: 'row',
