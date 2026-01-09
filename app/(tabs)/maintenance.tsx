@@ -85,7 +85,7 @@ export default function MaintenanceScreen() {
     return (
       <TouchableOpacity
         style={styles.logCard}
-        onPress={() => router.push(`/equipment/${item.equipmentId}`)}
+        onPress={() => router.push(`/equipment/${item.equipmentId}` as any)}
         activeOpacity={0.7}
       >
         <View style={[styles.logIconContainer, { backgroundColor: typeColor + '15' }]}>
@@ -196,7 +196,7 @@ export default function MaintenanceScreen() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/maintenance/add')}
+        onPress={() => router.push('/maintenance/add' as any)}
         activeOpacity={0.8}
       >
         <Plus color={Colors.textOnPrimary} size={28} />

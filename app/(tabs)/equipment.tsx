@@ -88,7 +88,7 @@ export default function EquipmentScreen() {
     return (
       <TouchableOpacity
         style={styles.equipmentCard}
-        onPress={() => router.push(`/equipment/${item.id}`)}
+        onPress={() => router.push(`/equipment/${item.id}` as any)}
         activeOpacity={0.7}
       >
         <View style={styles.cardLeft}>
@@ -160,7 +160,7 @@ export default function EquipmentScreen() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/equipment/add')}
+        onPress={() => router.push('/equipment/add' as any)}
         activeOpacity={0.8}
       >
         <Plus color={Colors.textOnPrimary} size={28} />

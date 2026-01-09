@@ -105,7 +105,7 @@ export default function DashboardScreen() {
         <View style={styles.statsRow}>
           <TouchableOpacity
             style={[styles.statCard, { backgroundColor: Colors.statusOk + '15' }]}
-            onPress={() => router.push('/equipment')}
+            onPress={() => router.push('/equipment' as any)}
           >
             <CheckCircle color={Colors.statusOk} size={28} />
             <Text style={[styles.statNumber, { color: Colors.statusOk }]}>{stats.okCount}</Text>
@@ -114,7 +114,7 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.statCard, { backgroundColor: Colors.statusDue + '15' }]}
-            onPress={() => router.push('/equipment')}
+            onPress={() => router.push('/equipment' as any)}
           >
             <Clock color={Colors.statusDue} size={28} />
             <Text style={[styles.statNumber, { color: Colors.statusDue }]}>{stats.dueCount}</Text>
@@ -123,7 +123,7 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.statCard, { backgroundColor: Colors.statusOverdue + '15' }]}
-            onPress={() => router.push('/equipment')}
+            onPress={() => router.push('/equipment' as any)}
           >
             <AlertTriangle color={Colors.statusOverdue} size={28} />
             <Text style={[styles.statNumber, { color: Colors.statusOverdue }]}>{stats.overdueCount}</Text>
@@ -134,7 +134,7 @@ export default function DashboardScreen() {
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push('/equipment/add')}
+            onPress={() => router.push('/equipment/add' as any)}
           >
             <View style={styles.actionIconContainer}>
               <Plus color={Colors.textOnPrimary} size={20} />
@@ -144,7 +144,7 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push('/maintenance/add')}
+            onPress={() => router.push('/maintenance/add' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: Colors.accent }]}>
               <Wrench color={Colors.textOnPrimary} size={20} />
@@ -160,7 +160,7 @@ export default function DashboardScreen() {
               <TouchableOpacity
                 key={`${item.equipment.id}-${item.interval.id}-${index}`}
                 style={styles.alertCard}
-                onPress={() => router.push(`/equipment/${item.equipment.id}`)}
+                onPress={() => router.push(`/equipment/${item.equipment.id}` as any)}
               >
                 <View style={[
                   styles.alertIndicator,
@@ -186,7 +186,7 @@ export default function DashboardScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Recent Services</Text>
-              <TouchableOpacity onPress={() => router.push('/maintenance')}>
+              <TouchableOpacity onPress={() => router.push('/maintenance' as any)}>
                 <Text style={styles.seeAllText}>See All</Text>
               </TouchableOpacity>
             </View>
@@ -217,7 +217,7 @@ export default function DashboardScreen() {
             </Text>
             <TouchableOpacity
               style={styles.emptyButton}
-              onPress={() => router.push('/equipment/add')}
+              onPress={() => router.push('/equipment/add' as any)}
             >
               <Plus color={Colors.textOnPrimary} size={20} />
               <Text style={styles.emptyButtonText}>Add Equipment</Text>

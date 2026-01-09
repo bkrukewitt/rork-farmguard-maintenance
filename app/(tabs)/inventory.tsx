@@ -125,7 +125,7 @@ export default function InventoryScreen() {
       {!searchQuery && selectedCategory === 'all' && (
         <TouchableOpacity
           style={styles.emptyButton}
-          onPress={() => router.push('/inventory/add')}
+          onPress={() => router.push('/inventory/add' as any)}
         >
           <Plus color={Colors.textOnPrimary} size={20} />
           <Text style={styles.emptyButtonText}>Add Part</Text>
@@ -226,7 +226,7 @@ export default function InventoryScreen() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/inventory/add')}
+        onPress={() => router.push('/inventory/add' as any)}
         activeOpacity={0.8}
       >
         <Plus color={Colors.textOnPrimary} size={28} />
