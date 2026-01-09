@@ -17,7 +17,6 @@ export interface Equipment {
   year: number;
   serialNumber: string;
   purchaseDate: string;
-  purchasePrice?: number;
   currentHours: number;
   imageUrl?: string;
   warrantyExpiry?: string;
@@ -55,7 +54,6 @@ export interface Consumable {
   supplierPartNumber?: string;
   quantity: number;
   lowStockThreshold: number;
-  unitPrice?: number;
   compatibleEquipment?: string[];
   notes?: string;
   createdAt: string;
@@ -80,7 +78,6 @@ export interface MaintenanceLog {
   type: 'routine' | 'repair' | 'inspection';
   description: string;
   consumablesUsed: { consumableId: string; name: string; quantity: number }[];
-  cost: number;
   performedBy: 'owner' | 'dealer' | 'employee';
   performedByName?: string;
   downtimeHours?: number;

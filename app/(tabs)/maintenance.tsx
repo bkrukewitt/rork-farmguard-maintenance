@@ -19,7 +19,7 @@ import {
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { MaintenanceLog } from '@/types/equipment';
-import { formatDate, formatHours, formatCurrency } from '@/utils/helpers';
+import { formatDate, formatHours } from '@/utils/helpers';
 
 type FilterType = 'all' | 'routine' | 'repair' | 'inspection';
 
@@ -97,9 +97,6 @@ export default function MaintenanceScreen() {
           <Text style={styles.logEquipment}>{eq?.name ?? 'Unknown Equipment'}</Text>
           <View style={styles.logMeta}>
             <Text style={styles.logMetaText}>{formatHours(item.hoursAtService)}</Text>
-            {item.cost > 0 && (
-              <Text style={styles.logCost}>{formatCurrency(item.cost)}</Text>
-            )}
           </View>
         </View>
         

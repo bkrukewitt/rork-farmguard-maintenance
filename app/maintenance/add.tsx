@@ -46,7 +46,6 @@ export default function AddMaintenanceScreen() {
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [hoursAtService, setHoursAtService] = useState('');
-  const [cost, setCost] = useState('');
   const [performedBy, setPerformedBy] = useState<MaintenanceLog['performedBy']>('owner');
   const [notes, setNotes] = useState('');
   const [showConsumablesPicker, setShowConsumablesPicker] = useState(false);
@@ -82,7 +81,6 @@ export default function AddMaintenanceScreen() {
         type,
         description: description.trim(),
         consumablesUsed,
-        cost: parseFloat(cost) || 0,
         performedBy,
         notes: notes.trim(),
       });
@@ -249,18 +247,6 @@ export default function AddMaintenanceScreen() {
                 keyboardType="decimal-pad"
               />
             </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Cost ($)</Text>
-            <TextInput
-              style={styles.input}
-              value={cost}
-              onChangeText={setCost}
-              placeholder="0.00"
-              placeholderTextColor={Colors.textSecondary}
-              keyboardType="decimal-pad"
-            />
           </View>
 
           <View style={styles.inputGroup}>

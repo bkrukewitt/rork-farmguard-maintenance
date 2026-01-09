@@ -21,7 +21,7 @@ import {
   Clock,
   Calendar,
   Hash,
-  DollarSign,
+
   AlertTriangle,
   CheckCircle,
   Edit3,
@@ -32,7 +32,7 @@ import {
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { EquipmentType } from '@/types/equipment';
-import { formatDate, formatHours, formatCurrency, getMaintenanceStatus } from '@/utils/helpers';
+import { formatDate, formatHours, getMaintenanceStatus } from '@/utils/helpers';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
   tractor: Tractor,
@@ -128,7 +128,7 @@ export default function EquipmentDetailScreen() {
   }
 
   const Icon = EQUIPMENT_ICONS[equipment.type] || Settings;
-  const totalCost = logs.reduce((sum, log) => sum + log.cost, 0);
+
 
   return (
     <>
@@ -191,13 +191,7 @@ export default function EquipmentDetailScreen() {
                 {equipment.purchaseDate ? formatDate(equipment.purchaseDate) : '—'}
               </Text>
             </View>
-            <View style={styles.detailRow}>
-              <View style={styles.detailIcon}>
-                <DollarSign color={Colors.textSecondary} size={16} />
-              </View>
-              <Text style={styles.detailLabel}>Total Maintenance</Text>
-              <Text style={styles.detailValue}>{formatCurrency(totalCost)}</Text>
-            </View>
+
             <View style={styles.detailRow}>
               <View style={styles.detailIcon}>
                 <FileText color={Colors.textSecondary} size={16} />
@@ -282,9 +276,6 @@ export default function EquipmentDetailScreen() {
                 <Text style={styles.logDescription}>{log.description}</Text>
                 <View style={styles.logMeta}>
                   <Text style={styles.logMetaText}>@ {formatHours(log.hoursAtService)}</Text>
-                  {log.cost > 0 && (
-                    <Text style={styles.logCost}>{formatCurrency(log.cost)}</Text>
-                  )}
                 </View>
               </View>
             ))

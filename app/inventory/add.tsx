@@ -29,7 +29,6 @@ export default function AddConsumableScreen() {
   const [supplierPartNumber, setSupplierPartNumber] = useState('');
   const [quantity, setQuantity] = useState('');
   const [lowStockThreshold, setLowStockThreshold] = useState('2');
-  const [unitPrice, setUnitPrice] = useState('');
   const [notes, setNotes] = useState('');
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
@@ -51,7 +50,6 @@ export default function AddConsumableScreen() {
         supplierPartNumber: supplierPartNumber.trim() || undefined,
         quantity: parseInt(quantity) || 0,
         lowStockThreshold: parseInt(lowStockThreshold) || 2,
-        unitPrice: parseFloat(unitPrice) || undefined,
         compatibleEquipment: selectedEquipment.length > 0 ? selectedEquipment : undefined,
         notes: notes.trim() || undefined,
       });
@@ -208,18 +206,6 @@ export default function AddConsumableScreen() {
                 keyboardType="number-pad"
               />
             </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Unit Price ($)</Text>
-            <TextInput
-              style={styles.input}
-              value={unitPrice}
-              onChangeText={setUnitPrice}
-              placeholder="0.00"
-              placeholderTextColor={Colors.textSecondary}
-              keyboardType="decimal-pad"
-            />
           </View>
         </View>
 

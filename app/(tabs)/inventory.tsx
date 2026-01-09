@@ -98,12 +98,7 @@ export default function InventoryScreen() {
               {item.quantity} {isLowStock && `(Low: ≤${item.lowStockThreshold})`}
             </Text>
           </View>
-          {item.unitPrice !== undefined && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Unit Price</Text>
-              <Text style={styles.detailValue}>${item.unitPrice.toFixed(2)}</Text>
-            </View>
-          )}
+
         </View>
       </TouchableOpacity>
     );
@@ -199,19 +194,11 @@ export default function InventoryScreen() {
           <Text style={styles.statValue}>{consumables.length}</Text>
           <Text style={styles.statLabel}>Total Parts</Text>
         </View>
-        <View style={styles.statDivider} />
         <View style={styles.statItem}>
           <Text style={[styles.statValue, lowStockItems.length > 0 && styles.statValueWarning]}>
             {lowStockItems.length}
           </Text>
           <Text style={styles.statLabel}>Low Stock</Text>
-        </View>
-        <View style={styles.statDivider} />
-        <View style={styles.statItem}>
-          <Text style={styles.statValue}>
-            ${consumables.reduce((sum, c) => sum + (c.unitPrice ?? 0) * c.quantity, 0).toFixed(0)}
-          </Text>
-          <Text style={styles.statLabel}>Total Value</Text>
         </View>
       </View>
 

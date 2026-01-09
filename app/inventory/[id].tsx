@@ -46,7 +46,6 @@ export default function ConsumableDetailScreen() {
   const [editSupplier, setEditSupplier] = useState('');
   const [editSupplierPartNumber, setEditSupplierPartNumber] = useState('');
   const [editLowStockThreshold, setEditLowStockThreshold] = useState('');
-  const [editUnitPrice, setEditUnitPrice] = useState('');
   const [editNotes, setEditNotes] = useState('');
 
   const startEditing = () => {
@@ -57,7 +56,6 @@ export default function ConsumableDetailScreen() {
       setEditSupplier(consumable.supplier ?? '');
       setEditSupplierPartNumber(consumable.supplierPartNumber ?? '');
       setEditLowStockThreshold(consumable.lowStockThreshold.toString());
-      setEditUnitPrice(consumable.unitPrice?.toString() ?? '');
       setEditNotes(consumable.notes ?? '');
       setIsEditing(true);
     }
@@ -76,7 +74,6 @@ export default function ConsumableDetailScreen() {
         supplier: editSupplier.trim() || undefined,
         supplierPartNumber: editSupplierPartNumber.trim() || undefined,
         lowStockThreshold: parseInt(editLowStockThreshold) || 2,
-        unitPrice: parseFloat(editUnitPrice) || undefined,
         notes: editNotes.trim() || undefined,
       });
       setIsEditing(false);
@@ -234,29 +231,16 @@ export default function ConsumableDetailScreen() {
               />
             </View>
 
-            <View style={styles.row}>
-              <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>Low Stock Alert</Text>
-                <TextInput
-                  style={styles.input}
-                  value={editLowStockThreshold}
-                  onChangeText={setEditLowStockThreshold}
-                  placeholder="2"
-                  placeholderTextColor={Colors.textSecondary}
-                  keyboardType="number-pad"
-                />
-              </View>
-              <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>Unit Price ($)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={editUnitPrice}
-                  onChangeText={setEditUnitPrice}
-                  placeholder="0.00"
-                  placeholderTextColor={Colors.textSecondary}
-                  keyboardType="decimal-pad"
-                />
-              </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Low Stock Alert</Text>
+              <TextInput
+                style={styles.input}
+                value={editLowStockThreshold}
+                onChangeText={setEditLowStockThreshold}
+                placeholder="2"
+                placeholderTextColor={Colors.textSecondary}
+                keyboardType="number-pad"
+              />
             </View>
 
             <View style={styles.inputGroup}>
@@ -409,22 +393,6 @@ export default function ConsumableDetailScreen() {
             <Text style={styles.detailLabel}>Low Stock Threshold</Text>
             <Text style={styles.detailValue}>{consumable.lowStockThreshold}</Text>
           </View>
-
-          {consumable.unitPrice !== undefined && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Unit Price</Text>
-              <Text style={styles.detailValue}>${consumable.unitPrice.toFixed(2)}</Text>
-            </View>
-          )}
-
-          {consumable.unitPrice !== undefined && (
-            <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Total Value</Text>
-              <Text style={styles.detailValueBold}>
-                ${(consumable.unitPrice * consumable.quantity).toFixed(2)}
-              </Text>
-            </View>
-          )}
         </View>
 
         {consumable.compatibleEquipment && consumable.compatibleEquipment.length > 0 && (

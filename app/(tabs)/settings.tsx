@@ -82,17 +82,7 @@ export default function SettingsScreen() {
             <Text style={styles.statValue}>{maintenanceLogs.length}</Text>
             <Text style={styles.statLabel}>Service Logs</Text>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statItem}>
-            <Text style={styles.statValue}>
-              {maintenanceLogs.reduce((sum, log) => sum + log.cost, 0).toLocaleString('en-US', {
-                style: 'currency',
-                currency: 'USD',
-                minimumFractionDigits: 0,
-              })}
-            </Text>
-            <Text style={styles.statLabel}>Total Spent</Text>
-          </View>
+
         </View>
       </View>
 
