@@ -19,6 +19,7 @@ import {
   ChevronRight,
   Shield,
   ClipboardList,
+  Search,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
@@ -27,7 +28,7 @@ import { useFarmData } from '@/contexts/FarmDataContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, serviceRoutines } = useFarmData();
+  const { equipment, maintenanceLogs, serviceRoutines, inspectionRoutines } = useFarmData();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
@@ -104,6 +105,24 @@ export default function SettingsScreen() {
               <Text style={styles.settingLabel}>Service Routines</Text>
               <Text style={styles.settingDescription}>
                 {serviceRoutines.length} routine{serviceRoutines.length !== 1 ? 's' : ''} created
+              </Text>
+            </View>
+          </View>
+          <ChevronRight color={Colors.textSecondary} size={20} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.settingRow} 
+          onPress={() => router.push('/routines/inspection' as any)}
+        >
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: '#8B5CF6' + '15' }]}>
+              <Search color="#8B5CF6" size={20} />
+            </View>
+            <View>
+              <Text style={styles.settingLabel}>Inspection Routines</Text>
+              <Text style={styles.settingDescription}>
+                {inspectionRoutines.length} routine{inspectionRoutines.length !== 1 ? 's' : ''} created
               </Text>
             </View>
           </View>
