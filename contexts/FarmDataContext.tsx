@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
-import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine } from '@/types/equipment';
+import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 
 const STORAGE_KEYS = {
@@ -11,6 +11,7 @@ const STORAGE_KEYS = {
   INTERVALS: 'farmguard_intervals',
   CONSUMABLES: 'farmguard_consumables',
   SERVICE_ROUTINES: 'farmguard_service_routines',
+  INSPECTION_ROUTINES: 'farmguard_inspection_routines',
 };
 
 async function loadData<T>(key: string): Promise<T[]> {
@@ -59,11 +60,17 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     queryFn: () => loadData<ServiceRoutine>(STORAGE_KEYS.SERVICE_ROUTINES),
   });
 
+  const inspectionRoutinesQuery = useQuery({
+    queryKey: ['inspectionRoutines'],
+    queryFn: () => loadData<InspectionRoutine>(STORAGE_KEYS.INSPECTION_ROUTINES),
+  });
+
   const equipment = useMemo(() => equipmentQuery.data ?? [], [equipmentQuery.data]);
   const maintenanceLogs = useMemo(() => maintenanceLogsQuery.data ?? [], [maintenanceLogsQuery.data]);
   const intervals = useMemo(() => intervalsQuery.data ?? [], [intervalsQuery.data]);
   const consumables = useMemo(() => consumablesQuery.data ?? [], [consumablesQuery.data]);
   const serviceRoutines = useMemo(() => serviceRoutinesQuery.data ?? [], [serviceRoutinesQuery.data]);
+  const inspectionRoutines = useMemo(() => inspectionRoutinesQuery.data ?? [], [inspectionRoutinesQuery.data]);
 
   const addEquipmentMutation = useMutation({
     mutationFn: async (newEquipment: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -306,12 +313,61 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     [serviceRoutines]
   );
 
+  const addInspectionRoutineMutation = useMutation({
+    mutationFn: async (newRoutine: Omit<InspectionRoutine, 'id' | 'createdAt' | 'updatedAt'>) => {
+      const now = new Date().toISOString();
+      const routineItem: InspectionRoutine = {
+        ...newRoutine,
+        id: generateId(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const updated = [...inspectionRoutines, routineItem];
+      await saveData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
+      return routineItem;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+    },
+  });
+
+  const updateInspectionRoutineMutation = useMutation({
+    mutationFn: async (updates: Partial<InspectionRoutine> & { id: string }) => {
+      const updated = inspectionRoutines.map(r =>
+        r.id === updates.id
+          ? { ...r, ...updates, updatedAt: new Date().toISOString() }
+          : r
+      );
+      await saveData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
+      return updated.find(r => r.id === updates.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+    },
+  });
+
+  const deleteInspectionRoutineMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const updated = inspectionRoutines.filter(r => r.id !== id);
+      await saveData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+    },
+  });
+
+  const getInspectionRoutineById = useCallback(
+    (id: string) => inspectionRoutines.find(r => r.id === id),
+    [inspectionRoutines]
+  );
+
   const isLoading =
     equipmentQuery.isLoading ||
     maintenanceLogsQuery.isLoading ||
     intervalsQuery.isLoading ||
     consumablesQuery.isLoading ||
-    serviceRoutinesQuery.isLoading;
+    serviceRoutinesQuery.isLoading ||
+    inspectionRoutinesQuery.isLoading;
 
   return {
     equipment,
@@ -319,6 +375,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     intervals,
     consumables,
     serviceRoutines,
+    inspectionRoutines,
     isLoading,
     addEquipment: addEquipmentMutation.mutateAsync,
     updateEquipment: updateEquipmentMutation.mutateAsync,
@@ -340,5 +397,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     updateServiceRoutine: updateServiceRoutineMutation.mutateAsync,
     deleteServiceRoutine: deleteServiceRoutineMutation.mutateAsync,
     getServiceRoutineById,
+    addInspectionRoutine: addInspectionRoutineMutation.mutateAsync,
+    updateInspectionRoutine: updateInspectionRoutineMutation.mutateAsync,
+    deleteInspectionRoutine: deleteInspectionRoutineMutation.mutateAsync,
+    getInspectionRoutineById,
   };
 });

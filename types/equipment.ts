@@ -125,6 +125,16 @@ export interface ServiceRoutine {
   updatedAt: string;
 }
 
+export interface InspectionRoutine {
+  id: string;
+  name: string;
+  description?: string;
+  equipmentTypes?: EquipmentType[];
+  checklistItems: Omit<ChecklistItem, 'completed'>[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const DEFAULT_SERVICE_ROUTINES: Omit<ServiceRoutine, 'id' | 'createdAt' | 'updatedAt'>[] = [
   {
     name: '250 Hour Service',

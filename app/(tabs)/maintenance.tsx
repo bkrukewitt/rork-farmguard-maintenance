@@ -6,6 +6,8 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -15,6 +17,9 @@ import {
   ClipboardCheck,
   Filter,
   Calendar,
+  X,
+  ClipboardList,
+  Search,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -27,6 +32,7 @@ export default function MaintenanceScreen() {
   const router = useRouter();
   const { maintenanceLogs, equipment, isLoading } = useFarmData();
   const [filterType, setFilterType] = useState<FilterType>('all');
+  const [showAddMenu, setShowAddMenu] = useState(false);
 
   const sortedLogs = useMemo(() => {
     let logs = [...maintenanceLogs].sort(
@@ -193,11 +199,80 @@ export default function MaintenanceScreen() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/maintenance/add' as any)}
+        onPress={() => setShowAddMenu(true)}
         activeOpacity={0.8}
       >
         <Plus color={Colors.textOnPrimary} size={28} />
       </TouchableOpacity>
+
+      <Modal
+        visible={showAddMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddMenu(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay} 
+          onPress={() => setShowAddMenu(false)}
+        >
+          <Pressable style={styles.menuContainer} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Add New</Text>
+              <TouchableOpacity onPress={() => setShowAddMenu(false)}>
+                <X color={Colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowAddMenu(false);
+                router.push('/maintenance/add' as any);
+              }}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: Colors.primary + '15' }]}>
+                <Wrench color={Colors.primary} size={22} />
+              </View>
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemTitle}>Log Maintenance</Text>
+                <Text style={styles.menuItemSubtitle}>Record service, repair, or inspection</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowAddMenu(false);
+                router.push('/routines/service' as any);
+              }}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: Colors.accent + '15' }]}>
+                <ClipboardList color={Colors.accent} size={22} />
+              </View>
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemTitle}>Service Routines</Text>
+                <Text style={styles.menuItemSubtitle}>Manage reusable service checklists</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowAddMenu(false);
+                router.push('/routines/inspection' as any);
+              }}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: '#8B5CF6' + '15' }]}>
+                <Search color="#8B5CF6" size={22} />
+              </View>
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemTitle}>Inspection Routines</Text>
+                <Text style={styles.menuItemSubtitle}>Manage inspection checklists</Text>
+              </View>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -359,5 +434,60 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuContainer: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 8,
+    paddingBottom: 40,
+    paddingHorizontal: 20,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    marginBottom: 8,
+  },
+  menuTitle: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  menuIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  menuItemContent: {
+    flex: 1,
+  },
+  menuItemTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  menuItemSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
   },
 });
