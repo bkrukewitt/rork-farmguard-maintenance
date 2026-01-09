@@ -23,6 +23,7 @@ import {
   Container, 
   Settings,
   Check,
+  Fan,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -36,6 +37,7 @@ const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.Compon
   { value: 'sprayer', label: 'Sprayer', Icon: Droplets },
   { value: 'planter', label: 'Planter', Icon: Sprout },
   { value: 'loader', label: 'Loader', Icon: Container },
+  { value: 'mower', label: 'Mower', Icon: Fan },
   { value: 'other', label: 'Other', Icon: Settings },
 ];
 

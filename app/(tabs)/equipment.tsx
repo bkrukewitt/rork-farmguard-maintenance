@@ -24,6 +24,7 @@ import {
   Clock,
   AlertTriangle,
   CheckCircle,
+  Fan,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -38,6 +39,7 @@ const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string
   sprayer: Droplets,
   planter: Sprout,
   loader: Container,
+  mower: Fan,
   other: Settings,
 };
 
