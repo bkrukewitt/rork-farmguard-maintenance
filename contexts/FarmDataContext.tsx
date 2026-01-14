@@ -265,6 +265,24 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     [consumables]
   );
 
+  const bulkAddConsumablesMutation = useMutation({
+    mutationFn: async (newConsumables: Omit<Consumable, 'id' | 'createdAt' | 'updatedAt'>[]) => {
+      const now = new Date().toISOString();
+      const consumableItems: Consumable[] = newConsumables.map(c => ({
+        ...c,
+        id: generateId(),
+        createdAt: now,
+        updatedAt: now,
+      }));
+      const updated = [...consumables, ...consumableItems];
+      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
+      return consumableItems;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['consumables'] });
+    },
+  });
+
   const addServiceRoutineMutation = useMutation({
     mutationFn: async (newRoutine: Omit<ServiceRoutine, 'id' | 'createdAt' | 'updatedAt'>) => {
       const now = new Date().toISOString();
@@ -393,6 +411,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     deductConsumables: deductConsumablesMutation.mutateAsync,
     getConsumableById,
     getLowStockConsumables,
+    bulkAddConsumables: bulkAddConsumablesMutation.mutateAsync,
     addServiceRoutine: addServiceRoutineMutation.mutateAsync,
     updateServiceRoutine: updateServiceRoutineMutation.mutateAsync,
     deleteServiceRoutine: deleteServiceRoutineMutation.mutateAsync,

@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
   Share,
   Alert,
+  Modal,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -18,18 +20,88 @@ import {
   AlertTriangle,
   ChevronRight,
   Share2,
+  Download,
+  Upload,
+  FileSpreadsheet,
+  X,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { Consumable, CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
+import { generateCSVTemplate, exportConsumablesToCSV } from '@/utils/csvHelpers';
 
 export default function InventoryScreen() {
   const router = useRouter();
   const { consumables, isLoading, getLowStockConsumables } = useFarmData();
+  const [showAddMenu, setShowAddMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ConsumableCategory | 'all' | 'low-stock'>('all');
 
   const lowStockItems = useMemo(() => getLowStockConsumables(), [getLowStockConsumables]);
+
+  const handleDownloadTemplate = async () => {
+    const templateContent = generateCSVTemplate();
+    
+    if (Platform.OS === 'web') {
+      const blob = new Blob([templateContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'parts_template.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      Alert.alert('Success', 'Template downloaded successfully!');
+    } else {
+      try {
+        await Share.share({
+          message: templateContent,
+          title: 'Parts Import Template',
+        });
+      } catch (error) {
+        console.log('Error sharing template:', error);
+      }
+    }
+    setShowAddMenu(false);
+  };
+
+  const handleExportInventory = async () => {
+    if (consumables.length === 0) {
+      Alert.alert('No Parts', 'Add some parts to your inventory first.');
+      return;
+    }
+
+    const csvContent = exportConsumablesToCSV(consumables);
+    
+    if (Platform.OS === 'web') {
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `inventory_export_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      Alert.alert('Success', 'Inventory exported successfully!');
+    } else {
+      try {
+        await Share.share({
+          message: csvContent,
+          title: 'Inventory Export',
+        });
+      } catch (error) {
+        console.log('Error sharing export:', error);
+      }
+    }
+    setShowAddMenu(false);
+  };
+
+  const handleImportCSV = async () => {
+    setShowAddMenu(false);
+    router.push('/inventory/import' as any);
+  };
 
   const handleExportLowStock = async () => {
     if (lowStockItems.length === 0) {
@@ -263,11 +335,91 @@ export default function InventoryScreen() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/inventory/add' as any)}
+        onPress={() => setShowAddMenu(true)}
         activeOpacity={0.8}
       >
         <Plus color={Colors.textOnPrimary} size={28} />
       </TouchableOpacity>
+
+      <Modal
+        visible={showAddMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddMenu(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1}
+          onPress={() => setShowAddMenu(false)}
+        >
+          <View style={styles.menuContainer}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Add Parts</Text>
+              <TouchableOpacity onPress={() => setShowAddMenu(false)}>
+                <X color={Colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowAddMenu(false);
+                router.push('/inventory/add' as any);
+              }}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: Colors.primary + '15' }]}>
+                <Plus color={Colors.primary} size={22} />
+              </View>
+              <View style={styles.menuTextContainer}>
+                <Text style={styles.menuItemTitle}>Add Single Part</Text>
+                <Text style={styles.menuItemDescription}>Manually add one part to inventory</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleImportCSV}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: Colors.accent + '15' }]}>
+                <Upload color={Colors.accent} size={22} />
+              </View>
+              <View style={styles.menuTextContainer}>
+                <Text style={styles.menuItemTitle}>Import from Spreadsheet</Text>
+                <Text style={styles.menuItemDescription}>Bulk import parts from a CSV file</Text>
+              </View>
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+            <Text style={styles.menuSectionTitle}>Templates & Export</Text>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleDownloadTemplate}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: Colors.success + '15' }]}>
+                <FileSpreadsheet color={Colors.success} size={22} />
+              </View>
+              <View style={styles.menuTextContainer}>
+                <Text style={styles.menuItemTitle}>Download Template</Text>
+                <Text style={styles.menuItemDescription}>Get a CSV template with example data</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleExportInventory}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: Colors.warning + '15' }]}>
+                <Download color={Colors.warning} size={22} />
+              </View>
+              <View style={styles.menuTextContainer}>
+                <Text style={styles.menuItemTitle}>Export Inventory</Text>
+                <Text style={styles.menuItemDescription}>Download all parts as CSV</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -500,5 +652,71 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuContainer: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 40,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  menuTitle: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    paddingHorizontal: 20,
+  },
+  menuIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuTextContainer: {
+    flex: 1,
+    marginLeft: 14,
+  },
+  menuItemTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  menuItemDescription: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 12,
+    marginHorizontal: 20,
+  },
+  menuSectionTitle: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: Colors.textSecondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    paddingHorizontal: 20,
+    marginBottom: 8,
   },
 });
