@@ -236,15 +236,7 @@ export default function InventoryScreen() {
           ? 'Try adjusting your search or filter'
           : 'Add consumables and parts to track your inventory'}
       </Text>
-      {!searchQuery && selectedCategory === 'all' && (
-        <TouchableOpacity
-          style={styles.emptyButton}
-          onPress={() => router.push('/inventory/add' as any)}
-        >
-          <Plus color={Colors.textOnPrimary} size={20} />
-          <Text style={styles.emptyButtonText}>Add Part</Text>
-        </TouchableOpacity>
-      )}
+
     </View>
   );
 
@@ -634,21 +626,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 32,
   },
-  emptyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 10,
-    marginTop: 24,
-    gap: 8,
-  },
-  emptyButtonText: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.textOnPrimary,
-  },
+
   fab: {
     position: 'absolute',
     right: 20,
