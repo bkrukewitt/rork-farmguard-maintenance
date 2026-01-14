@@ -390,7 +390,8 @@ export default function ImportInventoryScreen() {
                                 {eq?.name ?? 'Unknown'}
                               </Text>
                             );
-                          })}{part.unmatchedEquipment.map((name, i) => (
+                          })}
+                          {part.unmatchedEquipment.map((name, i) => (
                             <Text key={`unmatched-${i}`} style={styles.previewDetailValueWarning} numberOfLines={1}>
                               {name} (not found)
                             </Text>
