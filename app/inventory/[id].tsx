@@ -22,6 +22,7 @@ import {
   Check,
   X,
   ChevronDown,
+  Tractor,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -47,6 +48,8 @@ export default function ConsumableDetailScreen() {
   const [editSupplierPartNumber, setEditSupplierPartNumber] = useState('');
   const [editLowStockThreshold, setEditLowStockThreshold] = useState('');
   const [editNotes, setEditNotes] = useState('');
+  const [editCompatibleEquipment, setEditCompatibleEquipment] = useState<string[]>([]);
+  const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
 
   const startEditing = () => {
     if (consumable) {
@@ -57,8 +60,19 @@ export default function ConsumableDetailScreen() {
       setEditSupplierPartNumber(consumable.supplierPartNumber ?? '');
       setEditLowStockThreshold(consumable.lowStockThreshold.toString());
       setEditNotes(consumable.notes ?? '');
+      setEditCompatibleEquipment(consumable.compatibleEquipment ?? []);
       setIsEditing(true);
     }
+  };
+
+  const toggleEquipmentSelection = (equipmentId: string) => {
+    setEditCompatibleEquipment(prev => {
+      if (prev.includes(equipmentId)) {
+        return prev.filter(id => id !== equipmentId);
+      } else {
+        return [...prev, equipmentId];
+      }
+    });
   };
 
   const updateMutation = useMutation({
@@ -75,6 +89,7 @@ export default function ConsumableDetailScreen() {
         supplierPartNumber: editSupplierPartNumber.trim() || undefined,
         lowStockThreshold: parseInt(editLowStockThreshold) || 2,
         notes: editNotes.trim() || undefined,
+        compatibleEquipment: editCompatibleEquipment.length > 0 ? editCompatibleEquipment : undefined,
       });
       setIsEditing(false);
     },
@@ -255,6 +270,78 @@ export default function ConsumableDetailScreen() {
                 numberOfLines={3}
                 textAlignVertical="top"
               />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Compatible Equipment</Text>
+              <TouchableOpacity
+                style={styles.picker}
+                onPress={() => setShowEquipmentPicker(!showEquipmentPicker)}
+              >
+                <Text style={styles.pickerText}>
+                  {editCompatibleEquipment.length > 0
+                    ? `${editCompatibleEquipment.length} selected`
+                    : 'Select equipment...'}
+                </Text>
+                <ChevronDown color={Colors.textSecondary} size={20} />
+              </TouchableOpacity>
+              
+              {showEquipmentPicker && (
+                <View style={styles.pickerDropdown}>
+                  {equipment.length === 0 ? (
+                    <View style={styles.pickerOption}>
+                      <Text style={styles.noEquipmentText}>No equipment available</Text>
+                    </View>
+                  ) : (
+                    equipment.map((eq) => {
+                      const isSelected = editCompatibleEquipment.includes(eq.id);
+                      return (
+                        <TouchableOpacity
+                          key={eq.id}
+                          style={[
+                            styles.pickerOption,
+                            isSelected && styles.pickerOptionActive,
+                          ]}
+                          onPress={() => toggleEquipmentSelection(eq.id)}
+                        >
+                          <View style={styles.equipmentPickerRow}>
+                            <Tractor color={isSelected ? Colors.primary : Colors.textSecondary} size={18} />
+                            <View style={styles.equipmentPickerInfo}>
+                              <Text style={[
+                                styles.pickerOptionText,
+                                isSelected && styles.pickerOptionTextActive,
+                              ]}>
+                                {eq.name}
+                              </Text>
+                              <Text style={styles.equipmentPickerSubtext}>
+                                {eq.make} {eq.model}
+                              </Text>
+                            </View>
+                            {isSelected && <Check color={Colors.primary} size={18} />}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })
+                  )}
+                </View>
+              )}
+              
+              {editCompatibleEquipment.length > 0 && (
+                <View style={styles.selectedEquipmentList}>
+                  {editCompatibleEquipment.map(eqId => {
+                    const eq = equipment.find(e => e.id === eqId);
+                    if (!eq) return null;
+                    return (
+                      <View key={eqId} style={styles.selectedEquipmentChip}>
+                        <Text style={styles.selectedEquipmentText}>{eq.name}</Text>
+                        <TouchableOpacity onPress={() => toggleEquipmentSelection(eqId)}>
+                          <X color={Colors.textSecondary} size={16} />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
             </View>
           </View>
         </ScrollView>
@@ -738,6 +825,44 @@ const styles = StyleSheet.create({
   },
   pickerOptionTextActive: {
     color: Colors.primary,
+  },
+  equipmentPickerRow: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 12,
+  },
+  equipmentPickerInfo: {
+    flex: 1,
+  },
+  equipmentPickerSubtext: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  noEquipmentText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontStyle: 'italic' as const,
+  },
+  selectedEquipmentList: {
+    flexDirection: 'row' as const,
+    flexWrap: 'wrap' as const,
+    gap: 8,
+    marginTop: 12,
+  },
+  selectedEquipmentChip: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: Colors.primary + '15',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+  },
+  selectedEquipmentText: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '500' as const,
   },
   footer: {
     flexDirection: 'row',

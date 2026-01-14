@@ -21,20 +21,109 @@ import {
   AlertCircle,
   CheckCircle,
   ChevronRight,
+  Merge,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { parseCSV, ParsedPart } from '@/utils/csvHelpers';
 import { CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
 
+interface ProcessedPart extends ParsedPart {
+  matchedEquipmentIds: string[];
+  unmatchedEquipment: string[];
+  mergedFrom?: number[];
+}
+
 export default function ImportInventoryScreen() {
   const router = useRouter();
-  const { bulkAddConsumables } = useFarmData();
+  const { bulkAddConsumables, equipment } = useFarmData();
   
-  const [parsedData, setParsedData] = useState<ParsedPart[]>([]);
+  const [parsedData, setParsedData] = useState<ProcessedPart[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string>('');
   const [isParsing, setIsParsing] = useState(false);
+
+  const matchEquipmentByName = (equipmentNames: string[]): { matched: string[]; unmatched: string[] } => {
+    const matched: string[] = [];
+    const unmatched: string[] = [];
+    
+    equipmentNames.forEach(name => {
+      const trimmedName = name.trim().toLowerCase();
+      if (!trimmedName) return;
+      
+      const found = equipment.find(e => 
+        e.name.toLowerCase() === trimmedName ||
+        e.name.toLowerCase().includes(trimmedName) ||
+        trimmedName.includes(e.name.toLowerCase())
+      );
+      
+      if (found) {
+        if (!matched.includes(found.id)) {
+          matched.push(found.id);
+        }
+      } else {
+        unmatched.push(name.trim());
+      }
+    });
+    
+    return { matched, unmatched };
+  };
+
+  const mergeDuplicateParts = (parts: ParsedPart[]): ProcessedPart[] => {
+    const partMap = new Map<string, ProcessedPart>();
+    
+    parts.forEach((part, index) => {
+      const partNumberKey = part.partNumber.toLowerCase().trim();
+      
+      const equipmentNames = part.equipment 
+        ? part.equipment.split(',').map(e => e.trim()).filter(e => e)
+        : [];
+      const { matched, unmatched } = matchEquipmentByName(equipmentNames);
+      
+      if (partMap.has(partNumberKey)) {
+        const existing = partMap.get(partNumberKey)!;
+        
+        matched.forEach(id => {
+          if (!existing.matchedEquipmentIds.includes(id)) {
+            existing.matchedEquipmentIds.push(id);
+          }
+        });
+        
+        unmatched.forEach(name => {
+          if (!existing.unmatchedEquipment.includes(name)) {
+            existing.unmatchedEquipment.push(name);
+          }
+        });
+        
+        existing.quantity += part.quantity;
+        
+        if (!existing.mergedFrom) {
+          existing.mergedFrom = [existing.rowNumber];
+        }
+        existing.mergedFrom.push(part.rowNumber);
+        
+        if (!existing.supplier && part.supplier) {
+          existing.supplier = part.supplier;
+        }
+        if (!existing.supplierPartNumber && part.supplierPartNumber) {
+          existing.supplierPartNumber = part.supplierPartNumber;
+        }
+        if (!existing.notes && part.notes) {
+          existing.notes = part.notes;
+        } else if (existing.notes && part.notes && existing.notes !== part.notes) {
+          existing.notes = `${existing.notes}; ${part.notes}`;
+        }
+      } else {
+        partMap.set(partNumberKey, {
+          ...part,
+          matchedEquipmentIds: matched,
+          unmatchedEquipment: unmatched,
+        });
+      }
+    });
+    
+    return Array.from(partMap.values());
+  };
 
   const handlePickFile = async () => {
     try {
@@ -68,8 +157,26 @@ export default function ImportInventoryScreen() {
       console.log('File content preview:', content.substring(0, 500));
 
       const parseResult = parseCSV(content);
-      setParsedData(parseResult.data);
-      setParseErrors(parseResult.errors);
+      const processedParts = mergeDuplicateParts(parseResult.data);
+      
+      const mergeWarnings: string[] = [];
+      const equipmentWarnings: string[] = [];
+      
+      processedParts.forEach(part => {
+        if (part.mergedFrom && part.mergedFrom.length > 1) {
+          mergeWarnings.push(
+            `Part #${part.partNumber}: Merged ${part.mergedFrom.length} duplicate rows (rows ${part.mergedFrom.join(', ')})`
+          );
+        }
+        if (part.unmatchedEquipment.length > 0) {
+          equipmentWarnings.push(
+            `Part #${part.partNumber}: Equipment not found: "${part.unmatchedEquipment.join('", "')}"`
+          );
+        }
+      });
+      
+      setParsedData(processedParts);
+      setParseErrors([...parseResult.errors, ...mergeWarnings, ...equipmentWarnings]);
 
       if (!parseResult.success && parseResult.data.length === 0) {
         Alert.alert('Parse Error', parseResult.errors.join('\n'));
@@ -97,7 +204,7 @@ export default function ImportInventoryScreen() {
         supplierPartNumber: p.supplierPartNumber,
         quantity: p.quantity,
         lowStockThreshold: p.lowStockThreshold,
-        compatibleEquipment: p.equipment ? p.equipment.split(',').map(e => e.trim()).filter(e => e) : undefined,
+        compatibleEquipment: p.matchedEquipmentIds.length > 0 ? p.matchedEquipmentIds : undefined,
         notes: p.notes,
       }));
 
@@ -272,10 +379,32 @@ export default function ImportInventoryScreen() {
                         <Text style={styles.previewDetailValue}>{part.supplier}</Text>
                       </View>
                     )}
-                    {part.equipment && (
+                    {(part.matchedEquipmentIds.length > 0 || part.unmatchedEquipment.length > 0) && (
                       <View style={styles.previewDetailRow}>
                         <Text style={styles.previewDetailLabel}>Equipment</Text>
-                        <Text style={styles.previewDetailValue} numberOfLines={1}>{part.equipment}</Text>
+                        <View style={styles.equipmentValues}>
+                          {part.matchedEquipmentIds.map(eqId => {
+                            const eq = equipment.find(e => e.id === eqId);
+                            return (
+                              <Text key={eqId} style={styles.previewDetailValueSuccess} numberOfLines={1}>
+                                {eq?.name ?? 'Unknown'}
+                              </Text>
+                            );
+                          })}
+                          {part.unmatchedEquipment.map((name, i) => (
+                            <Text key={`unmatched-${i}`} style={styles.previewDetailValueWarning} numberOfLines={1}>
+                                {name} (not found)
+                            </Text>
+                          ))}
+                        </View>
+                      </View>
+                    )}
+                    {part.mergedFrom && part.mergedFrom.length > 1 && (
+                      <View style={styles.mergedBadge}>
+                        <Merge color={Colors.primary} size={12} />
+                        <Text style={styles.mergedText}>
+                          Merged from {part.mergedFrom.length} rows
+                        </Text>
                       </View>
                     )}
                   </View>
@@ -543,6 +672,36 @@ const styles = StyleSheet.create({
   previewDetailValue: {
     fontSize: 12,
     color: Colors.text,
+    fontWeight: '500' as const,
+  },
+  previewDetailValueSuccess: {
+    fontSize: 12,
+    color: Colors.success,
+    fontWeight: '500' as const,
+  },
+  previewDetailValueWarning: {
+    fontSize: 12,
+    color: Colors.warning,
+    fontWeight: '500' as const,
+  },
+  equipmentValues: {
+    flex: 1,
+    alignItems: 'flex-end' as const,
+  },
+  mergedBadge: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    backgroundColor: Colors.primary + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    marginTop: 8,
+    gap: 4,
+    alignSelf: 'flex-start' as const,
+  },
+  mergedText: {
+    fontSize: 11,
+    color: Colors.primary,
     fontWeight: '500' as const,
   },
   errorBanner: {
