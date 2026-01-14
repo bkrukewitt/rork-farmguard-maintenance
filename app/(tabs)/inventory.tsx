@@ -340,15 +340,7 @@ export default function InventoryScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => setShowAddMenu(true)}
-        activeOpacity={0.8}
-      >
-        <Plus color={Colors.textOnPrimary} size={28} />
-      </TouchableOpacity>
-
-      <Modal
+<Modal
         visible={showAddMenu}
         transparent
         animationType="fade"
@@ -649,22 +641,7 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: Colors.textOnPrimary,
   },
-  fab: {
-    position: 'absolute',
-    right: 20,
-    bottom: 24,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: Colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
