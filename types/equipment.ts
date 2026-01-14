@@ -56,6 +56,7 @@ export interface Consumable {
   quantity: number;
   lowStockThreshold: number;
   compatibleEquipment?: string[];
+  imageUrl?: string;
   notes?: string;
   createdAt: string;
   updatedAt: string;

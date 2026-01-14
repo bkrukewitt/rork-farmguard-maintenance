@@ -9,7 +9,9 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import {
@@ -23,6 +25,8 @@ import {
   X,
   ChevronDown,
   Tractor,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -50,6 +54,7 @@ export default function ConsumableDetailScreen() {
   const [editNotes, setEditNotes] = useState('');
   const [editCompatibleEquipment, setEditCompatibleEquipment] = useState<string[]>([]);
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
+  const [editImageUrl, setEditImageUrl] = useState<string | undefined>(undefined);
 
   const startEditing = () => {
     if (consumable) {
@@ -61,8 +66,57 @@ export default function ConsumableDetailScreen() {
       setEditLowStockThreshold(consumable.lowStockThreshold.toString());
       setEditNotes(consumable.notes ?? '');
       setEditCompatibleEquipment(consumable.compatibleEquipment ?? []);
+      setEditImageUrl(consumable.imageUrl);
       setIsEditing(true);
     }
+  };
+
+  const takePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Camera permission is needed to take photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('Photo taken:', result.assets[0].uri);
+        setEditImageUrl(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.log('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('Image picked:', result.assets[0].uri);
+        setEditImageUrl(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.log('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const removeImage = () => {
+    setEditImageUrl(undefined);
   };
 
   const toggleEquipmentSelection = (equipmentId: string) => {
@@ -90,6 +144,7 @@ export default function ConsumableDetailScreen() {
         lowStockThreshold: parseInt(editLowStockThreshold) || 2,
         notes: editNotes.trim() || undefined,
         compatibleEquipment: editCompatibleEquipment.length > 0 ? editCompatibleEquipment : undefined,
+        imageUrl: editImageUrl,
       });
       setIsEditing(false);
     },
@@ -166,6 +221,29 @@ export default function ConsumableDetailScreen() {
       >
         <Stack.Screen options={{ title: 'Edit Part' }} />
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+          <View style={styles.section}>
+            <Text style={styles.inputLabel}>Part Photo</Text>
+            {editImageUrl ? (
+              <View style={styles.imagePreviewContainer}>
+                <Image source={{ uri: editImageUrl }} style={styles.imagePreview} />
+                <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
+                  <X color={Colors.textOnPrimary} size={20} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.imageButtonsRow}>
+                <TouchableOpacity style={styles.imageButton} onPress={takePhoto}>
+                  <Camera color={Colors.primary} size={24} />
+                  <Text style={styles.imageButtonText}>Take Photo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+                  <ImageIcon color={Colors.primary} size={24} />
+                  <Text style={styles.imageButtonText}>Choose Photo</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
           <View style={styles.section}>
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Part Name *</Text>
@@ -369,19 +447,29 @@ export default function ConsumableDetailScreen() {
     <View style={styles.container}>
       <Stack.Screen options={{ title: consumable.name }} />
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <View style={[styles.iconContainer, isLowStock && styles.iconContainerLow]}>
-            {isLowStock ? (
-              <AlertTriangle color={Colors.danger} size={32} />
-            ) : (
-              <Package color={Colors.primary} size={32} />
-            )}
+        {consumable.imageUrl ? (
+          <View style={styles.headerImageContainer}>
+            <Image source={{ uri: consumable.imageUrl }} style={styles.headerImage} />
+            <View style={styles.headerOverlay}>
+              <Text style={styles.headerImageName}>{consumable.name}</Text>
+              <Text style={styles.headerImagePartNumber}>#{consumable.partNumber}</Text>
+            </View>
           </View>
-          <View style={styles.headerInfo}>
-            <Text style={styles.partName}>{consumable.name}</Text>
-            <Text style={styles.partNumber}>#{consumable.partNumber}</Text>
+        ) : (
+          <View style={styles.header}>
+            <View style={[styles.iconContainer, isLowStock && styles.iconContainerLow]}>
+              {isLowStock ? (
+                <AlertTriangle color={Colors.danger} size={32} />
+              ) : (
+                <Package color={Colors.primary} size={32} />
+              )}
+            </View>
+            <View style={styles.headerInfo}>
+              <Text style={styles.partName}>{consumable.name}</Text>
+              <Text style={styles.partNumber}>#{consumable.partNumber}</Text>
+            </View>
           </View>
-        </View>
+        )}
 
         {isLowStock && (
           <View style={styles.lowStockBanner}>
@@ -903,5 +991,76 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.textOnPrimary,
+  },
+  headerImageContainer: {
+    marginHorizontal: -16,
+    marginTop: -16,
+    marginBottom: 16,
+    height: 200,
+    position: 'relative',
+  },
+  headerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  headerOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  headerImageName: {
+    fontSize: 22,
+    fontWeight: '700' as const,
+    color: '#FFFFFF',
+  },
+  headerImagePartNumber: {
+    fontSize: 15,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 4,
+  },
+  imageButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  imageButton: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    paddingVertical: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  imageButtonText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    color: Colors.textSecondary,
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: 12,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

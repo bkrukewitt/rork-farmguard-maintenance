@@ -11,6 +11,7 @@ import {
   Alert,
   Modal,
   Platform,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -179,13 +180,17 @@ export default function InventoryScreen() {
         activeOpacity={0.7}
       >
         <View style={styles.itemHeader}>
-          <View style={[styles.categoryBadge, isLowStock && styles.categoryBadgeLow]}>
-            {isLowStock ? (
-              <AlertTriangle color={Colors.danger} size={14} />
-            ) : (
-              <Package color={Colors.primary} size={14} />
-            )}
-          </View>
+          {item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.itemThumbnail} />
+          ) : (
+            <View style={[styles.categoryBadge, isLowStock && styles.categoryBadgeLow]}>
+              {isLowStock ? (
+                <AlertTriangle color={Colors.danger} size={14} />
+              ) : (
+                <Package color={Colors.primary} size={14} />
+              )}
+            </View>
+          )}
           <View style={styles.itemInfo}>
             <Text style={styles.itemName}>{item.name}</Text>
             <Text style={styles.partNumber}>#{item.partNumber}</Text>
@@ -565,6 +570,11 @@ const styles = StyleSheet.create({
   },
   categoryBadgeLow: {
     backgroundColor: Colors.danger + '15',
+  },
+  itemThumbnail: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
   },
   itemInfo: {
     flex: 1,

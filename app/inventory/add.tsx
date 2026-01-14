@@ -9,10 +9,12 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
-import { Check, ChevronDown } from 'lucide-react-native';
+import { Check, ChevronDown, Camera, Image as ImageIcon, X } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
@@ -32,6 +34,55 @@ export default function AddConsumableScreen() {
   const [notes, setNotes] = useState('');
   const [selectedEquipment, setSelectedEquipment] = useState<string[]>([]);
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null);
+
+  const takePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Camera permission is needed to take photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('Photo taken:', result.assets[0].uri);
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.log('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('Image picked:', result.assets[0].uri);
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.log('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const removeImage = () => {
+    setImageUri(null);
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -51,6 +102,7 @@ export default function AddConsumableScreen() {
         quantity: parseInt(quantity) || 0,
         lowStockThreshold: parseInt(lowStockThreshold) || 2,
         compatibleEquipment: selectedEquipment.length > 0 ? selectedEquipment : undefined,
+        imageUrl: imageUri || undefined,
         notes: notes.trim() || undefined,
       });
     },
@@ -88,6 +140,29 @@ export default function AddConsumableScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Part Photo</Text>
+          {imageUri ? (
+            <View style={styles.imagePreviewContainer}>
+              <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+              <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
+                <X color={Colors.textOnPrimary} size={20} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.imageButtonsRow}>
+              <TouchableOpacity style={styles.imageButton} onPress={takePhoto}>
+                <Camera color={Colors.primary} size={28} />
+                <Text style={styles.imageButtonText}>Take Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+                <ImageIcon color={Colors.primary} size={28} />
+                <Text style={styles.imageButtonText}>Choose Photo</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Part Information</Text>
 
@@ -457,5 +532,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.textOnPrimary,
+  },
+  imageButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  imageButton: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  imageButtonText: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    color: Colors.textSecondary,
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 16,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
