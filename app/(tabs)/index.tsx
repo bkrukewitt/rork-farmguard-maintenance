@@ -134,7 +134,7 @@ export default function DashboardScreen() {
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={styles.actionButton}
-            onPress={() => router.push('/equipment/add' as any)}
+            onPress={() => router.push('/equipment?showAddMenu=true' as any)}
           >
             <View style={styles.actionIconContainer}>
               <Plus color={Colors.textOnPrimary} size={20} />
@@ -215,13 +215,7 @@ export default function DashboardScreen() {
             <Text style={styles.emptySubtitle}>
               Add your first piece of equipment to start tracking maintenance
             </Text>
-            <TouchableOpacity
-              style={styles.emptyButton}
-              onPress={() => router.push('/equipment/add' as any)}
-            >
-              <Plus color={Colors.textOnPrimary} size={20} />
-              <Text style={styles.emptyButtonText}>Add Equipment</Text>
-            </TouchableOpacity>
+            
           </View>
         )}
       </View>
@@ -424,19 +418,5 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 20,
   },
-  emptyButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-    marginTop: 24,
-    gap: 8,
-  },
-  emptyButtonText: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.textOnPrimary,
-  },
+  
 });

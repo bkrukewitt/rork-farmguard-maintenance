@@ -13,7 +13,7 @@ import {
   Modal,
   Platform,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { 
   Plus, 
   Search, 
@@ -55,9 +55,17 @@ const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string
 
 export default function EquipmentScreen() {
   const router = useRouter();
+  const { showAddMenu: showAddMenuParam } = useLocalSearchParams<{ showAddMenu?: string }>();
   const { equipment, intervals, isLoading } = useFarmData();
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(showAddMenuParam === 'true');
+
+  React.useEffect(() => {
+    if (showAddMenuParam === 'true') {
+      setShowAddMenu(true);
+      router.setParams({ showAddMenu: undefined });
+    }
+  }, [showAddMenuParam, router]);
 
   const handleDownloadTemplate = async () => {
     const templateContent = generateEquipmentCSVTemplate();
