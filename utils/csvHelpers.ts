@@ -1,4 +1,4 @@
-import { ConsumableCategory, CONSUMABLE_CATEGORIES } from '@/types/equipment';
+import { ConsumableCategory, CONSUMABLE_CATEGORIES, EquipmentType, EQUIPMENT_TYPES } from '@/types/equipment';
 
 export interface CSVParseResult {
   success: boolean;
@@ -261,6 +261,296 @@ export function exportConsumablesToCSV(consumables: {
       item.supplierPartNumber || '',
       item.quantity.toString(),
       item.lowStockThreshold.toString(),
+      item.notes || '',
+    ].map(cell => {
+      if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+        return `"${cell.replace(/"/g, '""')}"`;
+      }
+      return cell;
+    });
+    lines.push(row.join(','));
+  });
+  
+  return lines.join('\n');
+}
+
+export interface EquipmentCSVParseResult {
+  success: boolean;
+  data: ParsedEquipment[];
+  errors: string[];
+}
+
+export interface ParsedEquipment {
+  name: string;
+  type: EquipmentType;
+  make: string;
+  model: string;
+  year: number;
+  serialNumber: string;
+  purchaseDate: string;
+  currentHours: number;
+  warrantyExpiry?: string;
+  notes?: string;
+  rowNumber: number;
+  isValid: boolean;
+  validationError?: string;
+}
+
+export const EQUIPMENT_CSV_HEADERS = [
+  'Name',
+  'Type',
+  'Make',
+  'Model',
+  'Year',
+  'Serial Number',
+  'Purchase Date',
+  'Current Hours',
+  'Warranty Expiry',
+  'Notes',
+];
+
+export const EQUIPMENT_CSV_EXAMPLE_ROWS = [
+  ['Main Tractor', 'tractor', 'John Deere', '8R 370', '2022', 'JD8R370-12345', '2022-03-15', '1250', '2027-03-15', 'Primary field tractor'],
+  ['Grain Combine', 'combine', 'John Deere', 'S780', '2021', 'JDS780-67890', '2021-06-01', '850', '2026-06-01', ''],
+  ['Farm Truck', 'truck', 'Ford', 'F-350', '2020', 'F350-11111', '2020-01-10', '45000', '', 'Service truck'],
+  ['Planter', 'planter', 'John Deere', 'DB60', '2023', 'JDDB60-22222', '2023-02-20', '150', '2028-02-20', '24 row planter'],
+];
+
+export function generateEquipmentCSVTemplate(): string {
+  const lines: string[] = [];
+  
+  lines.push(EQUIPMENT_CSV_HEADERS.join(','));
+  
+  EQUIPMENT_CSV_EXAMPLE_ROWS.forEach(row => {
+    const escapedRow = row.map(cell => {
+      if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
+        return `"${cell.replace(/"/g, '""')}"`;
+      }
+      return cell;
+    });
+    lines.push(escapedRow.join(','));
+  });
+  
+  return lines.join('\n');
+}
+
+function normalizeEquipmentType(typeStr: string): EquipmentType | null {
+  const normalized = typeStr.toLowerCase().trim();
+  
+  const typeMap: Record<string, EquipmentType> = {
+    'tractor': 'tractor',
+    'tractors': 'tractor',
+    'combine': 'combine',
+    'combines': 'combine',
+    'harvester': 'combine',
+    'truck': 'truck',
+    'trucks': 'truck',
+    'pickup': 'truck',
+    'implement': 'implement',
+    'implements': 'implement',
+    'attachment': 'implement',
+    'sprayer': 'sprayer',
+    'sprayers': 'sprayer',
+    'planter': 'planter',
+    'planters': 'planter',
+    'seeder': 'planter',
+    'loader': 'loader',
+    'loaders': 'loader',
+    'mower': 'mower',
+    'mowers': 'mower',
+    'other': 'other',
+  };
+  
+  if (typeMap[normalized]) {
+    return typeMap[normalized];
+  }
+  
+  const validType = EQUIPMENT_TYPES.find(
+    t => t.value === normalized || t.label.toLowerCase() === normalized
+  );
+  
+  return validType?.value ?? null;
+}
+
+function parseDate(dateStr: string): string | null {
+  if (!dateStr) return null;
+  
+  const formats = [
+    /^(\d{4})-(\d{2})-(\d{2})$/,
+    /^(\d{2})\/(\d{2})\/(\d{4})$/,
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/,
+  ];
+  
+  for (const format of formats) {
+    const match = dateStr.match(format);
+    if (match) {
+      if (format === formats[0]) {
+        return dateStr;
+      } else {
+        const [, month, day, year] = match;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      }
+    }
+  }
+  
+  const date = new Date(dateStr);
+  if (!isNaN(date.getTime())) {
+    return date.toISOString().split('T')[0];
+  }
+  
+  return null;
+}
+
+export function parseEquipmentCSV(csvContent: string): EquipmentCSVParseResult {
+  const lines = csvContent.split(/\r?\n/).filter(line => line.trim());
+  const errors: string[] = [];
+  const data: ParsedEquipment[] = [];
+  
+  if (lines.length === 0) {
+    return { success: false, data: [], errors: ['File is empty'] };
+  }
+  
+  const headerLine = lines[0];
+  const headers = parseCSVLine(headerLine).map(h => h.toLowerCase().trim());
+  
+  const nameIndex = headers.findIndex(h => h === 'name' || h === 'equipment name');
+  const typeIndex = headers.findIndex(h => h === 'type' || h === 'equipment type');
+  const makeIndex = headers.findIndex(h => h === 'make' || h === 'manufacturer');
+  const modelIndex = headers.findIndex(h => h === 'model');
+  const yearIndex = headers.findIndex(h => h === 'year');
+  const serialIndex = headers.findIndex(h => h.includes('serial'));
+  const purchaseDateIndex = headers.findIndex(h => h.includes('purchase') && h.includes('date'));
+  const hoursIndex = headers.findIndex(h => h.includes('hour'));
+  const warrantyIndex = headers.findIndex(h => h.includes('warranty'));
+  const notesIndex = headers.findIndex(h => h.includes('note'));
+  
+  if (nameIndex === -1) {
+    errors.push('Missing required column: Name');
+    return { success: false, data: [], errors };
+  }
+  
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    
+    const values = parseCSVLine(line);
+    const rowNumber = i + 1;
+    
+    const name = values[nameIndex]?.trim() || '';
+    const typeStr = typeIndex >= 0 ? values[typeIndex]?.trim() || '' : '';
+    const make = makeIndex >= 0 ? values[makeIndex]?.trim() || '' : '';
+    const model = modelIndex >= 0 ? values[modelIndex]?.trim() || '' : '';
+    const yearStr = yearIndex >= 0 ? values[yearIndex]?.trim() || '' : '';
+    const serialNumber = serialIndex >= 0 ? values[serialIndex]?.trim() || '' : '';
+    const purchaseDateStr = purchaseDateIndex >= 0 ? values[purchaseDateIndex]?.trim() || '' : '';
+    const hoursStr = hoursIndex >= 0 ? values[hoursIndex]?.trim() || '0' : '0';
+    const warrantyStr = warrantyIndex >= 0 ? values[warrantyIndex]?.trim() || '' : '';
+    const notes = notesIndex >= 0 ? values[notesIndex]?.trim() || '' : '';
+    
+    let isValid = true;
+    let validationError: string | undefined;
+    
+    if (!name) {
+      isValid = false;
+      validationError = 'Equipment name is required';
+    }
+    
+    let type: EquipmentType = 'other';
+    if (typeStr) {
+      const normalizedType = normalizeEquipmentType(typeStr);
+      if (normalizedType) {
+        type = normalizedType;
+      } else {
+        errors.push(`Row ${rowNumber}: Unknown type "${typeStr}", using "other"`);
+      }
+    }
+    
+    const year = parseInt(yearStr, 10);
+    const currentYear = new Date().getFullYear();
+    if (yearStr && (isNaN(year) || year < 1900 || year > currentYear + 2)) {
+      errors.push(`Row ${rowNumber}: Invalid year "${yearStr}", using current year`);
+    }
+    
+    const currentHours = parseFloat(hoursStr);
+    if (isNaN(currentHours) || currentHours < 0) {
+      errors.push(`Row ${rowNumber}: Invalid hours "${hoursStr}", using 0`);
+    }
+    
+    let purchaseDate = parseDate(purchaseDateStr);
+    if (purchaseDateStr && !purchaseDate) {
+      errors.push(`Row ${rowNumber}: Invalid purchase date "${purchaseDateStr}", using today`);
+      purchaseDate = new Date().toISOString().split('T')[0];
+    }
+    
+    let warrantyExpiry: string | undefined;
+    if (warrantyStr) {
+      const parsedWarranty = parseDate(warrantyStr);
+      if (parsedWarranty) {
+        warrantyExpiry = parsedWarranty;
+      } else {
+        errors.push(`Row ${rowNumber}: Invalid warranty date "${warrantyStr}", skipping`);
+      }
+    }
+    
+    data.push({
+      name,
+      type,
+      make: make || 'Unknown',
+      model: model || 'Unknown',
+      year: isNaN(year) || year < 1900 || year > currentYear + 2 ? currentYear : year,
+      serialNumber: serialNumber || '',
+      purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
+      currentHours: isNaN(currentHours) || currentHours < 0 ? 0 : currentHours,
+      warrantyExpiry,
+      notes: notes || undefined,
+      rowNumber,
+      isValid,
+      validationError,
+    });
+  }
+  
+  if (data.length === 0) {
+    errors.push('No data rows found in the file');
+    return { success: false, data: [], errors };
+  }
+  
+  const validCount = data.filter(d => d.isValid).length;
+  console.log(`Equipment CSV parsing complete: ${validCount}/${data.length} valid rows`);
+  
+  return { 
+    success: validCount > 0, 
+    data, 
+    errors 
+  };
+}
+
+export function exportEquipmentToCSV(equipmentList: {
+  name: string;
+  type: string;
+  make: string;
+  model: string;
+  year: number;
+  serialNumber: string;
+  purchaseDate: string;
+  currentHours: number;
+  warrantyExpiry?: string;
+  notes?: string;
+}[]): string {
+  const lines: string[] = [];
+  
+  lines.push(EQUIPMENT_CSV_HEADERS.join(','));
+  
+  equipmentList.forEach(item => {
+    const row = [
+      item.name,
+      item.type,
+      item.make,
+      item.model,
+      item.year.toString(),
+      item.serialNumber,
+      item.purchaseDate,
+      item.currentHours.toString(),
+      item.warrantyExpiry || '',
       item.notes || '',
     ].map(cell => {
       if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {

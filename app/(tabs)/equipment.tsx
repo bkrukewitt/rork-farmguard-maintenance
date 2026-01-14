@@ -8,6 +8,10 @@ import {
   TextInput,
   ActivityIndicator,
   Image,
+  Share,
+  Alert,
+  Modal,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -26,11 +30,16 @@ import {
   AlertTriangle,
   CheckCircle,
   Fan,
+  Download,
+  Upload,
+  Share2,
+  X,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { Equipment, EquipmentType } from '@/types/equipment';
 import { formatHours, getMaintenanceStatus } from '@/utils/helpers';
+import { generateEquipmentCSVTemplate, exportEquipmentToCSV } from '@/utils/csvHelpers';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
   tractor: Tractor,
@@ -48,6 +57,66 @@ export default function EquipmentScreen() {
   const router = useRouter();
   const { equipment, intervals, isLoading } = useFarmData();
   const [searchQuery, setSearchQuery] = useState('');
+  const [showAddMenu, setShowAddMenu] = useState(false);
+
+  const handleDownloadTemplate = async () => {
+    const templateContent = generateEquipmentCSVTemplate();
+    
+    if (Platform.OS === 'web') {
+      const blob = new Blob([templateContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'equipment_template.csv';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      Alert.alert('Success', 'Template downloaded successfully!');
+    } else {
+      try {
+        await Share.share({
+          message: templateContent,
+          title: 'Equipment Import Template',
+        });
+      } catch (error) {
+        console.log('Error sharing template:', error);
+      }
+    }
+    setShowAddMenu(false);
+  };
+
+  const handleExportEquipment = async () => {
+    if (equipment.length === 0) {
+      Alert.alert('No Equipment', 'Add some equipment to your fleet first.');
+      return;
+    }
+
+    const csvContent = exportEquipmentToCSV(equipment);
+    
+    if (Platform.OS === 'web') {
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `equipment_export_${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      Alert.alert('Success', 'Equipment exported successfully!');
+    } else {
+      try {
+        await Share.share({
+          message: csvContent,
+          title: 'Equipment Export',
+        });
+      } catch (error) {
+        console.log('Error sharing export:', error);
+      }
+    }
+    setShowAddMenu(false);
+  };
 
   const filteredEquipment = useMemo(() => {
     if (!searchQuery.trim()) return equipment;
@@ -167,11 +236,98 @@ export default function EquipmentScreen() {
 
       <TouchableOpacity
         style={styles.fab}
-        onPress={() => router.push('/equipment/add' as any)}
+        onPress={() => setShowAddMenu(true)}
         activeOpacity={0.8}
       >
         <Plus color={Colors.textOnPrimary} size={28} />
       </TouchableOpacity>
+
+      <Modal
+        visible={showAddMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddMenu(false)}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowAddMenu(false)}
+        >
+          <View style={styles.menuContainer}>
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuTitle}>Add Equipment</Text>
+              <TouchableOpacity onPress={() => setShowAddMenu(false)}>
+                <X color={Colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowAddMenu(false);
+                router.push('/equipment/add' as any);
+              }}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: Colors.primary + '15' }]}>
+                <Plus color={Colors.primary} size={22} />
+              </View>
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemTitle}>Add Manually</Text>
+                <Text style={styles.menuItemDescription}>Enter equipment details by hand</Text>
+              </View>
+              <ChevronRight color={Colors.textSecondary} size={20} />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+            <Text style={styles.menuSectionTitle}>Bulk Import</Text>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleDownloadTemplate}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: Colors.accent + '15' }]}>
+                <Download color={Colors.accent} size={22} />
+              </View>
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemTitle}>Download Template</Text>
+                <Text style={styles.menuItemDescription}>Get CSV template with examples</Text>
+              </View>
+              <ChevronRight color={Colors.textSecondary} size={20} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => {
+                setShowAddMenu(false);
+                router.push('/equipment/import' as any);
+              }}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: Colors.success + '15' }]}>
+                <Upload color={Colors.success} size={22} />
+              </View>
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemTitle}>Import from CSV</Text>
+                <Text style={styles.menuItemDescription}>Upload completed spreadsheet</Text>
+              </View>
+              <ChevronRight color={Colors.textSecondary} size={20} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={handleExportEquipment}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: Colors.warning + '15' }]}>
+                <Share2 color={Colors.warning} size={22} />
+              </View>
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemTitle}>Export Equipment</Text>
+                <Text style={styles.menuItemDescription}>Download current equipment as CSV</Text>
+              </View>
+              <ChevronRight color={Colors.textSecondary} size={20} />
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -304,5 +460,67 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  menuContainer: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  menuHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  menuTitle: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  menuIconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  menuItemContent: {
+    flex: 1,
+  },
+  menuItemTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  menuItemDescription: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: Colors.border,
+    marginVertical: 16,
+  },
+  menuSectionTitle: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    color: Colors.textSecondary,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+    marginBottom: 8,
   },
 });
