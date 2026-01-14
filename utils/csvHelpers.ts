@@ -14,6 +14,7 @@ export interface ParsedPart {
   supplierPartNumber?: string;
   quantity: number;
   lowStockThreshold: number;
+  equipment?: string;
   notes?: string;
   rowNumber: number;
   isValid: boolean;
@@ -28,15 +29,16 @@ export const CSV_TEMPLATE_HEADERS = [
   'Supplier Part Number',
   'Quantity',
   'Low Stock Threshold',
+  'Equipment',
   'Notes',
 ];
 
 export const CSV_TEMPLATE_EXAMPLE_ROWS = [
-  ['Engine Oil Filter', 'RE504836', 'filter', 'John Deere', 'JD-RE504836', '5', '2', 'For 8R series tractors'],
-  ['Hydraulic Filter', 'RE210857', 'filter', 'NAPA', 'NAP-2108', '3', '2', ''],
-  ['15W-40 Engine Oil', 'TY26674', 'oil', 'John Deere', '', '12', '4', '2.5 gallon jugs'],
-  ['Coolant', 'TY26575', 'fluid', 'John Deere', '', '4', '2', 'Pre-mixed'],
-  ['Fan Belt', 'R503581', 'belt', '', '', '2', '1', 'Check for cracking'],
+  ['Engine Oil Filter', 'RE504836', 'filter', 'John Deere', 'JD-RE504836', '5', '2', 'Main Tractor', 'For 8R series tractors'],
+  ['Hydraulic Filter', 'RE210857', 'filter', 'NAPA', 'NAP-2108', '3', '2', 'Main Tractor, Grain Combine', ''],
+  ['15W-40 Engine Oil', 'TY26674', 'oil', 'John Deere', '', '12', '4', '', '2.5 gallon jugs'],
+  ['Coolant', 'TY26575', 'fluid', 'John Deere', '', '4', '2', 'Main Tractor', 'Pre-mixed'],
+  ['Fan Belt', 'R503581', 'belt', '', '', '2', '1', 'Farm Truck', 'Check for cracking'],
 ];
 
 export function generateCSVTemplate(): string {
@@ -154,6 +156,7 @@ export function parseCSV(csvContent: string): CSVParseResult {
   const supplierPartIndex = headers.findIndex(h => h.includes('supplier') && h.includes('part'));
   const quantityIndex = headers.findIndex(h => h.includes('quantity') || h.includes('qty') || h.includes('stock'));
   const thresholdIndex = headers.findIndex(h => h.includes('threshold') || h.includes('low stock') || h.includes('alert'));
+  const equipmentIndex = headers.findIndex(h => h.includes('equipment') || h.includes('machine') || h.includes('compatible'));
   const notesIndex = headers.findIndex(h => h.includes('note'));
   
   if (nameIndex === -1 || partNumberIndex === -1) {
@@ -175,6 +178,7 @@ export function parseCSV(csvContent: string): CSVParseResult {
     const supplierPartNumber = supplierPartIndex >= 0 ? values[supplierPartIndex]?.trim() || '' : '';
     const quantityStr = quantityIndex >= 0 ? values[quantityIndex]?.trim() || '0' : '0';
     const thresholdStr = thresholdIndex >= 0 ? values[thresholdIndex]?.trim() || '2' : '2';
+    const equipment = equipmentIndex >= 0 ? values[equipmentIndex]?.trim() || '' : '';
     const notes = notesIndex >= 0 ? values[notesIndex]?.trim() || '' : '';
     
     let isValid = true;
@@ -216,6 +220,7 @@ export function parseCSV(csvContent: string): CSVParseResult {
       supplierPartNumber: supplierPartNumber || undefined,
       quantity: isNaN(quantity) || quantity < 0 ? 0 : quantity,
       lowStockThreshold: isNaN(lowStockThreshold) || lowStockThreshold < 0 ? 2 : lowStockThreshold,
+      equipment: equipment || undefined,
       notes: notes || undefined,
       rowNumber,
       isValid,
@@ -246,6 +251,7 @@ export function exportConsumablesToCSV(consumables: {
   supplierPartNumber?: string;
   quantity: number;
   lowStockThreshold: number;
+  compatibleEquipment?: string[];
   notes?: string;
 }[]): string {
   const lines: string[] = [];
@@ -261,6 +267,7 @@ export function exportConsumablesToCSV(consumables: {
       item.supplierPartNumber || '',
       item.quantity.toString(),
       item.lowStockThreshold.toString(),
+      item.compatibleEquipment?.join(', ') || '',
       item.notes || '',
     ].map(cell => {
       if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {

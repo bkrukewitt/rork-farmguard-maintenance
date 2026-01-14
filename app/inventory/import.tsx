@@ -97,6 +97,7 @@ export default function ImportInventoryScreen() {
         supplierPartNumber: p.supplierPartNumber,
         quantity: p.quantity,
         lowStockThreshold: p.lowStockThreshold,
+        compatibleEquipment: p.equipment ? p.equipment.split(',').map(e => e.trim()).filter(e => e) : undefined,
         notes: p.notes,
       }));
 
@@ -269,6 +270,12 @@ export default function ImportInventoryScreen() {
                       <View style={styles.previewDetailRow}>
                         <Text style={styles.previewDetailLabel}>Supplier</Text>
                         <Text style={styles.previewDetailValue}>{part.supplier}</Text>
+                      </View>
+                    )}
+                    {part.equipment && (
+                      <View style={styles.previewDetailRow}>
+                        <Text style={styles.previewDetailLabel}>Equipment</Text>
+                        <Text style={styles.previewDetailValue} numberOfLines={1}>{part.equipment}</Text>
                       </View>
                     )}
                   </View>
