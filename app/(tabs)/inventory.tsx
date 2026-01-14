@@ -28,11 +28,11 @@ import {
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { Consumable, CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
-import { generateCSVTemplate, exportConsumablesToCSV } from '@/utils/csvHelpers';
+import { generateCSVTemplate, exportConsumablesToCSV, exportConsumablesToHTML } from '@/utils/csvHelpers';
 
 export default function InventoryScreen() {
   const router = useRouter();
-  const { consumables, isLoading, getLowStockConsumables } = useFarmData();
+  const { consumables, equipment, isLoading, getLowStockConsumables } = useFarmData();
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ConsumableCategory | 'all' | 'low-stock'>('all');
@@ -72,21 +72,23 @@ export default function InventoryScreen() {
       return;
     }
 
-    const csvContent = exportConsumablesToCSV(consumables);
+    const equipmentList = equipment.map(e => ({ id: e.id, name: e.name }));
     
     if (Platform.OS === 'web') {
-      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const htmlContent = exportConsumablesToHTML(consumables, equipmentList);
+      const blob = new Blob([htmlContent], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `inventory_export_${new Date().toISOString().split('T')[0]}.csv`;
+      link.download = `inventory_export_${new Date().toISOString().split('T')[0]}.html`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      Alert.alert('Success', 'Inventory exported successfully!');
+      Alert.alert('Success', 'Inventory exported successfully! Low stock items are highlighted in red.');
     } else {
       try {
+        const csvContent = exportConsumablesToCSV(consumables, equipmentList);
         await Share.share({
           message: csvContent,
           title: 'Inventory Export',

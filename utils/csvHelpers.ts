@@ -243,7 +243,7 @@ export function parseCSV(csvContent: string): CSVParseResult {
   };
 }
 
-export function exportConsumablesToCSV(consumables: {
+export interface ExportConsumable {
   name: string;
   partNumber: string;
   category: string;
@@ -253,12 +253,71 @@ export function exportConsumablesToCSV(consumables: {
   lowStockThreshold: number;
   compatibleEquipment?: string[];
   notes?: string;
-}[]): string {
+}
+
+export interface ExportEquipment {
+  id: string;
+  name: string;
+}
+
+function getEquipmentNicknames(
+  compatibleEquipment: string[] | undefined,
+  equipmentList: ExportEquipment[]
+): string {
+  if (!compatibleEquipment || compatibleEquipment.length === 0) return '';
+  
+  return compatibleEquipment
+    .map(idOrName => {
+      const equipment = equipmentList.find(e => e.id === idOrName || e.name === idOrName);
+      return equipment ? equipment.name : idOrName;
+    })
+    .join(', ');
+}
+
+function getPrimaryEquipment(
+  compatibleEquipment: string[] | undefined,
+  equipmentList: ExportEquipment[]
+): string {
+  if (!compatibleEquipment || compatibleEquipment.length === 0) return 'Unassigned';
+  
+  const firstId = compatibleEquipment[0];
+  const equipment = equipmentList.find(e => e.id === firstId || e.name === firstId);
+  return equipment ? equipment.name : firstId;
+}
+
+export function exportConsumablesToCSV(
+  consumables: ExportConsumable[],
+  equipmentList: ExportEquipment[] = []
+): string {
   const lines: string[] = [];
   
   lines.push(CSV_TEMPLATE_HEADERS.join(','));
   
-  consumables.forEach(item => {
+  const sortedConsumables = [...consumables].sort((a, b) => {
+    const equipA = getPrimaryEquipment(a.compatibleEquipment, equipmentList);
+    const equipB = getPrimaryEquipment(b.compatibleEquipment, equipmentList);
+    
+    if (equipA === 'Unassigned' && equipB !== 'Unassigned') return 1;
+    if (equipB === 'Unassigned' && equipA !== 'Unassigned') return -1;
+    
+    const equipCompare = equipA.localeCompare(equipB);
+    if (equipCompare !== 0) return equipCompare;
+    
+    return a.name.localeCompare(b.name);
+  });
+  
+  let lastEquipment = '';
+  
+  sortedConsumables.forEach(item => {
+    const currentEquipment = getPrimaryEquipment(item.compatibleEquipment, equipmentList);
+    
+    if (lastEquipment && currentEquipment !== lastEquipment) {
+      lines.push(',,,,,,,,')
+    }
+    lastEquipment = currentEquipment;
+    
+    const equipmentNames = getEquipmentNicknames(item.compatibleEquipment, equipmentList);
+    
     const row = [
       item.name,
       item.partNumber,
@@ -267,7 +326,7 @@ export function exportConsumablesToCSV(consumables: {
       item.supplierPartNumber || '',
       item.quantity.toString(),
       item.lowStockThreshold.toString(),
-      item.compatibleEquipment?.join(', ') || '',
+      equipmentNames,
       item.notes || '',
     ].map(cell => {
       if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
@@ -279,6 +338,113 @@ export function exportConsumablesToCSV(consumables: {
   });
   
   return lines.join('\n');
+}
+
+export function exportConsumablesToHTML(
+  consumables: ExportConsumable[],
+  equipmentList: ExportEquipment[] = []
+): string {
+  const sortedConsumables = [...consumables].sort((a, b) => {
+    const equipA = getPrimaryEquipment(a.compatibleEquipment, equipmentList);
+    const equipB = getPrimaryEquipment(b.compatibleEquipment, equipmentList);
+    
+    if (equipA === 'Unassigned' && equipB !== 'Unassigned') return 1;
+    if (equipB === 'Unassigned' && equipA !== 'Unassigned') return -1;
+    
+    const equipCompare = equipA.localeCompare(equipB);
+    if (equipCompare !== 0) return equipCompare;
+    
+    return a.name.localeCompare(b.name);
+  });
+  
+  let html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Parts Inventory Export</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { color: #333; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+    th { background-color: #4a7c59; color: white; }
+    tr:nth-child(even) { background-color: #f9f9f9; }
+    tr.low-stock { background-color: #ffcccc !important; }
+    tr.low-stock td { color: #cc0000; font-weight: 500; }
+    tr.group-separator td { background-color: #e8e8e8; height: 10px; padding: 0; border-left: none; border-right: none; }
+    .export-date { color: #666; font-size: 14px; margin-bottom: 20px; }
+    .legend { margin-top: 20px; padding: 10px; background: #f5f5f5; border-radius: 4px; }
+    .legend-item { display: inline-block; margin-right: 20px; }
+    .legend-color { display: inline-block; width: 20px; height: 20px; vertical-align: middle; margin-right: 5px; }
+    .legend-low-stock { background-color: #ffcccc; border: 1px solid #cc0000; }
+  </style>
+</head>
+<body>
+  <h1>Parts Inventory Export</h1>
+  <p class="export-date">Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}</p>
+  <div class="legend">
+    <span class="legend-item"><span class="legend-color legend-low-stock"></span> Low Stock</span>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>Part Name</th>
+        <th>Part Number</th>
+        <th>Category</th>
+        <th>Supplier</th>
+        <th>Supplier Part #</th>
+        <th>Quantity</th>
+        <th>Low Stock Threshold</th>
+        <th>Equipment</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>`;
+  
+  let lastEquipment = '';
+  
+  sortedConsumables.forEach(item => {
+    const currentEquipment = getPrimaryEquipment(item.compatibleEquipment, equipmentList);
+    const isLowStock = item.quantity <= item.lowStockThreshold;
+    const equipmentNames = getEquipmentNicknames(item.compatibleEquipment, equipmentList);
+    
+    if (lastEquipment && currentEquipment !== lastEquipment) {
+      html += `
+      <tr class="group-separator"><td colspan="9"></td></tr>`;
+    }
+    lastEquipment = currentEquipment;
+    
+    const rowClass = isLowStock ? 'low-stock' : '';
+    html += `
+      <tr class="${rowClass}">
+        <td>${escapeHtml(item.name)}</td>
+        <td>${escapeHtml(item.partNumber)}</td>
+        <td>${escapeHtml(item.category)}</td>
+        <td>${escapeHtml(item.supplier || '')}</td>
+        <td>${escapeHtml(item.supplierPartNumber || '')}</td>
+        <td>${item.quantity}</td>
+        <td>${item.lowStockThreshold}</td>
+        <td>${escapeHtml(equipmentNames)}</td>
+        <td>${escapeHtml(item.notes || '')}</td>
+      </tr>`;
+  });
+  
+  html += `
+    </tbody>
+  </table>
+</body>
+</html>`;
+  
+  return html;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 export interface EquipmentCSVParseResult {
