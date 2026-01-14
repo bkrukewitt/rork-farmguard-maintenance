@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -94,9 +95,13 @@ export default function EquipmentScreen() {
         activeOpacity={0.7}
       >
         <View style={styles.cardLeft}>
-          <View style={[styles.iconContainer, { backgroundColor: Colors.primary + '15' }]}>
-            <Icon color={Colors.primary} size={28} />
-          </View>
+          {item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.thumbnailImage} />
+          ) : (
+            <View style={[styles.iconContainer, { backgroundColor: Colors.primary + '15' }]}>
+              <Icon color={Colors.primary} size={28} />
+            </View>
+          )}
         </View>
         
         <View style={styles.cardContent}>
@@ -225,6 +230,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  thumbnailImage: {
+    width: 56,
+    height: 56,
+    borderRadius: 14,
   },
   cardContent: {
     flex: 1,

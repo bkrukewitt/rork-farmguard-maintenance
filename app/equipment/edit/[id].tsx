@@ -10,7 +10,9 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import { 
@@ -24,6 +26,9 @@ import {
   Settings,
   Check,
   Fan,
+  Camera,
+  Image as ImageIcon,
+  X,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -57,6 +62,7 @@ export default function EditEquipmentScreen() {
   const [currentHours, setCurrentHours] = useState('');
   const [purchaseDate, setPurchaseDate] = useState('');
   const [notes, setNotes] = useState('');
+  const [imageUri, setImageUri] = useState<string | null>(null);
 
   useEffect(() => {
     if (equipment) {
@@ -69,8 +75,57 @@ export default function EditEquipmentScreen() {
       setCurrentHours(equipment.currentHours.toString());
       setPurchaseDate(equipment.purchaseDate);
       setNotes(equipment.notes ?? '');
+      setImageUri(equipment.imageUrl ?? null);
     }
   }, [equipment]);
+
+  const takePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Required', 'Camera permission is needed to take photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('Photo taken:', result.assets[0].uri);
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.log('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo');
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('Image picked:', result.assets[0].uri);
+        setImageUri(result.assets[0].uri);
+      }
+    } catch (error) {
+      console.log('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const removeImage = () => {
+    setImageUri(null);
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -95,6 +150,7 @@ export default function EditEquipmentScreen() {
         currentHours: parseFloat(currentHours) || 0,
         purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
         notes: notes.trim(),
+        imageUrl: imageUri || undefined,
       });
     },
     onSuccess: () => {
@@ -141,6 +197,29 @@ export default function EditEquipmentScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Equipment Photo</Text>
+          {imageUri ? (
+            <View style={styles.imagePreviewContainer}>
+              <Image source={{ uri: imageUri }} style={styles.imagePreview} />
+              <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
+                <X color={Colors.textOnPrimary} size={20} />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.imageButtonsRow}>
+              <TouchableOpacity style={styles.imageButton} onPress={takePhoto}>
+                <Camera color={Colors.primary} size={28} />
+                <Text style={styles.imageButtonText}>Take Photo</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+                <ImageIcon color={Colors.primary} size={28} />
+                <Text style={styles.imageButtonText}>Choose Photo</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.section}>
             <Text style={styles.sectionTitle}>Equipment Type</Text>
             <View style={styles.typeGrid}>
               {EQUIPMENT_TYPES.map(({ value, label, Icon }) => (
@@ -435,5 +514,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.textOnPrimary,
+  },
+  imageButtonsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  imageButton: {
+    flex: 1,
+    backgroundColor: Colors.surface,
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  imageButtonText: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    color: Colors.textSecondary,
+  },
+  imagePreviewContainer: {
+    position: 'relative',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 200,
+    borderRadius: 16,
+  },
+  removeImageButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { 
@@ -135,19 +136,36 @@ export default function EquipmentDetailScreen() {
     <>
       <Stack.Screen options={{ title: equipment.name }} />
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <View style={styles.iconContainer}>
-            <Icon color={Colors.primary} size={48} />
+        {equipment.imageUrl ? (
+          <View style={styles.imageHeader}>
+            <Image source={{ uri: equipment.imageUrl }} style={styles.headerImage} />
+            <View style={styles.imageOverlay} />
+            <View style={styles.imageHeaderContent}>
+              <Text style={styles.imageEquipmentName}>{equipment.name}</Text>
+              <Text style={styles.imageEquipmentDetails}>
+                {equipment.year} {equipment.make} {equipment.model}
+              </Text>
+              <View style={styles.imageHoursContainer}>
+                <Clock color="#fff" size={18} />
+                <Text style={styles.imageHoursText}>{formatHours(equipment.currentHours)}</Text>
+              </View>
+            </View>
           </View>
-          <Text style={styles.equipmentName}>{equipment.name}</Text>
-          <Text style={styles.equipmentDetails}>
-            {equipment.year} {equipment.make} {equipment.model}
-          </Text>
-          <View style={styles.hoursContainer}>
-            <Clock color={Colors.accent} size={18} />
-            <Text style={styles.hoursText}>{formatHours(equipment.currentHours)}</Text>
+        ) : (
+          <View style={styles.header}>
+            <View style={styles.iconContainer}>
+              <Icon color={Colors.primary} size={48} />
+            </View>
+            <Text style={styles.equipmentName}>{equipment.name}</Text>
+            <Text style={styles.equipmentDetails}>
+              {equipment.year} {equipment.make} {equipment.model}
+            </Text>
+            <View style={styles.hoursContainer}>
+              <Clock color={Colors.accent} size={18} />
+              <Text style={styles.hoursText}>{formatHours(equipment.currentHours)}</Text>
+            </View>
           </View>
-        </View>
+        )}
 
         <View style={styles.actionsRow}>
           <TouchableOpacity
@@ -540,5 +558,54 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: 40,
+  },
+  imageHeader: {
+    position: 'relative',
+    width: '100%',
+    height: 250,
+  },
+  headerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  imageOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+  },
+  imageHeaderContent: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+  },
+  imageEquipmentName: {
+    fontSize: 26,
+    fontWeight: '700' as const,
+    color: '#fff',
+    marginBottom: 4,
+    textShadowColor: 'rgba(0,0,0,0.5)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  imageEquipmentDetails: {
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.9)',
+    marginBottom: 12,
+  },
+  imageHoursContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  imageHoursText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: '#fff',
   },
 });
