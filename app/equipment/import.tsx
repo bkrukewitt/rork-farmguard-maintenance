@@ -8,6 +8,9 @@ import {
   Alert,
   Platform,
   ActivityIndicator,
+  Modal,
+  Linking,
+  Pressable,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
@@ -22,6 +25,8 @@ import {
   CheckCircle,
   ChevronRight,
   Tractor,
+  Smartphone,
+  Cloud,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -36,8 +41,39 @@ export default function ImportEquipmentScreen() {
   const [parseErrors, setParseErrors] = useState<string[]>([]);
   const [fileName, setFileName] = useState<string>('');
   const [isParsing, setIsParsing] = useState(false);
+  const [showSourceModal, setShowSourceModal] = useState(false);
 
-  const handlePickFile = async () => {
+  const processFile = async (uri: string, name: string) => {
+    try {
+      setFileName(name);
+
+      let content: string;
+      
+      if (Platform.OS === 'web') {
+        const response = await fetch(uri);
+        content = await response.text();
+      } else {
+        content = await FileSystem.readAsStringAsync(uri);
+      }
+
+      console.log('File content length:', content.length);
+      console.log('File content preview:', content.substring(0, 500));
+
+      const parseResult = parseEquipmentCSV(content);
+      setParsedData(parseResult.data);
+      setParseErrors(parseResult.errors);
+
+      if (!parseResult.success && parseResult.data.length === 0) {
+        Alert.alert('Parse Error', parseResult.errors.join('\n'));
+      }
+    } catch (error) {
+      console.log('Error processing file:', error);
+      Alert.alert('Error', 'Failed to read the file. Please try again.');
+    }
+  };
+
+  const handlePickFromDevice = async () => {
+    setShowSourceModal(false);
     try {
       setIsParsing(true);
       
@@ -54,32 +90,49 @@ export default function ImportEquipmentScreen() {
       }
 
       const file = result.assets[0];
-      setFileName(file.name);
-
-      let content: string;
-      
-      if (Platform.OS === 'web') {
-        const response = await fetch(file.uri);
-        content = await response.text();
-      } else {
-        content = await FileSystem.readAsStringAsync(file.uri);
-      }
-
-      console.log('File content length:', content.length);
-      console.log('File content preview:', content.substring(0, 500));
-
-      const parseResult = parseEquipmentCSV(content);
-      setParsedData(parseResult.data);
-      setParseErrors(parseResult.errors);
-
-      if (!parseResult.success && parseResult.data.length === 0) {
-        Alert.alert('Parse Error', parseResult.errors.join('\n'));
-      }
+      await processFile(file.uri, file.name);
     } catch (error) {
       console.log('Error picking file:', error);
       Alert.alert('Error', 'Failed to read the file. Please try again.');
     } finally {
       setIsParsing(false);
+    }
+  };
+
+  const handlePickFromDropbox = async () => {
+    setShowSourceModal(false);
+    
+    if (Platform.OS === 'web') {
+      window.open('https://www.dropbox.com/home', '_blank');
+      Alert.alert(
+        'Dropbox Opened',
+        'Download your CSV file from Dropbox, then use "From Device" to select the downloaded file.',
+        [{ text: 'OK' }]
+      );
+    } else {
+      const dropboxUrl = 'dbapi-1://1/connect';
+      const canOpen = await Linking.canOpenURL(dropboxUrl);
+      
+      if (canOpen) {
+        await Linking.openURL(dropboxUrl);
+        Alert.alert(
+          'Select from Dropbox',
+          'Navigate to your CSV file in Dropbox and export it, then return here and use "From Device" to select it.',
+          [{ text: 'OK' }]
+        );
+      } else {
+        Alert.alert(
+          'Dropbox Not Installed',
+          'Please install the Dropbox app to access files directly, or download your file from dropbox.com and use "From Device".',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Open Dropbox.com', 
+              onPress: () => Linking.openURL('https://www.dropbox.com/home')
+            },
+          ]
+        );
+      }
     }
   };
 
@@ -163,7 +216,7 @@ export default function ImportEquipmentScreen() {
           
           <TouchableOpacity
             style={styles.uploadButton}
-            onPress={handlePickFile}
+            onPress={() => setShowSourceModal(true)}
             disabled={isParsing}
           >
             {isParsing ? (
@@ -323,6 +376,56 @@ export default function ImportEquipmentScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      <Modal
+        visible={showSourceModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowSourceModal(false)}
+      >
+        <Pressable 
+          style={styles.modalOverlay} 
+          onPress={() => setShowSourceModal(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Select File Source</Text>
+            <Text style={styles.modalSubtitle}>Choose where to import your CSV file from</Text>
+            
+            <TouchableOpacity
+              style={styles.sourceOption}
+              onPress={handlePickFromDevice}
+            >
+              <View style={styles.sourceIconContainer}>
+                <Smartphone color={Colors.primary} size={24} />
+              </View>
+              <View style={styles.sourceTextContainer}>
+                <Text style={styles.sourceTitle}>From Device</Text>
+                <Text style={styles.sourceSubtitle}>Select from local files or cloud storage</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sourceOption}
+              onPress={handlePickFromDropbox}
+            >
+              <View style={[styles.sourceIconContainer, styles.dropboxIcon]}>
+                <Cloud color="#0061FF" size={24} />
+              </View>
+              <View style={styles.sourceTextContainer}>
+                <Text style={styles.sourceTitle}>From Dropbox</Text>
+                <Text style={styles.sourceSubtitle}>Import directly from your Dropbox</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setShowSourceModal(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -597,5 +700,75 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.textOnPrimary,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: Colors.text,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  sourceOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  sourceIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: Colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 14,
+  },
+  dropboxIcon: {
+    backgroundColor: '#0061FF15',
+  },
+  sourceTextContainer: {
+    flex: 1,
+  },
+  sourceTitle: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  sourceSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  modalCancelButton: {
+    marginTop: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.textSecondary,
   },
 });
