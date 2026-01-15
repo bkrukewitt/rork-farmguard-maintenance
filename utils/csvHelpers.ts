@@ -312,7 +312,7 @@ export function exportConsumablesToCSV(
     const currentEquipment = getPrimaryEquipment(item.compatibleEquipment, equipmentList);
     
     if (lastEquipment && currentEquipment !== lastEquipment) {
-      lines.push(',,,,,,,,')
+      lines.push(',,,,,,,,');
     }
     lastEquipment = currentEquipment;
     
