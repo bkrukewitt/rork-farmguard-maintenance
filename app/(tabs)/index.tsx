@@ -215,7 +215,6 @@ export default function DashboardScreen() {
             <Text style={styles.emptySubtitle}>
               Add your first piece of equipment to start tracking maintenance
             </Text>
-            
           </View>
         )}
       </View>
@@ -422,5 +421,4 @@ const styles = StyleSheet.create({
     marginTop: 8,
     lineHeight: 20,
   },
-  
 });

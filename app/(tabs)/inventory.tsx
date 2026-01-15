@@ -198,7 +198,6 @@ export default function InventoryScreen() {
           ? 'Try adjusting your search or filter'
           : 'Add consumables and parts to track your inventory'}
       </Text>
-
     </View>
   );
 
