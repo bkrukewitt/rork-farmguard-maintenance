@@ -141,11 +141,24 @@ export default function ImportInventoryScreen() {
         const response = await fetch(uri);
         content = await response.text();
       } else {
-        content = await FileSystem.readAsStringAsync(uri);
+        // Try multiple approaches to read the file on mobile
+        try {
+          // First try reading directly
+          content = await FileSystem.readAsStringAsync(uri);
+        } catch (readError) {
+          console.log('Direct read failed:', readError);
+          // Re-throw the error with a more descriptive message
+          throw new Error('Unable to read file. Please try selecting a different file or re-downloading it.');
+        }
       }
 
       console.log('File content length:', content.length);
       console.log('File content preview:', content.substring(0, 500));
+
+      if (!content || content.trim().length === 0) {
+        Alert.alert('Error', 'The file appears to be empty. Please select a valid CSV file.');
+        return;
+      }
 
       const parseResult = parseCSV(content);
       const processedParts = mergeDuplicateParts(parseResult.data);
@@ -174,7 +187,8 @@ export default function ImportInventoryScreen() {
       }
     } catch (error) {
       console.log('Error processing file:', error);
-      Alert.alert('Error', 'Failed to read the file. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid CSV and try again.`);
     }
   };
 
@@ -231,36 +245,28 @@ export default function ImportInventoryScreen() {
         [{ text: 'OK' }]
       );
     } else {
-      // Try to open Dropbox app, otherwise offer web option
-      const dropboxSchemes = ['dropbox://', 'dbapi-2://1/connect'];
-      let didOpenDropbox = false;
+      // On mobile, try to open Dropbox app directly
+      // canOpenURL is unreliable without LSApplicationQueriesSchemes config
+      // So we try to open directly and catch any errors
+      const dropboxScheme = 'dropbox://';
       
-      for (const scheme of dropboxSchemes) {
-        try {
-          const canOpen = await Linking.canOpenURL(scheme);
-          console.log(`Checking Dropbox scheme ${scheme}: ${canOpen}`);
-          if (canOpen) {
-            await Linking.openURL(scheme);
-            didOpenDropbox = true;
-            setTimeout(() => {
-              Alert.alert(
-                'Select from Dropbox',
-                'Navigate to your CSV file in Dropbox and export it, then return here and use "From Device" to select it.',
-                [{ text: 'OK' }]
-              );
-            }, 500);
-            break;
-          }
-        } catch (e) {
-          console.log(`Error with scheme ${scheme}:`, e);
-        }
-      }
-      
-      if (!didOpenDropbox) {
-        // Directly offer to open Dropbox.com since app detection is unreliable
+      try {
+        console.log('Attempting to open Dropbox app...');
+        await Linking.openURL(dropboxScheme);
+        // If we get here, the app opened successfully
+        setTimeout(() => {
+          Alert.alert(
+            'Select from Dropbox',
+            'Navigate to your CSV file in Dropbox and export it, then return here and use "From Device" to select it.',
+            [{ text: 'OK' }]
+          );
+        }, 500);
+      } catch (error) {
+        console.log('Failed to open Dropbox app:', error);
+        // App not installed or couldn't open, offer alternatives
         Alert.alert(
-          'Open Dropbox',
-          'Would you like to open Dropbox in your browser? You can download your CSV file and then use "From Device" to import it.',
+          'Dropbox App Not Found',
+          'The Dropbox app does not appear to be installed. Would you like to open Dropbox in your browser instead?',
           [
             { text: 'Cancel', style: 'cancel' },
             { 
