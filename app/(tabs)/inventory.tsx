@@ -106,44 +106,6 @@ export default function InventoryScreen() {
     router.push('/inventory/import' as any);
   };
 
-  const handleExportLowStock = async () => {
-    if (lowStockItems.length === 0) {
-      Alert.alert('No Low Stock Items', 'All parts are adequately stocked.');
-      return;
-    }
-
-    const date = new Date().toLocaleDateString();
-    let exportText = `LOW STOCK INVENTORY REPORT\n`;
-    exportText += `Generated: ${date}\n`;
-    exportText += `${'='.repeat(40)}\n\n`;
-
-    lowStockItems.forEach((item, index) => {
-      exportText += `${index + 1}. ${item.name}\n`;
-      exportText += `   Part #: ${item.partNumber}\n`;
-      exportText += `   Current Stock: ${item.quantity}\n`;
-      exportText += `   Low Stock Threshold: ${item.lowStockThreshold}\n`;
-      if (item.supplier) {
-        exportText += `   Supplier: ${item.supplier}\n`;
-      }
-      if (item.supplierPartNumber) {
-        exportText += `   Supplier Part #: ${item.supplierPartNumber}\n`;
-      }
-      exportText += `\n`;
-    });
-
-    exportText += `${'='.repeat(40)}\n`;
-    exportText += `Total Low Stock Items: ${lowStockItems.length}\n`;
-
-    try {
-      await Share.share({
-        message: exportText,
-        title: 'Low Stock Inventory Report',
-      });
-    } catch (error) {
-      console.log('Error sharing low stock report:', error);
-    }
-  };
-
   const filteredConsumables = useMemo(() => {
     let filtered = consumables;
 
@@ -314,7 +276,7 @@ export default function InventoryScreen() {
         {lowStockItems.length > 0 && (
           <TouchableOpacity
             style={styles.exportButton}
-            onPress={handleExportLowStock}
+            onPress={handleExportInventory}
             activeOpacity={0.7}
           >
             <Share2 color={Colors.textOnPrimary} size={16} />
