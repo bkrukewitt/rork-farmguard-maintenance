@@ -74,33 +74,48 @@ export default function ImportEquipmentScreen() {
 
   const handlePickFromDevice = async () => {
     setShowSourceModal(false);
+    
+    // Small delay to ensure modal is fully closed before opening picker
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
     try {
-      setIsParsing(true);
-      
+      console.log('Opening document picker...');
       const result = await DocumentPicker.getDocumentAsync({
         type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', '*/*'],
         copyToCacheDirectory: true,
       });
 
-      console.log('Document picker result:', result);
+      console.log('Document picker result:', JSON.stringify(result));
 
       if (result.canceled) {
-        setIsParsing(false);
+        console.log('Document picker was canceled');
         return;
       }
 
-      const file = result.assets[0];
-      await processFile(file.uri, file.name);
+      if (result.assets && result.assets.length > 0) {
+        const file = result.assets[0];
+        console.log('File selected:', file.name, file.uri);
+        setIsParsing(true);
+        try {
+          await processFile(file.uri, file.name);
+        } finally {
+          setIsParsing(false);
+        }
+      } else {
+        console.log('No assets in result');
+        Alert.alert('Error', 'No file was selected. Please try again.');
+      }
     } catch (error) {
       console.log('Error picking file:', error);
-      Alert.alert('Error', 'Failed to read the file. Please try again.');
-    } finally {
-      setIsParsing(false);
+      Alert.alert('Error', 'Failed to open file picker. Please try again.');
     }
   };
 
   const handlePickFromDropbox = async () => {
     setShowSourceModal(false);
+    
+    // Small delay to ensure modal is fully closed
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     if (Platform.OS === 'web') {
       window.open('https://www.dropbox.com/home', '_blank');
@@ -110,25 +125,43 @@ export default function ImportEquipmentScreen() {
         [{ text: 'OK' }]
       );
     } else {
-      const dropboxUrl = 'dbapi-1://1/connect';
-      const canOpen = await Linking.canOpenURL(dropboxUrl);
+      // Try to open Dropbox app, otherwise offer web option
+      const dropboxSchemes = ['dropbox://', 'dbapi-2://1/connect'];
+      let didOpenDropbox = false;
       
-      if (canOpen) {
-        await Linking.openURL(dropboxUrl);
+      for (const scheme of dropboxSchemes) {
+        try {
+          const canOpen = await Linking.canOpenURL(scheme);
+          console.log(`Checking Dropbox scheme ${scheme}: ${canOpen}`);
+          if (canOpen) {
+            await Linking.openURL(scheme);
+            didOpenDropbox = true;
+            setTimeout(() => {
+              Alert.alert(
+                'Select from Dropbox',
+                'Navigate to your CSV file in Dropbox and export it, then return here and use "From Device" to select it.',
+                [{ text: 'OK' }]
+              );
+            }, 500);
+            break;
+          }
+        } catch (e) {
+          console.log(`Error with scheme ${scheme}:`, e);
+        }
+      }
+      
+      if (!didOpenDropbox) {
+        // Directly offer to open Dropbox.com since app detection is unreliable
         Alert.alert(
-          'Select from Dropbox',
-          'Navigate to your CSV file in Dropbox and export it, then return here and use "From Device" to select it.',
-          [{ text: 'OK' }]
-        );
-      } else {
-        Alert.alert(
-          'Dropbox Not Installed',
-          'Please install the Dropbox app to access files directly, or download your file from dropbox.com and use "From Device".',
+          'Open Dropbox',
+          'Would you like to open Dropbox in your browser? You can download your CSV file and then use "From Device" to import it.',
           [
             { text: 'Cancel', style: 'cancel' },
             { 
               text: 'Open Dropbox.com', 
-              onPress: () => Linking.openURL('https://www.dropbox.com/home')
+              onPress: () => {
+                Linking.openURL('https://www.dropbox.com/home');
+              }
             },
           ]
         );
