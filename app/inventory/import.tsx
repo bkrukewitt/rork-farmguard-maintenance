@@ -236,15 +236,31 @@ export default function ImportInventoryScreen() {
   const handlePickFromDevice = async () => {
     setShowSourceModal(false);
     
-    // Small delay to ensure modal is fully closed before opening picker
-    await new Promise(resolve => setTimeout(resolve, 300));
+    // Longer delay to ensure modal is fully closed before opening picker
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     try {
       console.log('Opening document picker...');
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', '*/*'],
+      
+      const pickerOptions: DocumentPicker.DocumentPickerOptions = {
+        type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', 'text/plain', '*/*'],
         copyToCacheDirectory: true,
-      });
+      };
+      
+      console.log('Picker options:', JSON.stringify(pickerOptions));
+      
+      let result: DocumentPicker.DocumentPickerResult;
+      
+      try {
+        result = await DocumentPicker.getDocumentAsync(pickerOptions);
+      } catch (pickerError) {
+        console.log('Document picker threw error:', pickerError);
+        // Try again with minimal options
+        result = await DocumentPicker.getDocumentAsync({
+          type: '*/*',
+          copyToCacheDirectory: true,
+        });
+      }
 
       console.log('Document picker result:', JSON.stringify(result));
 
@@ -268,7 +284,11 @@ export default function ImportInventoryScreen() {
       }
     } catch (error) {
       console.log('Error picking file:', error);
-      Alert.alert('Error', 'Failed to open file picker. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert(
+        'File Picker Error', 
+        `Could not open file picker: ${errorMessage}. Please try again or restart the app.`
+      );
     }
   };
 
