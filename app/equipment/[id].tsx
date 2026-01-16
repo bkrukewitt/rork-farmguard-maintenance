@@ -131,7 +131,6 @@ export default function EquipmentDetailScreen() {
 
   const Icon = EQUIPMENT_ICONS[equipment.type] || Settings;
 
-
   return (
     <>
       <Stack.Screen options={{ title: equipment.name }} />
