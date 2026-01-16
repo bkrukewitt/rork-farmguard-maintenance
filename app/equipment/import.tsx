@@ -87,8 +87,10 @@ export default function ImportEquipmentScreen() {
       console.log('Attempting direct read...');
       const content = await FileSystem.readAsStringAsync(uri);
       if (content && content.trim().length > 0) {
-        console.log('Direct read successful');
-        return content;
+        console.log('Direct read successful, length:', content.length);
+        // Remove BOM if present
+        const cleanContent = content.replace(/^\uFEFF/, '');
+        return cleanContent;
       }
     } catch (e) {
       console.log('Direct read failed:', e);
@@ -102,29 +104,24 @@ export default function ImportEquipmentScreen() {
       });
       
       if (base64Content) {
-        // Decode base64 to string
-        const decoded = atob(base64Content);
+        // Decode base64 to UTF-8 string
+        const binaryString = atob(base64Content);
+        // Convert binary string to UTF-8
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const decoder = new TextDecoder('utf-8');
+        const decoded = decoder.decode(bytes);
+        
         if (decoded && decoded.trim().length > 0) {
-          console.log('Base64 decode successful');
-          return decoded;
+          console.log('Base64 decode successful, length:', decoded.length);
+          const cleanContent = decoded.replace(/^\uFEFF/, '');
+          return cleanContent;
         }
       }
     } catch (e) {
       console.log('Base64 read failed:', e);
-    }
-
-    // Method 3: Try with explicit UTF-8 encoding
-    try {
-      console.log('Attempting read with utf8 encoding...');
-      const content = await FileSystem.readAsStringAsync(uri, {
-        encoding: 'utf8',
-      });
-      if (content && content.trim().length > 0) {
-        console.log('UTF-8 read successful');
-        return content;
-      }
-    } catch (e) {
-      console.log('UTF-8 read failed:', e);
     }
 
     throw new Error('Unable to read file content. Please try re-downloading the file or saving it with a different name.');
