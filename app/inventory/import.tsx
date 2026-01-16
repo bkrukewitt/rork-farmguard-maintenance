@@ -131,6 +131,57 @@ export default function ImportInventoryScreen() {
     return Array.from(partMap.values());
   };
 
+  const readFileContent = async (uri: string): Promise<string> => {
+    console.log('Reading file from URI:', uri);
+    
+    // Method 1: Try direct read
+    try {
+      console.log('Attempting direct read...');
+      const content = await FileSystem.readAsStringAsync(uri);
+      if (content && content.trim().length > 0) {
+        console.log('Direct read successful');
+        return content;
+      }
+    } catch (e) {
+      console.log('Direct read failed:', e);
+    }
+
+    // Method 2: Try reading as base64 and decode
+    try {
+      console.log('Attempting base64 read and decode...');
+      const base64Content = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'base64',
+      });
+      
+      if (base64Content) {
+        // Decode base64 to string
+        const decoded = atob(base64Content);
+        if (decoded && decoded.trim().length > 0) {
+          console.log('Base64 decode successful');
+          return decoded;
+        }
+      }
+    } catch (e) {
+      console.log('Base64 read failed:', e);
+    }
+
+    // Method 3: Try with explicit UTF-8 encoding
+    try {
+      console.log('Attempting read with utf8 encoding...');
+      const content = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'utf8',
+      });
+      if (content && content.trim().length > 0) {
+        console.log('UTF-8 read successful');
+        return content;
+      }
+    } catch (e) {
+      console.log('UTF-8 read failed:', e);
+    }
+
+    throw new Error('Unable to read file content. Please try re-downloading the file or saving it with a different name.');
+  };
+
   const processFile = async (uri: string, name: string) => {
     try {
       setFileName(name);
@@ -142,14 +193,7 @@ export default function ImportInventoryScreen() {
         content = await response.text();
       } else {
         // Try multiple approaches to read the file on mobile
-        try {
-          // First try reading directly
-          content = await FileSystem.readAsStringAsync(uri);
-        } catch (readError) {
-          console.log('Direct read failed:', readError);
-          // Re-throw the error with a more descriptive message
-          throw new Error('Unable to read file. Please try selecting a different file or re-downloading it.');
-        }
+        content = await readFileContent(uri);
       }
 
       console.log('File content length:', content.length);
@@ -190,7 +234,7 @@ export default function ImportInventoryScreen() {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid CSV and try again.`);
     }
-  };
+  }
 
   const handlePickFromDevice = async () => {
     setShowSourceModal(false);
