@@ -134,21 +134,35 @@ export default function ImportInventoryScreen() {
   const readFileContent = async (uri: string): Promise<string> => {
     console.log('Reading file from URI:', uri);
     
-    // Method 1: Try direct read
+    // Method 1: Try direct read with UTF8 encoding
     try {
-      console.log('Attempting direct read...');
-      const content = await FileSystem.readAsStringAsync(uri);
+      console.log('Attempting direct UTF8 read...');
+      const content = await FileSystem.readAsStringAsync(uri, {
+        encoding: 'utf8',
+      });
       if (content && content.trim().length > 0) {
-        console.log('Direct read successful, length:', content.length);
-        // Remove BOM if present
+        console.log('Direct UTF8 read successful, length:', content.length);
         const cleanContent = content.replace(/^\uFEFF/, '');
         return cleanContent;
       }
-    } catch (e) {
-      console.log('Direct read failed:', e);
+    } catch (readErr) {
+      console.log('Direct UTF8 read failed:', readErr);
     }
 
-    // Method 2: Try reading as base64 and decode
+    // Method 2: Try direct read without encoding specified
+    try {
+      console.log('Attempting direct read without encoding...');
+      const content = await FileSystem.readAsStringAsync(uri);
+      if (content && content.trim().length > 0) {
+        console.log('Direct read successful, length:', content.length);
+        const cleanContent = content.replace(/^\uFEFF/, '');
+        return cleanContent;
+      }
+    } catch (readErr) {
+      console.log('Direct read failed:', readErr);
+    }
+
+    // Method 3: Try reading as base64 and decode
     try {
       console.log('Attempting base64 read and decode...');
       const base64Content = await FileSystem.readAsStringAsync(uri, {
@@ -156,9 +170,7 @@ export default function ImportInventoryScreen() {
       });
       
       if (base64Content) {
-        // Decode base64 to UTF-8 string
         const binaryString = atob(base64Content);
-        // Convert binary string to UTF-8
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i);
@@ -172,11 +184,11 @@ export default function ImportInventoryScreen() {
           return cleanContent;
         }
       }
-    } catch (e) {
-      console.log('Base64 read failed:', e);
+    } catch (readErr) {
+      console.log('Base64 read failed:', readErr);
     }
 
-    throw new Error('Unable to read file content. Please try re-downloading the file or saving it with a different name.');
+    throw new Error('Unable to read file. Please try saving your CSV file to a different location (like Downloads folder) and try again.');
   };
 
   const processFile = async (uri: string, name: string) => {
