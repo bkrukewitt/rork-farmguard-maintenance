@@ -13,6 +13,8 @@ import {
   Platform,
   Image,
 } from 'react-native';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { 
   Plus, 
@@ -56,12 +58,26 @@ export default function InventoryScreen() {
       Alert.alert('Success', 'Template downloaded successfully!');
     } else {
       try {
-        await Share.share({
-          message: templateContent,
-          title: 'Parts Import Template',
-        });
+        const file = new File(Paths.cache, 'parts_template.csv');
+        file.create({ overwrite: true });
+        file.write(templateContent);
+        
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(file.uri, {
+            mimeType: 'text/csv',
+            dialogTitle: 'Save Parts Template',
+            UTI: 'public.comma-separated-values-text',
+          });
+        } else {
+          await Share.share({
+            message: templateContent,
+            title: 'Parts Import Template',
+          });
+        }
       } catch (error) {
         console.log('Error sharing template:', error);
+        Alert.alert('Error', 'Failed to download template. Please try again.');
       }
     }
     setShowAddMenu(false);
@@ -90,12 +106,27 @@ export default function InventoryScreen() {
     } else {
       try {
         const csvContent = exportConsumablesToCSV(consumables, equipmentList);
-        await Share.share({
-          message: csvContent,
-          title: 'Inventory Export',
-        });
+        const fileName = `inventory_export_${new Date().toISOString().split('T')[0]}.csv`;
+        const file = new File(Paths.cache, fileName);
+        file.create({ overwrite: true });
+        file.write(csvContent);
+        
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(file.uri, {
+            mimeType: 'text/csv',
+            dialogTitle: 'Save Inventory Export',
+            UTI: 'public.comma-separated-values-text',
+          });
+        } else {
+          await Share.share({
+            message: csvContent,
+            title: 'Inventory Export',
+          });
+        }
       } catch (error) {
         console.log('Error sharing export:', error);
+        Alert.alert('Error', 'Failed to export inventory. Please try again.');
       }
     }
     setShowAddMenu(false);

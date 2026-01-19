@@ -9,8 +9,9 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
-  Linking,
   Pressable,
+  TextInput,
+  Keyboard,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
@@ -42,6 +43,8 @@ export default function ImportEquipmentScreen() {
   const [fileName, setFileName] = useState<string>('');
   const [isParsing, setIsParsing] = useState(false);
   const [showSourceModal, setShowSourceModal] = useState(false);
+  const [dropboxUrl, setDropboxUrl] = useState('');
+  const [isLoadingDropbox, setIsLoadingDropbox] = useState(false);
 
   const processFile = async (uri: string, name: string) => {
     try {
@@ -198,53 +201,76 @@ export default function ImportEquipmentScreen() {
     }
   };
 
-  const handlePickFromDropbox = async () => {
-    setShowSourceModal(false);
+  const convertDropboxUrl = (url: string): string => {
+    let directUrl = url.trim();
     
-    // Small delay to ensure modal is fully closed
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    if (Platform.OS === 'web') {
-      window.open('https://www.dropbox.com/home', '_blank');
-      Alert.alert(
-        'Dropbox Opened',
-        'Download your CSV file from Dropbox, then use "From Device" to select the downloaded file.',
-        [{ text: 'OK' }]
-      );
-    } else {
-      // On mobile, try to open Dropbox app directly
-      // canOpenURL is unreliable without LSApplicationQueriesSchemes config
-      // So we try to open directly and catch any errors
-      const dropboxScheme = 'dropbox://';
-      
-      try {
-        console.log('Attempting to open Dropbox app...');
-        await Linking.openURL(dropboxScheme);
-        // If we get here, the app opened successfully
-        setTimeout(() => {
-          Alert.alert(
-            'Select from Dropbox',
-            'Navigate to your CSV file in Dropbox and export it, then return here and use "From Device" to select it.',
-            [{ text: 'OK' }]
-          );
-        }, 500);
-      } catch (error) {
-        console.log('Failed to open Dropbox app:', error);
-        // App not installed or couldn't open, offer alternatives
-        Alert.alert(
-          'Dropbox App Not Found',
-          'The Dropbox app does not appear to be installed. Would you like to open Dropbox in your browser instead?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: 'Open Dropbox.com', 
-              onPress: () => {
-                Linking.openURL('https://www.dropbox.com/home');
-              }
-            },
-          ]
-        );
+    if (directUrl.includes('dropbox.com')) {
+      directUrl = directUrl.replace('www.dropbox.com', 'dl.dropboxusercontent.com');
+      directUrl = directUrl.replace('?dl=0', '?dl=1');
+      directUrl = directUrl.replace('?dl=1', '?dl=1');
+      if (!directUrl.includes('?dl=1') && !directUrl.includes('&dl=1')) {
+        directUrl += directUrl.includes('?') ? '&dl=1' : '?dl=1';
       }
+    }
+    
+    return directUrl;
+  };
+
+  const handleLoadFromDropboxUrl = async () => {
+    if (!dropboxUrl.trim()) {
+      Alert.alert('Error', 'Please paste a Dropbox sharing link.');
+      return;
+    }
+
+    if (!dropboxUrl.includes('dropbox.com') && !dropboxUrl.includes('dropboxusercontent.com')) {
+      Alert.alert('Invalid Link', 'Please paste a valid Dropbox sharing link.');
+      return;
+    }
+
+    Keyboard.dismiss();
+    setIsLoadingDropbox(true);
+
+    try {
+      const directUrl = convertDropboxUrl(dropboxUrl);
+      console.log('Fetching from Dropbox URL:', directUrl);
+      
+      const response = await fetch(directUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.status}`);
+      }
+      
+      const content = await response.text();
+      
+      if (!content || content.trim().length === 0) {
+        Alert.alert('Error', 'The file appears to be empty.');
+        return;
+      }
+
+      const urlParts = dropboxUrl.split('/');
+      const fileName = urlParts[urlParts.length - 1]?.split('?')[0] || 'dropbox_file.csv';
+      
+      setFileName(fileName);
+      
+      const parseResult = parseEquipmentCSV(content);
+      setParsedData(parseResult.data);
+      setParseErrors(parseResult.errors);
+
+      if (!parseResult.success && parseResult.data.length === 0) {
+        Alert.alert('Parse Error', parseResult.errors.join('\n'));
+      } else {
+        setShowSourceModal(false);
+        setDropboxUrl('');
+      }
+    } catch (error) {
+      console.log('Error loading from Dropbox:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      Alert.alert(
+        'Failed to Load File',
+        `Could not load the file from Dropbox: ${errorMessage}. Make sure the link is a public sharing link.`
+      );
+    } finally {
+      setIsLoadingDropbox(false);
     }
   };
 
@@ -516,18 +542,47 @@ export default function ImportEquipmentScreen() {
               </View>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.sourceOption}
-              onPress={handlePickFromDropbox}
-            >
-              <View style={[styles.sourceIconContainer, styles.dropboxIcon]}>
-                <Cloud color="#0061FF" size={24} />
+            <View style={styles.dropboxSection}>
+              <View style={styles.dropboxHeader}>
+                <View style={[styles.sourceIconContainer, styles.dropboxIcon]}>
+                  <Cloud color="#0061FF" size={24} />
+                </View>
+                <View style={styles.sourceTextContainer}>
+                  <Text style={styles.sourceTitle}>From Dropbox Link</Text>
+                  <Text style={styles.sourceSubtitle}>Paste a Dropbox sharing link below</Text>
+                </View>
               </View>
-              <View style={styles.sourceTextContainer}>
-                <Text style={styles.sourceTitle}>From Dropbox</Text>
-                <Text style={styles.sourceSubtitle}>Import directly from your Dropbox</Text>
-              </View>
-            </TouchableOpacity>
+              
+              <TextInput
+                style={styles.dropboxInput}
+                placeholder="https://www.dropbox.com/s/..."
+                placeholderTextColor={Colors.textSecondary}
+                value={dropboxUrl}
+                onChangeText={setDropboxUrl}
+                autoCapitalize="none"
+                autoCorrect={false}
+                keyboardType="url"
+              />
+              
+              <TouchableOpacity
+                style={[
+                  styles.dropboxLoadButton,
+                  (!dropboxUrl.trim() || isLoadingDropbox) && styles.dropboxLoadButtonDisabled,
+                ]}
+                onPress={handleLoadFromDropboxUrl}
+                disabled={!dropboxUrl.trim() || isLoadingDropbox}
+              >
+                {isLoadingDropbox ? (
+                  <ActivityIndicator color={Colors.textOnPrimary} size="small" />
+                ) : (
+                  <Text style={styles.dropboxLoadButtonText}>Load CSV from Dropbox</Text>
+                )}
+              </TouchableOpacity>
+              
+              <Text style={styles.dropboxHint}>
+                In Dropbox, tap Share → Copy Link, then paste here
+              </Text>
+            </View>
 
             <TouchableOpacity
               style={styles.modalCancelButton}
@@ -859,6 +914,48 @@ const styles = StyleSheet.create({
   },
   dropboxIcon: {
     backgroundColor: '#0061FF15',
+  },
+  dropboxSection: {
+    backgroundColor: Colors.background,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  dropboxHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  dropboxInput: {
+    backgroundColor: Colors.surface,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    color: Colors.text,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    marginBottom: 12,
+  },
+  dropboxLoadButton: {
+    backgroundColor: '#0061FF',
+    borderRadius: 8,
+    padding: 14,
+    alignItems: 'center',
+  },
+  dropboxLoadButtonDisabled: {
+    opacity: 0.5,
+  },
+  dropboxLoadButtonText: {
+    color: Colors.textOnPrimary,
+    fontSize: 15,
+    fontWeight: '600' as const,
+  },
+  dropboxHint: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginTop: 10,
   },
   sourceTextContainer: {
     flex: 1,

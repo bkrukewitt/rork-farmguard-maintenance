@@ -13,6 +13,8 @@ import {
   Modal,
   Platform,
 } from 'react-native';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { 
   Plus, 
@@ -83,12 +85,26 @@ export default function EquipmentScreen() {
       Alert.alert('Success', 'Template downloaded successfully!');
     } else {
       try {
-        await Share.share({
-          message: templateContent,
-          title: 'Equipment Import Template',
-        });
+        const file = new File(Paths.cache, 'equipment_template.csv');
+        file.create({ overwrite: true });
+        file.write(templateContent);
+        
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(file.uri, {
+            mimeType: 'text/csv',
+            dialogTitle: 'Save Equipment Template',
+            UTI: 'public.comma-separated-values-text',
+          });
+        } else {
+          await Share.share({
+            message: templateContent,
+            title: 'Equipment Import Template',
+          });
+        }
       } catch (error) {
         console.log('Error sharing template:', error);
+        Alert.alert('Error', 'Failed to download template. Please try again.');
       }
     }
     setShowAddMenu(false);
@@ -115,12 +131,27 @@ export default function EquipmentScreen() {
       Alert.alert('Success', 'Equipment exported successfully!');
     } else {
       try {
-        await Share.share({
-          message: csvContent,
-          title: 'Equipment Export',
-        });
+        const fileName = `equipment_export_${new Date().toISOString().split('T')[0]}.csv`;
+        const file = new File(Paths.cache, fileName);
+        file.create({ overwrite: true });
+        file.write(csvContent);
+        
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(file.uri, {
+            mimeType: 'text/csv',
+            dialogTitle: 'Save Equipment Export',
+            UTI: 'public.comma-separated-values-text',
+          });
+        } else {
+          await Share.share({
+            message: csvContent,
+            title: 'Equipment Export',
+          });
+        }
       } catch (error) {
         console.log('Error sharing export:', error);
+        Alert.alert('Error', 'Failed to export equipment. Please try again.');
       }
     }
     setShowAddMenu(false);
