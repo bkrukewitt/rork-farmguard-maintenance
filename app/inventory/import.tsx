@@ -12,6 +12,7 @@ import {
   Pressable,
   TextInput,
   Keyboard,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
@@ -672,11 +673,15 @@ export default function ImportInventoryScreen() {
         animationType="fade"
         onRequestClose={() => setShowSourceModal(false)}
       >
-        <Pressable 
+        <KeyboardAvoidingView 
           style={styles.modalOverlay} 
-          onPress={() => setShowSourceModal(false)}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+          <Pressable 
+            style={styles.modalOverlayTouchable} 
+            onPress={() => setShowSourceModal(false)}
+          >
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Select File Source</Text>
             <Text style={styles.modalSubtitle}>Choose where to import your CSV file from</Text>
             
@@ -741,8 +746,9 @@ export default function ImportInventoryScreen() {
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
+            </Pressable>
           </Pressable>
-        </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1052,6 +1058,10 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalOverlayTouchable: {
+    flex: 1,
     justifyContent: 'flex-end',
   },
   modalContent: {
