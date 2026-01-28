@@ -28,7 +28,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.farmguard_maintenance",
+      "package": "app.rork.farmguard-maintenance",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
