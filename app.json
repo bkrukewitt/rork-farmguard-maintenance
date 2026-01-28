@@ -17,9 +17,9 @@
       "supportsTablet": false,
       "bundleIdentifier": "app.rork.farmguard-maintenance",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos",
-        "NSCameraUsageDescription": "Allow $(PRODUCT_NAME) to access your camera",
-        "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to access your microphone"
+        "NSPhotoLibraryUsageDescription": "Allows FarmGuard Maintenance to access photos you select from your library to attach to maintenance records, such as choosing an existing photo of equipment or a repair.",
+        "NSPhotoLibraryAddUsageDescription": "Allows FarmGuard Maintenance to save maintenance photos to your photo library, such as saving a photo of equipment or a completed repair for your personal records.",
+        "NSCameraUsageDescription": "FarmGuard Maintenance uses the camera to take photos of equipment and maintenance work, which are attached to maintenance records (for example, photographing a tractor, combine, damaged part, or completed repair while servicing equipment).",
       },
       "usesIcloudStorage": true
     },
