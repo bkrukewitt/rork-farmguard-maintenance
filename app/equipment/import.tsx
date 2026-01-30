@@ -13,6 +13,7 @@ import {
   TextInput,
   Keyboard,
   KeyboardAvoidingView,
+  InteractionManager,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
@@ -200,10 +201,25 @@ export default function ImportEquipmentScreen() {
   }
 
   const handlePickFromDevice = async () => {
+    // Close modal first
     setShowSourceModal(false);
     
-    // Longer delay to ensure modal is fully closed before opening picker
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Wait for modal to fully close and UI to be ready
+    // Use InteractionManager on iOS to ensure animations complete
+    await new Promise<void>((resolve) => {
+      if (Platform.OS === 'ios') {
+        // Wait for next frame, then use InteractionManager
+        requestAnimationFrame(() => {
+          InteractionManager.runAfterInteractions(() => {
+            // Additional small delay for iOS modal animation
+            setTimeout(resolve, 300);
+          });
+        });
+      } else {
+        // For other platforms, just wait a bit
+        setTimeout(resolve, 300);
+      }
+    });
     
     try {
       console.log('Opening document picker...');
@@ -211,6 +227,7 @@ export default function ImportEquipmentScreen() {
       const pickerOptions: DocumentPicker.DocumentPickerOptions = {
         type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', 'text/plain', '*/*'],
         copyToCacheDirectory: true,
+        multiple: false,
       };
       
       console.log('Picker options:', JSON.stringify(pickerOptions));
@@ -221,11 +238,15 @@ export default function ImportEquipmentScreen() {
         result = await DocumentPicker.getDocumentAsync(pickerOptions);
       } catch (pickerError) {
         console.log('Document picker threw error:', pickerError);
-        // Try again with minimal options
-        result = await DocumentPicker.getDocumentAsync({
-          type: '*/*',
-          copyToCacheDirectory: true,
-        });
+        const errorMessage = pickerError instanceof Error ? pickerError.message : String(pickerError);
+        
+        // Show error to user
+        Alert.alert(
+          'File Picker Error',
+          `Could not open file picker: ${errorMessage}. Please try again.`,
+          [{ text: 'OK' }]
+        );
+        return;
       }
 
       console.log('Document picker result:', JSON.stringify(result));
