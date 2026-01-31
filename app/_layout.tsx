@@ -8,7 +8,19 @@ import Colors from "@/constants/colors";
 
 SplashScreen.preventAutoHideAsync();
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      // Ensure queries refetch on mount to load data from AsyncStorage
+      refetchOnMount: true,
+      refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      // Data from AsyncStorage should be considered fresh
+      staleTime: Infinity,
+      gcTime: Infinity,
+    },
+  },
+});
 
 function RootLayoutNav() {
   return (

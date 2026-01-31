@@ -13,7 +13,6 @@ import {
   TextInput,
   Keyboard,
   KeyboardAvoidingView,
-  InteractionManager,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
@@ -35,7 +34,6 @@ import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { parseCSV, ParsedPart } from '@/utils/csvHelpers';
 import { CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
-import { logError } from '@/utils/errorLogger';
 
 interface ProcessedPart extends ParsedPart {
   matchedEquipmentIds: string[];
@@ -139,131 +137,84 @@ export default function ImportInventoryScreen() {
 
   const readFileContent = async (uri: string): Promise<string> => {
     console.log('Reading file from URI:', uri);
-    console.log('Platform:', Platform.OS);
-    
-    // Generate list of URI variations to try
-    // Always try original URI first (important for iOS)
-    const uriVariations: string[] = [uri];
     
     // Normalize URI for Windows file paths
+    let normalizedUri = uri;
     if (uri.startsWith('file:///')) {
       // Windows file:///C:/path format - remove extra slash
-      uriVariations.push(uri.replace('file:///', 'file://'));
+      normalizedUri = uri.replace('file:///', 'file://');
     }
     
-    // For iOS, try URI without file:// prefix if it exists
-    // Also try with file:// prefix if it doesn't have it
-    if (Platform.OS === 'ios') {
-      if (uri.startsWith('file://')) {
-        uriVariations.push(uri.replace('file://', ''));
-      } else if (!uri.startsWith('file://')) {
-        uriVariations.push(`file://${uri}`);
+    // Method 1: Try direct read with UTF8 encoding
+    try {
+      console.log('Attempting direct UTF8 read...');
+      const content = await FileSystem.readAsStringAsync(normalizedUri, {
+        encoding: 'utf8',
+      });
+      if (content && content.trim().length > 0) {
+        console.log('Direct UTF8 read successful, length:', content.length);
+        const cleanContent = content.replace(/^\uFEFF/, '');
+        return cleanContent;
       }
-    }
-    
-    // Try each URI variation
-    for (const testUri of uriVariations) {
-      console.log(`Trying URI variation: ${testUri}`);
-      
-      // Check if file exists (but don't skip if this fails - sometimes file exists but check fails)
-      let fileExists = false;
-      try {
-        const fileInfo = await FileSystem.getInfoAsync(testUri);
-        fileExists = fileInfo.exists;
-        if (fileExists) {
-          console.log(`File exists at URI: ${testUri}, size: ${fileInfo.size}`);
-        } else {
-          console.log(`File does not exist at URI: ${testUri}`);
-        }
-      } catch (infoErr) {
-        console.log(`Could not get file info for URI: ${testUri}`, infoErr);
-        // Continue anyway - sometimes we can read even if getInfo fails
-      }
-      
-      // Method 1: Try direct read with UTF8 encoding
-      try {
-        console.log(`Attempting direct UTF8 read with URI: ${testUri}`);
-        const content = await FileSystem.readAsStringAsync(testUri, {
-          encoding: 'utf8',
-        });
-        if (content && content.trim().length > 0) {
-          console.log('Direct UTF8 read successful, length:', content.length);
-          const cleanContent = content.replace(/^\uFEFF/, '');
-          return cleanContent;
-        } else {
-          console.log('File read but content is empty');
-        }
-      } catch (readErr) {
-        console.log('Direct UTF8 read failed:', readErr);
-        const errorMsg = readErr instanceof Error ? readErr.message : String(readErr);
-        console.log('Error details:', errorMsg);
-        await logError(
-          readErr instanceof Error ? readErr : new Error(errorMsg),
-          'Inventory Import - File Read (UTF8)',
-          { uri: testUri, platform: Platform.OS }
-        );
-      }
-
-      // Method 2: Try direct read without encoding specified
-      try {
-        console.log('Attempting direct read without encoding...');
-        const content = await FileSystem.readAsStringAsync(testUri);
-        if (content && content.trim().length > 0) {
-          console.log('Direct read successful, length:', content.length);
-          const cleanContent = content.replace(/^\uFEFF/, '');
-          return cleanContent;
-        } else {
-          console.log('File read but content is empty');
-        }
-      } catch (readErr) {
-        console.log('Direct read failed:', readErr);
-        const errorMsg = readErr instanceof Error ? readErr.message : String(readErr);
-        console.log('Error details:', errorMsg);
-      }
-
-      // Method 3: Try reading as base64 and decode
-      try {
-        console.log('Attempting base64 read and decode...');
-        const base64Content = await FileSystem.readAsStringAsync(testUri, {
-          encoding: 'base64',
-        });
-        
-        if (base64Content) {
-          const binaryString = atob(base64Content);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          const decoder = new TextDecoder('utf-8');
-          const decoded = decoder.decode(bytes);
-          
-          if (decoded && decoded.trim().length > 0) {
-            console.log('Base64 decode successful, length:', decoded.length);
-            const cleanContent = decoded.replace(/^\uFEFF/, '');
+    } catch (readErr) {
+      console.log('Direct UTF8 read failed:', readErr);
+      // Try original URI if normalized failed
+      if (normalizedUri !== uri) {
+        try {
+          const content = await FileSystem.readAsStringAsync(uri, {
+            encoding: 'utf8',
+          });
+          if (content && content.trim().length > 0) {
+            console.log('Direct UTF8 read successful with original URI, length:', content.length);
+            const cleanContent = content.replace(/^\uFEFF/, '');
             return cleanContent;
-          } else {
-            console.log('Base64 decode succeeded but content is empty');
           }
+        } catch (retryErr) {
+          console.log('Retry with original URI also failed:', retryErr);
         }
-      } catch (readErr) {
-        console.log('Base64 read failed:', readErr);
-        const errorMsg = readErr instanceof Error ? readErr.message : String(readErr);
-        console.log('Error details:', errorMsg);
       }
     }
 
-    // Log final failure
-    const finalError = new Error('Unable to read file. The file may not be accessible. Please try selecting the file again or use a Dropbox link instead');
-    await logError(
-      finalError,
-      'Inventory Import - File Read (All Methods Failed)',
-      {
-        originalUri: uri,
-        uriVariations: uriVariations,
-        platform: Platform.OS,
+    // Method 2: Try direct read without encoding specified
+    try {
+      console.log('Attempting direct read without encoding...');
+      const content = await FileSystem.readAsStringAsync(normalizedUri);
+      if (content && content.trim().length > 0) {
+        console.log('Direct read successful, length:', content.length);
+        const cleanContent = content.replace(/^\uFEFF/, '');
+        return cleanContent;
       }
-    );
-    throw finalError;
+    } catch (readErr) {
+      console.log('Direct read failed:', readErr);
+    }
+
+    // Method 3: Try reading as base64 and decode
+    try {
+      console.log('Attempting base64 read and decode...');
+      const base64Content = await FileSystem.readAsStringAsync(normalizedUri, {
+        encoding: 'base64',
+      });
+      
+      if (base64Content) {
+        const binaryString = atob(base64Content);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        const decoder = new TextDecoder('utf-8');
+        const decoded = decoder.decode(bytes);
+        
+        if (decoded && decoded.trim().length > 0) {
+          console.log('Base64 decode successful, length:', decoded.length);
+          const cleanContent = decoded.replace(/^\uFEFF/, '');
+          return cleanContent;
+        }
+      }
+    } catch (readErr) {
+      console.log('Base64 read failed:', readErr);
+    }
+
+    throw new Error('Unable to read file. Please try saving your CSV file to a different location (like Downloads folder) and try again.');
   };
 
   const processFile = async (uri: string, name: string) => {
@@ -284,23 +235,17 @@ export default function ImportInventoryScreen() {
         try {
           content = await readFileContent(uri);
         } catch (fileSystemError) {
-          // On iOS, fetch won't work with file:// URIs, so skip it
-          // On other platforms (like Windows), try fetch as fallback
-          if (Platform.OS !== 'ios') {
-            console.log('FileSystem read failed, trying fetch:', fileSystemError);
-            try {
-              const response = await fetch(uri);
-              if (response.ok) {
-                content = await response.text();
-              } else {
-                throw new Error(`Failed to fetch file: ${response.status}`);
-              }
-            } catch (fetchError) {
-              // If both fail, throw the original FileSystem error
-              throw fileSystemError;
+          // If FileSystem fails, try fetch as fallback (useful for Windows file:// URIs)
+          console.log('FileSystem read failed, trying fetch:', fileSystemError);
+          try {
+            const response = await fetch(uri);
+            if (response.ok) {
+              content = await response.text();
+            } else {
+              throw new Error(`Failed to fetch file: ${response.status}`);
             }
-          } else {
-            // On iOS, just throw the FileSystem error
+          } catch (fetchError) {
+            // If both fail, throw the original FileSystem error
             throw fileSystemError;
           }
         }
@@ -342,42 +287,15 @@ export default function ImportInventoryScreen() {
     } catch (error) {
       console.log('Error processing file:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      
-      // Log error for debugging
-      await logError(
-        error instanceof Error ? error : new Error(errorMessage),
-        'Inventory Import - File Processing',
-        {
-          fileName: name,
-          uri,
-          platform: Platform.OS,
-        }
-      );
-      
-      Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid CSV and try again`);
+      Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid CSV and try again.`);
     }
   }
 
   const handlePickFromDevice = async () => {
-    // Close modal first
     setShowSourceModal(false);
     
-    // Wait for modal to fully close and UI to be ready
-    // Use InteractionManager on iOS to ensure animations complete
-    await new Promise<void>((resolve) => {
-      if (Platform.OS === 'ios') {
-        // Wait for next frame, then use InteractionManager
-        requestAnimationFrame(() => {
-          InteractionManager.runAfterInteractions(() => {
-            // Additional small delay for iOS modal animation
-            setTimeout(resolve, 300);
-          });
-        });
-      } else {
-        // For other platforms, just wait a bit
-        setTimeout(resolve, 300);
-      }
-    });
+    // Longer delay to ensure modal is fully closed before opening picker
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     try {
       console.log('Opening document picker...');
@@ -385,7 +303,6 @@ export default function ImportInventoryScreen() {
       const pickerOptions: DocumentPicker.DocumentPickerOptions = {
         type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', 'text/plain', '*/*'],
         copyToCacheDirectory: true,
-        multiple: false,
       };
       
       console.log('Picker options:', JSON.stringify(pickerOptions));
@@ -396,15 +313,11 @@ export default function ImportInventoryScreen() {
         result = await DocumentPicker.getDocumentAsync(pickerOptions);
       } catch (pickerError) {
         console.log('Document picker threw error:', pickerError);
-        const errorMessage = pickerError instanceof Error ? pickerError.message : String(pickerError);
-        
-        // Show error to user
-        Alert.alert(
-          'File Picker Error',
-          `Could not open file picker: ${errorMessage}. Please try again.`,
-          [{ text: 'OK' }]
-        );
-        return;
+        // Try again with minimal options
+        result = await DocumentPicker.getDocumentAsync({
+          type: '*/*',
+          copyToCacheDirectory: true,
+        });
       }
 
       console.log('Document picker result:', JSON.stringify(result));
