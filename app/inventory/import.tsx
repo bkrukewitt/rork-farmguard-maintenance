@@ -138,8 +138,10 @@ export default function ImportInventoryScreen() {
 
   const readFileContent = async (uri: string): Promise<string> => {
     console.log('Reading file from URI:', uri);
+    console.log('Platform:', Platform.OS);
     
     // Generate list of URI variations to try
+    // Always try original URI first (important for iOS)
     const uriVariations: string[] = [uri];
     
     // Normalize URI for Windows file paths
@@ -149,23 +151,27 @@ export default function ImportInventoryScreen() {
     }
     
     // For iOS, try URI without file:// prefix if it exists
-    if (uri.startsWith('file://')) {
+    if (uri.startsWith('file://') && Platform.OS === 'ios') {
       uriVariations.push(uri.replace('file://', ''));
     }
     
     // Try each URI variation
     for (const testUri of uriVariations) {
-      // First, check if file exists and is readable
+      console.log(`Trying URI variation: ${testUri}`);
+      
+      // Check if file exists (but don't skip if this fails - sometimes file exists but check fails)
+      let fileExists = false;
       try {
         const fileInfo = await FileSystem.getInfoAsync(testUri);
-        if (!fileInfo.exists) {
+        fileExists = fileInfo.exists;
+        if (fileExists) {
+          console.log(`File exists at URI: ${testUri}, size: ${fileInfo.size}`);
+        } else {
           console.log(`File does not exist at URI: ${testUri}`);
-          continue;
         }
-        console.log(`File exists at URI: ${testUri}, size: ${fileInfo.size}`);
       } catch (infoErr) {
         console.log(`Could not get file info for URI: ${testUri}`, infoErr);
-        continue;
+        // Continue anyway - sometimes we can read even if getInfo fails
       }
       
       // Method 1: Try direct read with UTF8 encoding
@@ -178,9 +184,13 @@ export default function ImportInventoryScreen() {
           console.log('Direct UTF8 read successful, length:', content.length);
           const cleanContent = content.replace(/^\uFEFF/, '');
           return cleanContent;
+        } else {
+          console.log('File read but content is empty');
         }
       } catch (readErr) {
         console.log('Direct UTF8 read failed:', readErr);
+        const errorMsg = readErr instanceof Error ? readErr.message : String(readErr);
+        console.log('Error details:', errorMsg);
       }
 
       // Method 2: Try direct read without encoding specified
@@ -191,9 +201,13 @@ export default function ImportInventoryScreen() {
           console.log('Direct read successful, length:', content.length);
           const cleanContent = content.replace(/^\uFEFF/, '');
           return cleanContent;
+        } else {
+          console.log('File read but content is empty');
         }
       } catch (readErr) {
         console.log('Direct read failed:', readErr);
+        const errorMsg = readErr instanceof Error ? readErr.message : String(readErr);
+        console.log('Error details:', errorMsg);
       }
 
       // Method 3: Try reading as base64 and decode
@@ -216,14 +230,18 @@ export default function ImportInventoryScreen() {
             console.log('Base64 decode successful, length:', decoded.length);
             const cleanContent = decoded.replace(/^\uFEFF/, '');
             return cleanContent;
+          } else {
+            console.log('Base64 decode succeeded but content is empty');
           }
         }
       } catch (readErr) {
         console.log('Base64 read failed:', readErr);
+        const errorMsg = readErr instanceof Error ? readErr.message : String(readErr);
+        console.log('Error details:', errorMsg);
       }
     }
 
-    throw new Error('Unable to read file. The file may not be accessible. Please try selecting the file again or use a Dropbox link instead.');
+    throw new Error('Unable to read file. The file may not be accessible. Please try selecting the file again or use a Dropbox link instead');
   };
 
   const processFile = async (uri: string, name: string) => {
@@ -302,7 +320,7 @@ export default function ImportInventoryScreen() {
     } catch (error) {
       console.log('Error processing file:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid CSV and try again.`);
+      Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid CSV and try again`);
     }
   }
 
