@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useEffect } from 'react';
 import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 
@@ -17,18 +17,30 @@ const STORAGE_KEYS = {
 async function loadData<T>(key: string): Promise<T[]> {
   try {
     const data = await AsyncStorage.getItem(key);
-    return data ? JSON.parse(data) : [];
+    if (data) {
+      const parsed = JSON.parse(data);
+      console.log(`Data loaded successfully: ${key}, items: ${parsed.length}`);
+      return parsed;
+    } else {
+      console.log(`No data found for key: ${key}`);
+      return [];
+    }
   } catch (error) {
-    console.log('Error loading data:', key, error);
+    console.error(`Error loading data: ${key}`, error);
+    // Return empty array on error to prevent app crash
     return [];
   }
 }
 
 async function saveData<T>(key: string, data: T[]): Promise<void> {
   try {
-    await AsyncStorage.setItem(key, JSON.stringify(data));
+    const jsonData = JSON.stringify(data);
+    await AsyncStorage.setItem(key, jsonData);
+    console.log(`Data saved successfully: ${key}, items: ${data.length}`);
   } catch (error) {
-    console.log('Error saving data:', key, error);
+    console.error(`Error saving data: ${key}`, error);
+    // Re-throw error so mutations can handle it
+    throw error;
   }
 }
 
@@ -38,31 +50,61 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const equipmentQuery = useQuery({
     queryKey: ['equipment'],
     queryFn: () => loadData<Equipment>(STORAGE_KEYS.EQUIPMENT),
+    staleTime: Infinity, // Data from AsyncStorage is always fresh
+    gcTime: Infinity, // Never garbage collect this data
+    refetchOnMount: true, // Always refetch on mount to ensure data is loaded
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+    refetchOnReconnect: false, // Don't refetch on reconnect
   });
 
   const maintenanceLogsQuery = useQuery({
     queryKey: ['maintenanceLogs'],
     queryFn: () => loadData<MaintenanceLog>(STORAGE_KEYS.MAINTENANCE_LOGS),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const intervalsQuery = useQuery({
     queryKey: ['intervals'],
     queryFn: () => loadData<MaintenanceInterval>(STORAGE_KEYS.INTERVALS),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const consumablesQuery = useQuery({
     queryKey: ['consumables'],
     queryFn: () => loadData<Consumable>(STORAGE_KEYS.CONSUMABLES),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const serviceRoutinesQuery = useQuery({
     queryKey: ['serviceRoutines'],
     queryFn: () => loadData<ServiceRoutine>(STORAGE_KEYS.SERVICE_ROUTINES),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const inspectionRoutinesQuery = useQuery({
     queryKey: ['inspectionRoutines'],
     queryFn: () => loadData<InspectionRoutine>(STORAGE_KEYS.INSPECTION_ROUTINES),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const equipment = useMemo(() => equipmentQuery.data ?? [], [equipmentQuery.data]);
@@ -404,6 +446,13 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     consumablesQuery.isLoading ||
     serviceRoutinesQuery.isLoading ||
     inspectionRoutinesQuery.isLoading;
+
+  // Verify data is loaded - log if any data exists
+  useEffect(() => {
+    if (!isLoading) {
+      console.log('Data loaded - Equipment:', equipment.length, 'Maintenance Logs:', maintenanceLogs.length, 'Consumables:', consumables.length);
+    }
+  }, [isLoading, equipment.length, maintenanceLogs.length, consumables.length]);
 
   return {
     equipment,
