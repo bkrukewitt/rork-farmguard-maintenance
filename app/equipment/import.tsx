@@ -35,6 +35,7 @@ import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { parseEquipmentCSV, ParsedEquipment } from '@/utils/csvHelpers';
 import { EQUIPMENT_TYPES, EquipmentType } from '@/types/equipment';
+import { logError } from '@/utils/errorLogger';
 
 export default function ImportEquipmentScreen() {
   const router = useRouter();
@@ -106,6 +107,18 @@ export default function ImportEquipmentScreen() {
     } catch (error) {
       console.log('Error processing file:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Log error for debugging
+      await logError(
+        error instanceof Error ? error : new Error(errorMessage),
+        'Equipment Import - File Processing',
+        {
+          fileName: name,
+          uri,
+          platform: Platform.OS,
+        }
+      );
+      
       Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid CSV and try again`);
     }
   };
@@ -124,8 +137,13 @@ export default function ImportEquipmentScreen() {
     }
     
     // For iOS, try URI without file:// prefix if it exists
-    if (uri.startsWith('file://') && Platform.OS === 'ios') {
-      uriVariations.push(uri.replace('file://', ''));
+    // Also try with file:// prefix if it doesn't have it
+    if (Platform.OS === 'ios') {
+      if (uri.startsWith('file://')) {
+        uriVariations.push(uri.replace('file://', ''));
+      } else if (!uri.startsWith('file://')) {
+        uriVariations.push(`file://${uri}`);
+      }
     }
     
     // Try each URI variation
@@ -164,6 +182,11 @@ export default function ImportEquipmentScreen() {
         console.log('Direct UTF8 read failed:', readErr);
         const errorMsg = readErr instanceof Error ? readErr.message : String(readErr);
         console.log('Error details:', errorMsg);
+        await logError(
+          readErr instanceof Error ? readErr : new Error(errorMsg),
+          'Equipment Import - File Read (UTF8)',
+          { uri: testUri, platform: Platform.OS }
+        );
       }
 
       // Method 2: Try direct read without encoding specified
@@ -214,7 +237,18 @@ export default function ImportEquipmentScreen() {
       }
     }
 
-    throw new Error('Unable to read file. The file may not be accessible. Please try selecting the file again or use a Dropbox link instead');
+    // Log final failure
+    const finalError = new Error('Unable to read file. The file may not be accessible. Please try selecting the file again or use a Dropbox link instead');
+    await logError(
+      finalError,
+      'Equipment Import - File Read (All Methods Failed)',
+      {
+        originalUri: uri,
+        uriVariations: uriVariations,
+        platform: Platform.OS,
+      }
+    );
+    throw finalError;
   }
 
   const handlePickFromDevice = async () => {
