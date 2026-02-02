@@ -13,6 +13,7 @@ import {
   TextInput,
   Keyboard,
   KeyboardAvoidingView,
+  InteractionManager,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
@@ -136,30 +137,43 @@ export default function ImportInventoryScreen() {
   };
 
   const readFileContent = async (uri: string): Promise<string> => {
-    console.log('Advanced file reading - URI:', uri, 'Platform:', Platform.OS);
+    console.log('=== File Reading Debug ===');
+    console.log('Original URI:', uri);
+    console.log('Platform:', Platform.OS);
+    console.log('Cache Directory:', FileSystem.cacheDirectory);
+    console.log('Document Directory:', FileSystem.documentDirectory);
     
-    // Step 1: Verify file exists and get info
+    // Step 1: Verify file exists and get detailed info
     let fileInfo: FileSystem.FileInfo | null = null;
     let workingUri = uri;
     
     try {
-      fileInfo = await FileSystem.getInfoAsync(uri);
-      console.log('File info:', fileInfo);
+      fileInfo = await FileSystem.getInfoAsync(uri, { size: true });
+      console.log('File info check:', {
+        exists: fileInfo.exists,
+        size: fileInfo.size,
+        isDirectory: fileInfo.isDirectory,
+        uri: fileInfo.uri,
+      });
       
       if (!fileInfo.exists) {
-        throw new Error(`File does not exist at URI: ${uri}`);
+        console.error('File does not exist at URI:', uri);
+        throw new Error(`File does not exist at the provided location. URI: ${uri.substring(0, 100)}...`);
       }
       
       if (fileInfo.size === 0) {
         throw new Error('File is empty (0 bytes)');
       }
       
-      console.log(`File exists: ${fileInfo.exists}, Size: ${fileInfo.size} bytes`);
+      console.log(`✓ File verified: ${fileInfo.size} bytes`);
     } catch (infoError) {
-      console.warn('Could not get file info, will try reading anyway:', infoError);
+      const errorMsg = infoError instanceof Error ? infoError.message : String(infoError);
+      console.error('File info check failed:', errorMsg);
+      // Continue anyway - sometimes getInfoAsync fails but read works
     }
 
-    // Step 2: On iOS, try copying to document directory if direct read fails
+    // Step 2: On iOS, copy to document directory first for guaranteed access
+    // This is more reliable than trying to read from the picker's URI directly
     if (Platform.OS === 'ios' && FileSystem.documentDirectory) {
       try {
         const docDir = FileSystem.documentDirectory;
@@ -167,95 +181,103 @@ export default function ImportInventoryScreen() {
         const safeFileName = `import_${timestamp}.csv`;
         const targetUri = `${docDir}${safeFileName}`;
         
-        console.log('Attempting to copy file to document directory:', targetUri);
+        console.log('Copying file to document directory for guaranteed access...');
+        console.log('From:', uri);
+        console.log('To:', targetUri);
+        
         await FileSystem.copyAsync({
           from: uri,
           to: targetUri,
         });
         
-        // Verify copied file exists
-        const copiedInfo = await FileSystem.getInfoAsync(targetUri);
+        // Verify copied file
+        const copiedInfo = await FileSystem.getInfoAsync(targetUri, { size: true });
         if (copiedInfo.exists && copiedInfo.size > 0) {
-          console.log('File copied successfully, using copied file');
+          console.log(`✓ File copied successfully: ${copiedInfo.size} bytes`);
           workingUri = targetUri;
+        } else {
+          console.warn('File copy completed but verification failed');
         }
       } catch (copyError) {
-        console.log('File copy failed, will try direct read:', copyError);
+        const errorMsg = copyError instanceof Error ? copyError.message : String(copyError);
+        console.error('File copy failed:', errorMsg);
+        console.log('Will attempt direct read from original URI');
+        // Continue with original URI
       }
     }
 
-    // Step 3: Normalize URI for Windows file paths
-    let normalizedUri = workingUri;
-    if (workingUri.startsWith('file:///')) {
-      normalizedUri = workingUri.replace('file:///', 'file://');
-    }
-
-    // Step 4: Try multiple reading methods
-    const methods = [
-      // Method 1: Direct UTF8 read with normalized URI
-      async () => {
-        console.log('Method 1: Direct UTF8 read (normalized)');
-        return await FileSystem.readAsStringAsync(normalizedUri, { encoding: 'utf8' });
-      },
-      // Method 2: Direct UTF8 read with original URI
-      async () => {
-        if (normalizedUri !== workingUri) {
-          console.log('Method 2: Direct UTF8 read (original)');
+    // Step 3: Try reading with the working URI
+    // Since copyToCacheDirectory: true was used, the URI should be accessible
+    // But we'll try multiple approaches for maximum compatibility
+    const readMethods = [
+      {
+        name: 'Direct UTF8 read',
+        fn: async () => {
+          console.log('Attempting: Direct UTF8 read from', workingUri);
           return await FileSystem.readAsStringAsync(workingUri, { encoding: 'utf8' });
-        }
-        throw new Error('Skipped - same as method 1');
-      },
-      // Method 3: Direct read without encoding
-      async () => {
-        console.log('Method 3: Direct read (default encoding)');
-        return await FileSystem.readAsStringAsync(normalizedUri);
-      },
-      // Method 4: Base64 decode
-      async () => {
-        console.log('Method 4: Base64 decode');
-        const base64 = await FileSystem.readAsStringAsync(normalizedUri, { encoding: 'base64' });
-        if (!base64) throw new Error('Base64 content is empty');
-        
-        const binaryString = atob(base64);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        const decoder = new TextDecoder('utf-8');
-        return decoder.decode(bytes);
-      },
-      // Method 5: iOS-specific URI variations
-      ...(Platform.OS === 'ios' ? [
-        async () => {
-          console.log('Method 5: URI without file:// prefix');
-          const uriWithoutPrefix = uri.replace(/^file:\/\//, '');
-          return await FileSystem.readAsStringAsync(uriWithoutPrefix, { encoding: 'utf8' });
         },
-        async () => {
-          console.log('Method 6: URI with file:// prefix');
-          const uriWithPrefix = uri.startsWith('file://') ? uri : `file://${uri}`;
-          return await FileSystem.readAsStringAsync(uriWithPrefix, { encoding: 'utf8' });
+      },
+      {
+        name: 'Direct read (default encoding)',
+        fn: async () => {
+          console.log('Attempting: Direct read (default encoding)');
+          return await FileSystem.readAsStringAsync(workingUri);
         },
-      ] : []),
+      },
+      {
+        name: 'Base64 decode',
+        fn: async () => {
+          console.log('Attempting: Base64 decode');
+          const base64 = await FileSystem.readAsStringAsync(workingUri, { encoding: 'base64' });
+          if (!base64 || base64.trim().length === 0) {
+            throw new Error('Base64 content is empty');
+          }
+          
+          // Convert base64 to text
+          const binaryString = atob(base64);
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const decoder = new TextDecoder('utf-8');
+          return decoder.decode(bytes);
+        },
+      },
     ];
 
-    // Try each method
-    for (let i = 0; i < methods.length; i++) {
+    // Try each reading method
+    const errors: string[] = [];
+    for (const method of readMethods) {
       try {
-        const content = await methods[i]();
+        console.log(`Trying: ${method.name}`);
+        const content = await method.fn();
+        
         if (content && content.trim().length > 0) {
-          console.log(`Method ${i + 1} succeeded, content length: ${content.length}`);
-          return content.replace(/^\uFEFF/, ''); // Remove BOM
+          console.log(`✓ Success with ${method.name}: ${content.length} characters`);
+          return content.replace(/^\uFEFF/, ''); // Remove BOM if present
         } else {
-          console.log(`Method ${i + 1} returned empty content`);
+          console.warn(`${method.name} returned empty content`);
+          errors.push(`${method.name}: returned empty content`);
         }
       } catch (methodError) {
-        console.log(`Method ${i + 1} failed:`, methodError);
-        // Continue to next method
+        const errorMsg = methodError instanceof Error ? methodError.message : String(methodError);
+        console.error(`${method.name} failed:`, errorMsg);
+        errors.push(`${method.name}: ${errorMsg}`);
       }
     }
 
-    throw new Error('All file reading methods failed. The file may not be accessible. Please try selecting the file again or use a Dropbox link instead');
+    // All methods failed
+    console.error('=== All file reading methods failed ===');
+    console.error('URI:', uri);
+    console.error('Working URI:', workingUri);
+    console.error('File Info:', fileInfo);
+    console.error('Errors:', errors);
+    
+    throw new Error(
+      `Unable to read the file. This may be a permission issue or the file location is not accessible. ` +
+      `Please try: 1) Selecting the file again, 2) Moving the file to a different location (like Files app root), or 3) Using a Dropbox link instead. ` +
+      `URI: ${uri.substring(0, 80)}...`
+    );
   };
 
   const processFile = async (uri: string, name: string) => {
@@ -319,30 +341,67 @@ export default function ImportInventoryScreen() {
   const handlePickFromDevice = async () => {
     setShowSourceModal(false);
     
-    // Longer delay to ensure modal is fully closed before opening picker
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Use InteractionManager to wait for animations to complete
+    // This is especially important in Expo Go where the bridge can be slower
+    await new Promise<void>((resolve) => {
+      InteractionManager.runAfterInteractions(() => {
+        // Additional delay for Expo Go to ensure modal is fully dismissed
+        setTimeout(() => {
+          resolve();
+        }, Platform.OS === 'ios' ? 300 : 100);
+      });
+    });
     
     try {
       console.log('Opening document picker...');
       
+      // Simplified options for better Expo Go compatibility
       const pickerOptions: DocumentPicker.DocumentPickerOptions = {
-        type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', 'text/plain', '*/*'],
+        type: '*/*', // Use wildcard for better compatibility in Expo Go
         copyToCacheDirectory: true,
+        multiple: false,
       };
       
       console.log('Picker options:', JSON.stringify(pickerOptions));
       
+      // Add timeout to detect if picker is hung (Expo Go can hang)
+      const pickerPromise = DocumentPicker.getDocumentAsync(pickerOptions);
+      const timeoutPromise = new Promise<DocumentPicker.DocumentPickerResult>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Document picker timed out after 30 seconds. This may be an Expo Go limitation. Try using TestFlight or a development build.'));
+        }, 30000); // 30 second timeout
+      });
+      
       let result: DocumentPicker.DocumentPickerResult;
       
       try {
-        result = await DocumentPicker.getDocumentAsync(pickerOptions);
+        result = await Promise.race([pickerPromise, timeoutPromise]);
       } catch (pickerError) {
-        console.log('Document picker threw error:', pickerError);
-        // Try again with minimal options
-        result = await DocumentPicker.getDocumentAsync({
-          type: '*/*',
-          copyToCacheDirectory: true,
-        });
+        console.log('Document picker error:', pickerError);
+        const errorMessage = pickerError instanceof Error ? pickerError.message : 'Unknown error';
+        
+        // If it's a timeout, provide helpful message about Expo Go
+        if (errorMessage.includes('timed out')) {
+          Alert.alert(
+            'Picker Timeout',
+            'The file picker is taking too long to open. This is a known limitation in Expo Go. For better performance, please use TestFlight or a development build. You can also try using the Dropbox link option instead.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        
+        // Try once more with minimal options
+        try {
+          result = await Promise.race([
+            DocumentPicker.getDocumentAsync({
+              type: '*/*',
+              copyToCacheDirectory: true,
+            }),
+            timeoutPromise
+          ]);
+        } catch (retryError) {
+          throw pickerError; // Throw original error
+        }
       }
 
       console.log('Document picker result:', JSON.stringify(result));
@@ -366,11 +425,11 @@ export default function ImportInventoryScreen() {
         Alert.alert('Error', 'No file was selected. Please try again.');
       }
     } catch (error) {
-      console.log('Error picking file:', error);
+      console.error('Error picking file:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       Alert.alert(
         'File Picker Error', 
-        `Could not open file picker: ${errorMessage}. Please try again or restart the app.`
+        `Could not open file picker: ${errorMessage}. Please try again or use a Dropbox link instead.`
       );
     }
   };
