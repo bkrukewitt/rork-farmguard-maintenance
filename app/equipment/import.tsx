@@ -13,6 +13,7 @@ import {
   TextInput,
   Keyboard,
   KeyboardAvoidingView,
+  InteractionManager,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
@@ -213,30 +214,67 @@ export default function ImportEquipmentScreen() {
   const handlePickFromDevice = async () => {
     setShowSourceModal(false);
     
-    // Longer delay to ensure modal is fully closed before opening picker
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Use InteractionManager to wait for animations to complete
+    // This is especially important in Expo Go where the bridge can be slower
+    await new Promise<void>((resolve) => {
+      InteractionManager.runAfterInteractions(() => {
+        // Additional delay for Expo Go to ensure modal is fully dismissed
+        setTimeout(() => {
+          resolve();
+        }, Platform.OS === 'ios' ? 300 : 100);
+      });
+    });
     
     try {
       console.log('Opening document picker...');
       
+      // Simplified options for better Expo Go compatibility
       const pickerOptions: DocumentPicker.DocumentPickerOptions = {
-        type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel', 'text/plain', '*/*'],
+        type: '*/*', // Use wildcard for better compatibility in Expo Go
         copyToCacheDirectory: true,
+        multiple: false,
       };
       
       console.log('Picker options:', JSON.stringify(pickerOptions));
       
+      // Add timeout to detect if picker is hung (Expo Go can hang)
+      const pickerPromise = DocumentPicker.getDocumentAsync(pickerOptions);
+      const timeoutPromise = new Promise<DocumentPicker.DocumentPickerResult>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error('Document picker timed out after 30 seconds. This may be an Expo Go limitation. Try using TestFlight or a development build.'));
+        }, 30000); // 30 second timeout
+      });
+      
       let result: DocumentPicker.DocumentPickerResult;
       
       try {
-        result = await DocumentPicker.getDocumentAsync(pickerOptions);
+        result = await Promise.race([pickerPromise, timeoutPromise]);
       } catch (pickerError) {
-        console.log('Document picker threw error:', pickerError);
-        // Try again with minimal options
-        result = await DocumentPicker.getDocumentAsync({
-          type: '*/*',
-          copyToCacheDirectory: true,
-        });
+        console.log('Document picker error:', pickerError);
+        const errorMessage = pickerError instanceof Error ? pickerError.message : 'Unknown error';
+        
+        // If it's a timeout, provide helpful message about Expo Go
+        if (errorMessage.includes('timed out')) {
+          Alert.alert(
+            'Picker Timeout',
+            'The file picker is taking too long to open. This is a known limitation in Expo Go. For better performance, please use TestFlight or a development build. You can also try using the Dropbox link option instead.',
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+        
+        // Try once more with minimal options
+        try {
+          result = await Promise.race([
+            DocumentPicker.getDocumentAsync({
+              type: '*/*',
+              copyToCacheDirectory: true,
+            }),
+            timeoutPromise
+          ]);
+        } catch (retryError) {
+          throw pickerError; // Throw original error
+        }
       }
 
       console.log('Document picker result:', JSON.stringify(result));
@@ -260,11 +298,11 @@ export default function ImportEquipmentScreen() {
         Alert.alert('Error', 'No file was selected. Please try again.');
       }
     } catch (error) {
-      console.log('Error picking file:', error);
+      console.error('Error picking file:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       Alert.alert(
         'File Picker Error', 
-        `Could not open file picker: ${errorMessage}. Please try again or restart the app.`
+        `Could not open file picker: ${errorMessage}. Please try again or use a Dropbox link instead.`
       );
     }
   };
