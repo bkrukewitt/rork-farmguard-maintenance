@@ -143,12 +143,62 @@ export default function ImportInventoryScreen() {
     console.log('Cache Directory:', FileSystem.cacheDirectory);
     console.log('Document Directory:', FileSystem.documentDirectory);
     
-    // Step 1: Verify file exists and get detailed info
+    // Step 1: Normalize URI - iOS often returns file:/// (three slashes) which needs to be file://
+    let normalizedUri = uri;
+    if (normalizedUri.startsWith('file:///')) {
+      normalizedUri = normalizedUri.replace('file:///', 'file://');
+      console.log('Normalized URI (removed triple slash):', normalizedUri);
+    }
+    
+    // Step 2: On iOS, ALWAYS copy to document directory first for guaranteed access
+    // The picker's URI may be in a temporary location that's not directly readable
+    let workingUri = normalizedUri;
+    if (Platform.OS === 'ios' && FileSystem.documentDirectory) {
+      try {
+        const docDir = FileSystem.documentDirectory;
+        const timestamp = Date.now();
+        const safeFileName = `import_${timestamp}.csv`;
+        const targetUri = `${docDir}${safeFileName}`;
+        
+        console.log('Copying file to document directory for guaranteed access...');
+        console.log('From:', normalizedUri);
+        console.log('To:', targetUri);
+        
+        // Try copying with normalized URI first
+        try {
+          await FileSystem.copyAsync({
+            from: normalizedUri,
+            to: targetUri,
+          });
+        } catch (normalizedCopyError) {
+          // If normalized fails, try original URI
+          console.log('Normalized URI copy failed, trying original URI');
+          await FileSystem.copyAsync({
+            from: uri,
+            to: targetUri,
+          });
+        }
+        
+        // Verify copied file
+        const copiedInfo = await FileSystem.getInfoAsync(targetUri, { size: true });
+        if (copiedInfo.exists && copiedInfo.size > 0) {
+          console.log(`✓ File copied successfully: ${copiedInfo.size} bytes`);
+          workingUri = targetUri;
+        } else {
+          throw new Error('File copy completed but verification failed - file does not exist or is empty');
+        }
+      } catch (copyError) {
+        const errorMsg = copyError instanceof Error ? copyError.message : String(copyError);
+        console.error('File copy failed:', errorMsg);
+        throw new Error(`Unable to copy file to accessible location: ${errorMsg}. The file may be in a restricted location.`);
+      }
+    }
+    
+    // Step 3: Verify file exists and get detailed info
     let fileInfo: FileSystem.FileInfo | null = null;
-    let workingUri = uri;
     
     try {
-      fileInfo = await FileSystem.getInfoAsync(uri, { size: true });
+      fileInfo = await FileSystem.getInfoAsync(workingUri, { size: true });
       console.log('File info check:', {
         exists: fileInfo.exists,
         size: fileInfo.size,
@@ -157,8 +207,8 @@ export default function ImportInventoryScreen() {
       });
       
       if (!fileInfo.exists) {
-        console.error('File does not exist at URI:', uri);
-        throw new Error(`File does not exist at the provided location. URI: ${uri.substring(0, 100)}...`);
+        console.error('File does not exist at working URI:', workingUri);
+        throw new Error(`File does not exist at the working location. URI: ${workingUri.substring(0, 100)}...`);
       }
       
       if (fileInfo.size === 0) {
@@ -169,41 +219,7 @@ export default function ImportInventoryScreen() {
     } catch (infoError) {
       const errorMsg = infoError instanceof Error ? infoError.message : String(infoError);
       console.error('File info check failed:', errorMsg);
-      // Continue anyway - sometimes getInfoAsync fails but read works
-    }
-
-    // Step 2: On iOS, copy to document directory first for guaranteed access
-    // This is more reliable than trying to read from the picker's URI directly
-    if (Platform.OS === 'ios' && FileSystem.documentDirectory) {
-      try {
-        const docDir = FileSystem.documentDirectory;
-        const timestamp = Date.now();
-        const safeFileName = `import_${timestamp}.csv`;
-        const targetUri = `${docDir}${safeFileName}`;
-        
-        console.log('Copying file to document directory for guaranteed access...');
-        console.log('From:', uri);
-        console.log('To:', targetUri);
-        
-        await FileSystem.copyAsync({
-          from: uri,
-          to: targetUri,
-        });
-        
-        // Verify copied file
-        const copiedInfo = await FileSystem.getInfoAsync(targetUri, { size: true });
-        if (copiedInfo.exists && copiedInfo.size > 0) {
-          console.log(`✓ File copied successfully: ${copiedInfo.size} bytes`);
-          workingUri = targetUri;
-        } else {
-          console.warn('File copy completed but verification failed');
-        }
-      } catch (copyError) {
-        const errorMsg = copyError instanceof Error ? copyError.message : String(copyError);
-        console.error('File copy failed:', errorMsg);
-        console.log('Will attempt direct read from original URI');
-        // Continue with original URI
-      }
+      throw new Error(`Cannot verify file: ${errorMsg}`);
     }
 
     // Step 3: Try reading with the working URI
