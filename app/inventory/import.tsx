@@ -136,85 +136,126 @@ export default function ImportInventoryScreen() {
   };
 
   const readFileContent = async (uri: string): Promise<string> => {
-    console.log('Reading file from URI:', uri);
+    console.log('Advanced file reading - URI:', uri, 'Platform:', Platform.OS);
     
-    // Normalize URI for Windows file paths
-    let normalizedUri = uri;
-    if (uri.startsWith('file:///')) {
-      // Windows file:///C:/path format - remove extra slash
-      normalizedUri = uri.replace('file:///', 'file://');
-    }
+    // Step 1: Verify file exists and get info
+    let fileInfo: FileSystem.FileInfo | null = null;
+    let workingUri = uri;
     
-    // Method 1: Try direct read with UTF8 encoding
     try {
-      console.log('Attempting direct UTF8 read...');
-      const content = await FileSystem.readAsStringAsync(normalizedUri, {
-        encoding: 'utf8',
-      });
-      if (content && content.trim().length > 0) {
-        console.log('Direct UTF8 read successful, length:', content.length);
-        const cleanContent = content.replace(/^\uFEFF/, '');
-        return cleanContent;
-      }
-    } catch (readErr) {
-      console.log('Direct UTF8 read failed:', readErr);
-      // Try original URI if normalized failed
-      if (normalizedUri !== uri) {
-        try {
-          const content = await FileSystem.readAsStringAsync(uri, {
-            encoding: 'utf8',
-          });
-          if (content && content.trim().length > 0) {
-            console.log('Direct UTF8 read successful with original URI, length:', content.length);
-            const cleanContent = content.replace(/^\uFEFF/, '');
-            return cleanContent;
-          }
-        } catch (retryErr) {
-          console.log('Retry with original URI also failed:', retryErr);
-        }
-      }
-    }
-
-    // Method 2: Try direct read without encoding specified
-    try {
-      console.log('Attempting direct read without encoding...');
-      const content = await FileSystem.readAsStringAsync(normalizedUri);
-      if (content && content.trim().length > 0) {
-        console.log('Direct read successful, length:', content.length);
-        const cleanContent = content.replace(/^\uFEFF/, '');
-        return cleanContent;
-      }
-    } catch (readErr) {
-      console.log('Direct read failed:', readErr);
-    }
-
-    // Method 3: Try reading as base64 and decode
-    try {
-      console.log('Attempting base64 read and decode...');
-      const base64Content = await FileSystem.readAsStringAsync(normalizedUri, {
-        encoding: 'base64',
-      });
+      fileInfo = await FileSystem.getInfoAsync(uri);
+      console.log('File info:', fileInfo);
       
-      if (base64Content) {
-        const binaryString = atob(base64Content);
+      if (!fileInfo.exists) {
+        throw new Error(`File does not exist at URI: ${uri}`);
+      }
+      
+      if (fileInfo.size === 0) {
+        throw new Error('File is empty (0 bytes)');
+      }
+      
+      console.log(`File exists: ${fileInfo.exists}, Size: ${fileInfo.size} bytes`);
+    } catch (infoError) {
+      console.warn('Could not get file info, will try reading anyway:', infoError);
+    }
+
+    // Step 2: On iOS, try copying to document directory if direct read fails
+    if (Platform.OS === 'ios' && FileSystem.documentDirectory) {
+      try {
+        const docDir = FileSystem.documentDirectory;
+        const timestamp = Date.now();
+        const safeFileName = `import_${timestamp}.csv`;
+        const targetUri = `${docDir}${safeFileName}`;
+        
+        console.log('Attempting to copy file to document directory:', targetUri);
+        await FileSystem.copyAsync({
+          from: uri,
+          to: targetUri,
+        });
+        
+        // Verify copied file exists
+        const copiedInfo = await FileSystem.getInfoAsync(targetUri);
+        if (copiedInfo.exists && copiedInfo.size > 0) {
+          console.log('File copied successfully, using copied file');
+          workingUri = targetUri;
+        }
+      } catch (copyError) {
+        console.log('File copy failed, will try direct read:', copyError);
+      }
+    }
+
+    // Step 3: Normalize URI for Windows file paths
+    let normalizedUri = workingUri;
+    if (workingUri.startsWith('file:///')) {
+      normalizedUri = workingUri.replace('file:///', 'file://');
+    }
+
+    // Step 4: Try multiple reading methods
+    const methods = [
+      // Method 1: Direct UTF8 read with normalized URI
+      async () => {
+        console.log('Method 1: Direct UTF8 read (normalized)');
+        return await FileSystem.readAsStringAsync(normalizedUri, { encoding: 'utf8' });
+      },
+      // Method 2: Direct UTF8 read with original URI
+      async () => {
+        if (normalizedUri !== workingUri) {
+          console.log('Method 2: Direct UTF8 read (original)');
+          return await FileSystem.readAsStringAsync(workingUri, { encoding: 'utf8' });
+        }
+        throw new Error('Skipped - same as method 1');
+      },
+      // Method 3: Direct read without encoding
+      async () => {
+        console.log('Method 3: Direct read (default encoding)');
+        return await FileSystem.readAsStringAsync(normalizedUri);
+      },
+      // Method 4: Base64 decode
+      async () => {
+        console.log('Method 4: Base64 decode');
+        const base64 = await FileSystem.readAsStringAsync(normalizedUri, { encoding: 'base64' });
+        if (!base64) throw new Error('Base64 content is empty');
+        
+        const binaryString = atob(base64);
         const bytes = new Uint8Array(binaryString.length);
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
         const decoder = new TextDecoder('utf-8');
-        const decoded = decoder.decode(bytes);
-        
-        if (decoded && decoded.trim().length > 0) {
-          console.log('Base64 decode successful, length:', decoded.length);
-          const cleanContent = decoded.replace(/^\uFEFF/, '');
-          return cleanContent;
+        return decoder.decode(bytes);
+      },
+      // Method 5: iOS-specific URI variations
+      ...(Platform.OS === 'ios' ? [
+        async () => {
+          console.log('Method 5: URI without file:// prefix');
+          const uriWithoutPrefix = uri.replace(/^file:\/\//, '');
+          return await FileSystem.readAsStringAsync(uriWithoutPrefix, { encoding: 'utf8' });
+        },
+        async () => {
+          console.log('Method 6: URI with file:// prefix');
+          const uriWithPrefix = uri.startsWith('file://') ? uri : `file://${uri}`;
+          return await FileSystem.readAsStringAsync(uriWithPrefix, { encoding: 'utf8' });
+        },
+      ] : []),
+    ];
+
+    // Try each method
+    for (let i = 0; i < methods.length; i++) {
+      try {
+        const content = await methods[i]();
+        if (content && content.trim().length > 0) {
+          console.log(`Method ${i + 1} succeeded, content length: ${content.length}`);
+          return content.replace(/^\uFEFF/, ''); // Remove BOM
+        } else {
+          console.log(`Method ${i + 1} returned empty content`);
         }
+      } catch (methodError) {
+        console.log(`Method ${i + 1} failed:`, methodError);
+        // Continue to next method
       }
-    } catch (readErr) {
-      console.log('Base64 read failed:', readErr);
     }
 
-    throw new Error('Unable to read file. Please try saving your CSV file to a different location (like Downloads folder) and try again.');
+    throw new Error('All file reading methods failed. The file may not be accessible. Please try selecting the file again or use a Dropbox link instead');
   };
 
   const processFile = async (uri: string, name: string) => {
@@ -231,24 +272,8 @@ export default function ImportInventoryScreen() {
         }
         content = await response.text();
       } else {
-        // For native platforms, try FileSystem first (since copyToCacheDirectory is true)
-        try {
-          content = await readFileContent(uri);
-        } catch (fileSystemError) {
-          // If FileSystem fails, try fetch as fallback (useful for Windows file:// URIs)
-          console.log('FileSystem read failed, trying fetch:', fileSystemError);
-          try {
-            const response = await fetch(uri);
-            if (response.ok) {
-              content = await response.text();
-            } else {
-              throw new Error(`Failed to fetch file: ${response.status}`);
-            }
-          } catch (fetchError) {
-            // If both fail, throw the original FileSystem error
-            throw fileSystemError;
-          }
-        }
+        // For native platforms, use advanced file reading
+        content = await readFileContent(uri);
       }
 
       console.log('File content length:', content.length);
