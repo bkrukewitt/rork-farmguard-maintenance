@@ -18,7 +18,7 @@ import {
 import { useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+
 import { 
   Upload, 
   FileSpreadsheet, 
@@ -92,160 +92,25 @@ export default function ImportEquipmentScreen() {
     console.log('=== File Reading Debug ===');
     console.log('Original URI:', uri);
     console.log('Platform:', Platform.OS);
-    console.log('Cache Directory:', FileSystem.cacheDirectory);
-    console.log('Document Directory:', FileSystem.documentDirectory);
-    
-    // Step 1: Normalize URI - iOS often returns file:/// (three slashes) which needs to be file://
-    let normalizedUri = uri;
-    if (normalizedUri.startsWith('file:///')) {
-      normalizedUri = normalizedUri.replace('file:///', 'file://');
-      console.log('Normalized URI (removed triple slash):', normalizedUri);
-    }
-    
-    // Step 2: On iOS, ALWAYS copy to document directory first for guaranteed access
-    // The picker's URI may be in a temporary location that's not directly readable
-    let workingUri = normalizedUri;
-    if (Platform.OS === 'ios' && FileSystem.documentDirectory) {
-      try {
-        const docDir = FileSystem.documentDirectory;
-        const timestamp = Date.now();
-        const safeFileName = `import_${timestamp}.csv`;
-        const targetUri = `${docDir}${safeFileName}`;
-        
-        console.log('Copying file to document directory for guaranteed access...');
-        console.log('From:', normalizedUri);
-        console.log('To:', targetUri);
-        
-        // Try copying with normalized URI first
-        try {
-          await FileSystem.copyAsync({
-            from: normalizedUri,
-            to: targetUri,
-          });
-        } catch (normalizedCopyError) {
-          // If normalized fails, try original URI
-          console.log('Normalized URI copy failed, trying original URI');
-          await FileSystem.copyAsync({
-            from: uri,
-            to: targetUri,
-          });
-        }
-        
-        // Verify copied file
-        const copiedInfo = await FileSystem.getInfoAsync(targetUri, { size: true });
-        if (copiedInfo.exists && copiedInfo.size > 0) {
-          console.log(`✓ File copied successfully: ${copiedInfo.size} bytes`);
-          workingUri = targetUri;
-        } else {
-          throw new Error('File copy completed but verification failed - file does not exist or is empty');
-        }
-      } catch (copyError) {
-        const errorMsg = copyError instanceof Error ? copyError.message : String(copyError);
-        console.error('File copy failed:', errorMsg);
-        throw new Error(`Unable to copy file to accessible location: ${errorMsg}. The file may be in a restricted location.`);
-      }
-    }
-    
-    // Step 3: Verify file exists and get detailed info
-    let fileInfo: FileSystem.FileInfo | null = null;
-    
+
     try {
-      fileInfo = await FileSystem.getInfoAsync(workingUri, { size: true });
-      console.log('File info check:', {
-        exists: fileInfo.exists,
-        size: fileInfo.size,
-        isDirectory: fileInfo.isDirectory,
-        uri: fileInfo.uri,
-      });
-      
-      if (!fileInfo.exists) {
-        console.error('File does not exist at working URI:', workingUri);
-        throw new Error(`File does not exist at the working location. URI: ${workingUri.substring(0, 100)}...`);
+      const response = await fetch(uri);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file: ${response.status}`);
       }
-      
-      if (fileInfo.size === 0) {
+      const content = await response.text();
+      if (!content || content.trim().length === 0) {
         throw new Error('File is empty (0 bytes)');
       }
-      
-      console.log(`✓ File verified: ${fileInfo.size} bytes`);
-    } catch (infoError) {
-      const errorMsg = infoError instanceof Error ? infoError.message : String(infoError);
-      console.error('File info check failed:', errorMsg);
-      throw new Error(`Cannot verify file: ${errorMsg}`);
+      console.log(`File read successfully: ${content.length} characters`);
+      return content.replace(/^\uFEFF/, '');
+    } catch (fetchError) {
+      const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
+      console.error('Fetch read failed:', errorMsg);
+      throw new Error(
+        `Unable to read the file. Please try: 1) Selecting the file again, 2) Moving the file to a different location (like Files app root), or 3) Using a Dropbox link instead.`
+      );
     }
-
-    // Step 3: Try reading with the working URI
-    // Since copyToCacheDirectory: true was used, the URI should be accessible
-    // But we'll try multiple approaches for maximum compatibility
-    const readMethods = [
-      {
-        name: 'Direct UTF8 read',
-        fn: async () => {
-          console.log('Attempting: Direct UTF8 read from', workingUri);
-          return await FileSystem.readAsStringAsync(workingUri, { encoding: 'utf8' });
-        },
-      },
-      {
-        name: 'Direct read (default encoding)',
-        fn: async () => {
-          console.log('Attempting: Direct read (default encoding)');
-          return await FileSystem.readAsStringAsync(workingUri);
-        },
-      },
-      {
-        name: 'Base64 decode',
-        fn: async () => {
-          console.log('Attempting: Base64 decode');
-          const base64 = await FileSystem.readAsStringAsync(workingUri, { encoding: 'base64' });
-          if (!base64 || base64.trim().length === 0) {
-            throw new Error('Base64 content is empty');
-          }
-          
-          // Convert base64 to text
-          const binaryString = atob(base64);
-          const bytes = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          const decoder = new TextDecoder('utf-8');
-          return decoder.decode(bytes);
-        },
-      },
-    ];
-
-    // Try each reading method
-    const errors: string[] = [];
-    for (const method of readMethods) {
-      try {
-        console.log(`Trying: ${method.name}`);
-        const content = await method.fn();
-        
-        if (content && content.trim().length > 0) {
-          console.log(`✓ Success with ${method.name}: ${content.length} characters`);
-          return content.replace(/^\uFEFF/, ''); // Remove BOM if present
-        } else {
-          console.warn(`${method.name} returned empty content`);
-          errors.push(`${method.name}: returned empty content`);
-        }
-      } catch (methodError) {
-        const errorMsg = methodError instanceof Error ? methodError.message : String(methodError);
-        console.error(`${method.name} failed:`, errorMsg);
-        errors.push(`${method.name}: ${errorMsg}`);
-      }
-    }
-
-    // All methods failed
-    console.error('=== All file reading methods failed ===');
-    console.error('URI:', uri);
-    console.error('Working URI:', workingUri);
-    console.error('File Info:', fileInfo);
-    console.error('Errors:', errors);
-    
-    throw new Error(
-      `Unable to read the file. This may be a permission issue or the file location is not accessible. ` +
-      `Please try: 1) Selecting the file again, 2) Moving the file to a different location (like Files app root), or 3) Using a Dropbox link instead. ` +
-      `URI: ${uri.substring(0, 80)}...`
-    );
   }
 
   const handlePickFromDevice = async () => {
