@@ -140,6 +140,8 @@ export default function ImportInventoryScreen() {
     console.log('=== File Reading Debug ===');
     console.log('Original URI:', uri);
     console.log('Platform:', Platform.OS);
+    console.log('Cache Directory:', FileSystem.cacheDirectory);
+    console.log('Document Directory:', FileSystem.documentDirectory);
     
     // Step 1: Normalize URI - iOS often returns file:/// (three slashes) which needs to be file://
     let normalizedUri = uri;
@@ -148,16 +150,59 @@ export default function ImportInventoryScreen() {
       console.log('Normalized URI (removed triple slash):', normalizedUri);
     }
     
-    // Step 2: On iOS, the file picker returns a valid URI we can use directly
+    // Step 2: On iOS, ALWAYS copy to document directory first for guaranteed access
+    // The picker's URI may be in a temporary location that's not directly readable
     let workingUri = normalizedUri;
+    if (Platform.OS === 'ios' && FileSystem.documentDirectory) {
+      try {
+        const docDir = FileSystem.documentDirectory;
+        const timestamp = Date.now();
+        const safeFileName = `import_${timestamp}.csv`;
+        const targetUri = `${docDir}${safeFileName}`;
+        
+        console.log('Copying file to document directory for guaranteed access...');
+        console.log('From:', normalizedUri);
+        console.log('To:', targetUri);
+        
+        // Try copying with normalized URI first
+        try {
+          await FileSystem.copyAsync({
+            from: normalizedUri,
+            to: targetUri,
+          });
+        } catch (normalizedCopyError) {
+          // If normalized fails, try original URI
+          console.log('Normalized URI copy failed, trying original URI');
+          await FileSystem.copyAsync({
+            from: uri,
+            to: targetUri,
+          });
+        }
+        
+        // Verify copied file
+        const copiedInfo = await FileSystem.getInfoAsync(targetUri, { size: true });
+        if (copiedInfo.exists && copiedInfo.size > 0) {
+          console.log(`✓ File copied successfully: ${copiedInfo.size} bytes`);
+          workingUri = targetUri;
+        } else {
+          throw new Error('File copy completed but verification failed - file does not exist or is empty');
+        }
+      } catch (copyError) {
+        const errorMsg = copyError instanceof Error ? copyError.message : String(copyError);
+        console.error('File copy failed:', errorMsg);
+        throw new Error(`Unable to copy file to accessible location: ${errorMsg}. The file may be in a restricted location.`);
+      }
+    }
     
     // Step 3: Verify file exists and get detailed info
     let fileInfo: FileSystem.FileInfo | null = null;
     
     try {
-      fileInfo = await FileSystem.getInfoAsync(workingUri);
+      fileInfo = await FileSystem.getInfoAsync(workingUri, { size: true });
       console.log('File info check:', {
         exists: fileInfo.exists,
+        size: fileInfo.size,
+        isDirectory: fileInfo.isDirectory,
         uri: fileInfo.uri,
       });
       
@@ -166,7 +211,11 @@ export default function ImportInventoryScreen() {
         throw new Error(`File does not exist at the working location. URI: ${workingUri.substring(0, 100)}...`);
       }
       
-      console.log(`✓ File verified`);
+      if (fileInfo.size === 0) {
+        throw new Error('File is empty (0 bytes)');
+      }
+      
+      console.log(`✓ File verified: ${fileInfo.size} bytes`);
     } catch (infoError) {
       const errorMsg = infoError instanceof Error ? infoError.message : String(infoError);
       console.error('File info check failed:', errorMsg);
@@ -366,7 +415,7 @@ export default function ImportInventoryScreen() {
             }),
             timeoutPromise
           ]);
-        } catch {
+        } catch (retryError) {
           throw pickerError; // Throw original error
         }
       }
