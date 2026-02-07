@@ -1,111 +1,159 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useEffect } from 'react';
 import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
-
-const STORAGE_KEYS = {
-  EQUIPMENT: 'farmguard_equipment',
-  MAINTENANCE_LOGS: 'farmguard_maintenance_logs',
-  INTERVALS: 'farmguard_intervals',
-  CONSUMABLES: 'farmguard_consumables',
-  SERVICE_ROUTINES: 'farmguard_service_routines',
-  INSPECTION_ROUTINES: 'farmguard_inspection_routines',
-};
-
-async function loadData<T>(key: string): Promise<T[]> {
-  try {
-    const data = await AsyncStorage.getItem(key);
-    if (data) {
-      const parsed = JSON.parse(data);
-      console.log(`Data loaded successfully: ${key}, items: ${parsed.length}`);
-      return parsed;
-    } else {
-      console.log(`No data found for key: ${key}`);
-      return [];
-    }
-  } catch (error) {
-    console.error(`Error loading data: ${key}`, error);
-    // Return empty array on error to prevent app crash
-    return [];
-  }
-}
-
-async function saveData<T>(key: string, data: T[]): Promise<void> {
-  try {
-    const jsonData = JSON.stringify(data);
-    await AsyncStorage.setItem(key, jsonData);
-    console.log(`Data saved successfully: ${key}, items: ${data.length}`);
-  } catch (error) {
-    console.error(`Error saving data: ${key}`, error);
-    // Re-throw error so mutations can handle it
-    throw error;
-  }
-}
+import { supabase } from '@/utils/supabase';
+import { useAuth } from './AuthContext';
 
 export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
 
   const equipmentQuery = useQuery({
-    queryKey: ['equipment'],
-    queryFn: () => loadData<Equipment>(STORAGE_KEYS.EQUIPMENT),
-    staleTime: Infinity, // Data from AsyncStorage is always fresh
-    gcTime: Infinity, // Never garbage collect this data
-    refetchOnMount: true, // Always refetch on mount to ensure data is loaded
-    refetchOnWindowFocus: false, // Don't refetch on window focus
-    refetchOnReconnect: false, // Don't refetch on reconnect
+    queryKey: ['equipment', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('equipment')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.error('Error loading equipment:', error);
+        throw error;
+      }
+      console.log(`Equipment loaded: ${data?.length || 0} items`);
+      return data as Equipment[];
+    },
+    enabled: !!user,
+    staleTime: 30000,
   });
 
   const maintenanceLogsQuery = useQuery({
-    queryKey: ['maintenanceLogs'],
-    queryFn: () => loadData<MaintenanceLog>(STORAGE_KEYS.MAINTENANCE_LOGS),
-    staleTime: Infinity,
-    gcTime: Infinity,
-    refetchOnMount: true,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    queryKey: ['maintenanceLogs', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('maintenance_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('date', { ascending: false });
+      if (error) {
+        console.error('Error loading maintenance logs:', error);
+        throw error;
+      }
+      console.log(`Maintenance logs loaded: ${data?.length || 0} items`);
+      return data as MaintenanceLog[];
+    },
+    enabled: !!user,
+    staleTime: 30000,
   });
 
   const intervalsQuery = useQuery({
-    queryKey: ['intervals'],
-    queryFn: () => loadData<MaintenanceInterval>(STORAGE_KEYS.INTERVALS),
-    staleTime: Infinity,
-    gcTime: Infinity,
-    refetchOnMount: true,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    queryKey: ['intervals', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('maintenance_intervals')
+        .select('*')
+        .eq('user_id', user.id);
+      if (error) {
+        console.error('Error loading intervals:', error);
+        throw error;
+      }
+      return data as MaintenanceInterval[];
+    },
+    enabled: !!user,
+    staleTime: 30000,
   });
 
   const consumablesQuery = useQuery({
-    queryKey: ['consumables'],
-    queryFn: () => loadData<Consumable>(STORAGE_KEYS.CONSUMABLES),
-    staleTime: Infinity,
-    gcTime: Infinity,
-    refetchOnMount: true,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    queryKey: ['consumables', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('consumables')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.error('Error loading consumables:', error);
+        throw error;
+      }
+      console.log(`Consumables loaded: ${data?.length || 0} items`);
+      return data as Consumable[];
+    },
+    enabled: !!user,
+    staleTime: 30000,
   });
 
   const serviceRoutinesQuery = useQuery({
-    queryKey: ['serviceRoutines'],
-    queryFn: () => loadData<ServiceRoutine>(STORAGE_KEYS.SERVICE_ROUTINES),
-    staleTime: Infinity,
-    gcTime: Infinity,
-    refetchOnMount: true,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    queryKey: ['serviceRoutines', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('service_routines')
+        .select('*')
+        .eq('user_id', user.id);
+      if (error) {
+        console.error('Error loading service routines:', error);
+        throw error;
+      }
+      return data as ServiceRoutine[];
+    },
+    enabled: !!user,
+    staleTime: 30000,
   });
 
   const inspectionRoutinesQuery = useQuery({
-    queryKey: ['inspectionRoutines'],
-    queryFn: () => loadData<InspectionRoutine>(STORAGE_KEYS.INSPECTION_ROUTINES),
-    staleTime: Infinity,
-    gcTime: Infinity,
-    refetchOnMount: true,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
+    queryKey: ['inspectionRoutines', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const { data, error } = await supabase
+        .from('inspection_routines')
+        .select('*')
+        .eq('user_id', user.id);
+      if (error) {
+        console.error('Error loading inspection routines:', error);
+        throw error;
+      }
+      return data as InspectionRoutine[];
+    },
+    enabled: !!user,
+    staleTime: 30000,
   });
+
+  useEffect(() => {
+    if (!user) return;
+
+    const equipmentChannel = supabase
+      .channel('equipment_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'equipment', filter: `user_id=eq.${user.id}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ['equipment', user.id] });
+      })
+      .subscribe();
+
+    const logsChannel = supabase
+      .channel('logs_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_logs', filter: `user_id=eq.${user.id}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ['maintenanceLogs', user.id] });
+      })
+      .subscribe();
+
+    const consumablesChannel = supabase
+      .channel('consumables_changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'consumables', filter: `user_id=eq.${user.id}` }, () => {
+        queryClient.invalidateQueries({ queryKey: ['consumables', user.id] });
+      })
+      .subscribe();
+
+    return () => {
+      equipmentChannel.unsubscribe();
+      logsChannel.unsubscribe();
+      consumablesChannel.unsubscribe();
+    };
+  }, [user, queryClient]);
 
   const equipment = useMemo(() => equipmentQuery.data ?? [], [equipmentQuery.data]);
   const maintenanceLogs = useMemo(() => maintenanceLogsQuery.data ?? [], [maintenanceLogsQuery.data]);
@@ -116,103 +164,129 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const addEquipmentMutation = useMutation({
     mutationFn: async (newEquipment: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>) => {
+      if (!user) throw new Error('User not authenticated');
       const now = new Date().toISOString();
-      const equipmentItem: Equipment = {
+      const equipmentItem = {
         ...newEquipment,
         id: generateId(),
-        createdAt: now,
-        updatedAt: now,
+        user_id: user.id,
+        created_at: now,
+        updated_at: now,
       };
-      const updated = [...equipment, equipmentItem];
-      await saveData(STORAGE_KEYS.EQUIPMENT, updated);
-      return equipmentItem;
+      const { data, error } = await supabase.from('equipment').insert(equipmentItem).select().single();
+      if (error) throw error;
+      return data as Equipment;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment', user?.id] });
     },
   });
 
   const updateEquipmentMutation = useMutation({
     mutationFn: async (updates: Partial<Equipment> & { id: string }) => {
-      const updated = equipment.map(e =>
-        e.id === updates.id
-          ? { ...e, ...updates, updatedAt: new Date().toISOString() }
-          : e
-      );
-      await saveData(STORAGE_KEYS.EQUIPMENT, updated);
-      return updated.find(e => e.id === updates.id);
+      if (!user) throw new Error('User not authenticated');
+      const { id, ...updateData } = updates;
+      const { data, error } = await supabase
+        .from('equipment')
+        .update({ ...updateData, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Equipment;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment', user?.id] });
     },
   });
 
   const deleteEquipmentMutation = useMutation({
     mutationFn: async (id: string) => {
-      const updated = equipment.filter(e => e.id !== id);
-      await saveData(STORAGE_KEYS.EQUIPMENT, updated);
-      const updatedLogs = maintenanceLogs.filter(l => l.equipmentId !== id);
-      await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updatedLogs);
-      const updatedIntervals = intervals.filter(i => i.equipmentId !== id);
-      await saveData(STORAGE_KEYS.INTERVALS, updatedIntervals);
+      if (!user) throw new Error('User not authenticated');
+      const { error: logsError } = await supabase
+        .from('maintenance_logs')
+        .delete()
+        .eq('equipment_id', id)
+        .eq('user_id', user.id);
+      if (logsError) throw logsError;
+
+      const { error: intervalsError } = await supabase
+        .from('maintenance_intervals')
+        .delete()
+        .eq('equipment_id', id)
+        .eq('user_id', user.id);
+      if (intervalsError) throw intervalsError;
+
+      const { error } = await supabase.from('equipment').delete().eq('id', id).eq('user_id', user.id);
+      if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['equipment'] });
-      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
-      queryClient.invalidateQueries({ queryKey: ['intervals'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs', user?.id] });
+      queryClient.invalidateQueries({ queryKey: ['intervals', user?.id] });
     },
   });
 
   const addMaintenanceLogMutation = useMutation({
     mutationFn: async (log: Omit<MaintenanceLog, 'id' | 'createdAt'>) => {
-      const newLog: MaintenanceLog = {
+      if (!user) throw new Error('User not authenticated');
+      const newLog = {
         ...log,
         id: generateId(),
-        createdAt: new Date().toISOString(),
+        user_id: user.id,
+        created_at: new Date().toISOString(),
       };
-      const updated = [...maintenanceLogs, newLog];
-      await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
-      return newLog;
+      const { data, error } = await supabase.from('maintenance_logs').insert(newLog).select().single();
+      if (error) throw error;
+      return data as MaintenanceLog;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs', user?.id] });
     },
   });
 
   const deleteMaintenanceLogMutation = useMutation({
     mutationFn: async (id: string) => {
-      const updated = maintenanceLogs.filter(l => l.id !== id);
-      await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
+      if (!user) throw new Error('User not authenticated');
+      const { error } = await supabase.from('maintenance_logs').delete().eq('id', id).eq('user_id', user.id);
+      if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs', user?.id] });
     },
   });
 
   const addIntervalMutation = useMutation({
     mutationFn: async (interval: Omit<MaintenanceInterval, 'id'>) => {
-      const newInterval: MaintenanceInterval = {
+      if (!user) throw new Error('User not authenticated');
+      const newInterval = {
         ...interval,
         id: generateId(),
+        user_id: user.id,
       };
-      const updated = [...intervals, newInterval];
-      await saveData(STORAGE_KEYS.INTERVALS, updated);
-      return newInterval;
+      const { data, error } = await supabase.from('maintenance_intervals').insert(newInterval).select().single();
+      if (error) throw error;
+      return data as MaintenanceInterval;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['intervals'] });
+      queryClient.invalidateQueries({ queryKey: ['intervals', user?.id] });
     },
   });
 
   const updateIntervalMutation = useMutation({
     mutationFn: async (updates: Partial<MaintenanceInterval> & { id: string }) => {
-      const updated = intervals.map(i =>
-        i.id === updates.id ? { ...i, ...updates } : i
-      );
-      await saveData(STORAGE_KEYS.INTERVALS, updated);
+      if (!user) throw new Error('User not authenticated');
+      const { id, ...updateData } = updates;
+      const { error } = await supabase
+        .from('maintenance_intervals')
+        .update(updateData)
+        .eq('id', id)
+        .eq('user_id', user.id);
+      if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['intervals'] });
+      queryClient.invalidateQueries({ queryKey: ['intervals', user?.id] });
     },
   });
 
@@ -236,64 +310,71 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const addConsumableMutation = useMutation({
     mutationFn: async (newConsumable: Omit<Consumable, 'id' | 'createdAt' | 'updatedAt'>) => {
+      if (!user) throw new Error('User not authenticated');
       const now = new Date().toISOString();
-      const consumableItem: Consumable = {
+      const consumableItem = {
         ...newConsumable,
         id: generateId(),
-        createdAt: now,
-        updatedAt: now,
+        user_id: user.id,
+        created_at: now,
+        updated_at: now,
       };
-      const updated = [...consumables, consumableItem];
-      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
-      return consumableItem;
+      const { data, error } = await supabase.from('consumables').insert(consumableItem).select().single();
+      if (error) throw error;
+      return data as Consumable;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      queryClient.invalidateQueries({ queryKey: ['consumables', user?.id] });
     },
   });
 
   const updateConsumableMutation = useMutation({
     mutationFn: async (updates: Partial<Consumable> & { id: string }) => {
-      const updated = consumables.map(c =>
-        c.id === updates.id
-          ? { ...c, ...updates, updatedAt: new Date().toISOString() }
-          : c
-      );
-      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
-      return updated.find(c => c.id === updates.id);
+      if (!user) throw new Error('User not authenticated');
+      const { id, ...updateData } = updates;
+      const { data, error } = await supabase
+        .from('consumables')
+        .update({ ...updateData, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Consumable;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      queryClient.invalidateQueries({ queryKey: ['consumables', user?.id] });
     },
   });
 
   const deleteConsumableMutation = useMutation({
     mutationFn: async (id: string) => {
-      const updated = consumables.filter(c => c.id !== id);
-      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
+      if (!user) throw new Error('User not authenticated');
+      const { error } = await supabase.from('consumables').delete().eq('id', id).eq('user_id', user.id);
+      if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      queryClient.invalidateQueries({ queryKey: ['consumables', user?.id] });
     },
   });
 
   const deductConsumablesMutation = useMutation({
     mutationFn: async (items: { consumableId: string; quantity: number }[]) => {
-      const updated = consumables.map(c => {
-        const deduction = items.find(i => i.consumableId === c.id);
-        if (deduction) {
-          return {
-            ...c,
-            quantity: Math.max(0, c.quantity - deduction.quantity),
-            updatedAt: new Date().toISOString(),
-          };
+      if (!user) throw new Error('User not authenticated');
+      for (const item of items) {
+        const consumable = consumables.find(c => c.id === item.consumableId);
+        if (consumable) {
+          const newQuantity = Math.max(0, consumable.quantity - item.quantity);
+          await supabase
+            .from('consumables')
+            .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
+            .eq('id', item.consumableId)
+            .eq('user_id', user.id);
         }
-        return c;
-      });
-      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
+      }
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      queryClient.invalidateQueries({ queryKey: ['consumables', user?.id] });
     },
   });
 
@@ -309,80 +390,91 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const bulkAddConsumablesMutation = useMutation({
     mutationFn: async (newConsumables: Omit<Consumable, 'id' | 'createdAt' | 'updatedAt'>[]) => {
+      if (!user) throw new Error('User not authenticated');
       const now = new Date().toISOString();
-      const consumableItems: Consumable[] = newConsumables.map(c => ({
+      const consumableItems = newConsumables.map(c => ({
         ...c,
         id: generateId(),
-        createdAt: now,
-        updatedAt: now,
+        user_id: user.id,
+        created_at: now,
+        updated_at: now,
       }));
-      const updated = [...consumables, ...consumableItems];
-      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
-      return consumableItems;
+      const { data, error } = await supabase.from('consumables').insert(consumableItems).select();
+      if (error) throw error;
+      return data as Consumable[];
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      queryClient.invalidateQueries({ queryKey: ['consumables', user?.id] });
     },
   });
 
   const bulkAddEquipmentMutation = useMutation({
     mutationFn: async (newEquipmentList: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>[]) => {
+      if (!user) throw new Error('User not authenticated');
       const now = new Date().toISOString();
-      const equipmentItems: Equipment[] = newEquipmentList.map(e => ({
+      const equipmentItems = newEquipmentList.map(e => ({
         ...e,
         id: generateId(),
-        createdAt: now,
-        updatedAt: now,
+        user_id: user.id,
+        created_at: now,
+        updated_at: now,
       }));
-      const updated = [...equipment, ...equipmentItems];
-      await saveData(STORAGE_KEYS.EQUIPMENT, updated);
-      return equipmentItems;
+      const { data, error } = await supabase.from('equipment').insert(equipmentItems).select();
+      if (error) throw error;
+      return data as Equipment[];
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment', user?.id] });
     },
   });
 
   const addServiceRoutineMutation = useMutation({
     mutationFn: async (newRoutine: Omit<ServiceRoutine, 'id' | 'createdAt' | 'updatedAt'>) => {
+      if (!user) throw new Error('User not authenticated');
       const now = new Date().toISOString();
-      const routineItem: ServiceRoutine = {
+      const routineItem = {
         ...newRoutine,
         id: generateId(),
-        createdAt: now,
-        updatedAt: now,
+        user_id: user.id,
+        created_at: now,
+        updated_at: now,
       };
-      const updated = [...serviceRoutines, routineItem];
-      await saveData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
-      return routineItem;
+      const { data, error } = await supabase.from('service_routines').insert(routineItem).select().single();
+      if (error) throw error;
+      return data as ServiceRoutine;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+      queryClient.invalidateQueries({ queryKey: ['serviceRoutines', user?.id] });
     },
   });
 
   const updateServiceRoutineMutation = useMutation({
     mutationFn: async (updates: Partial<ServiceRoutine> & { id: string }) => {
-      const updated = serviceRoutines.map(r =>
-        r.id === updates.id
-          ? { ...r, ...updates, updatedAt: new Date().toISOString() }
-          : r
-      );
-      await saveData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
-      return updated.find(r => r.id === updates.id);
+      if (!user) throw new Error('User not authenticated');
+      const { id, ...updateData } = updates;
+      const { data, error } = await supabase
+        .from('service_routines')
+        .update({ ...updateData, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as ServiceRoutine;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+      queryClient.invalidateQueries({ queryKey: ['serviceRoutines', user?.id] });
     },
   });
 
   const deleteServiceRoutineMutation = useMutation({
     mutationFn: async (id: string) => {
-      const updated = serviceRoutines.filter(r => r.id !== id);
-      await saveData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
+      if (!user) throw new Error('User not authenticated');
+      const { error } = await supabase.from('service_routines').delete().eq('id', id).eq('user_id', user.id);
+      if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+      queryClient.invalidateQueries({ queryKey: ['serviceRoutines', user?.id] });
     },
   });
 
@@ -393,44 +485,51 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const addInspectionRoutineMutation = useMutation({
     mutationFn: async (newRoutine: Omit<InspectionRoutine, 'id' | 'createdAt' | 'updatedAt'>) => {
+      if (!user) throw new Error('User not authenticated');
       const now = new Date().toISOString();
-      const routineItem: InspectionRoutine = {
+      const routineItem = {
         ...newRoutine,
         id: generateId(),
-        createdAt: now,
-        updatedAt: now,
+        user_id: user.id,
+        created_at: now,
+        updated_at: now,
       };
-      const updated = [...inspectionRoutines, routineItem];
-      await saveData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
-      return routineItem;
+      const { data, error } = await supabase.from('inspection_routines').insert(routineItem).select().single();
+      if (error) throw error;
+      return data as InspectionRoutine;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+      queryClient.invalidateQueries({ queryKey: ['inspectionRoutines', user?.id] });
     },
   });
 
   const updateInspectionRoutineMutation = useMutation({
     mutationFn: async (updates: Partial<InspectionRoutine> & { id: string }) => {
-      const updated = inspectionRoutines.map(r =>
-        r.id === updates.id
-          ? { ...r, ...updates, updatedAt: new Date().toISOString() }
-          : r
-      );
-      await saveData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
-      return updated.find(r => r.id === updates.id);
+      if (!user) throw new Error('User not authenticated');
+      const { id, ...updateData } = updates;
+      const { data, error } = await supabase
+        .from('inspection_routines')
+        .update({ ...updateData, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as InspectionRoutine;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+      queryClient.invalidateQueries({ queryKey: ['inspectionRoutines', user?.id] });
     },
   });
 
   const deleteInspectionRoutineMutation = useMutation({
     mutationFn: async (id: string) => {
-      const updated = inspectionRoutines.filter(r => r.id !== id);
-      await saveData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
+      if (!user) throw new Error('User not authenticated');
+      const { error } = await supabase.from('inspection_routines').delete().eq('id', id).eq('user_id', user.id);
+      if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+      queryClient.invalidateQueries({ queryKey: ['inspectionRoutines', user?.id] });
     },
   });
 
@@ -447,12 +546,11 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     serviceRoutinesQuery.isLoading ||
     inspectionRoutinesQuery.isLoading;
 
-  // Verify data is loaded - log if any data exists
   useEffect(() => {
-    if (!isLoading) {
+    if (!isLoading && user) {
       console.log('Data loaded - Equipment:', equipment.length, 'Maintenance Logs:', maintenanceLogs.length, 'Consumables:', consumables.length);
     }
-  }, [isLoading, equipment.length, maintenanceLogs.length, consumables.length]);
+  }, [isLoading, equipment.length, maintenanceLogs.length, consumables.length, user]);
 
   return {
     equipment,
