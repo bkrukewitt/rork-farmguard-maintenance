@@ -10,18 +10,30 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  InteractionManager,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import {
   Wrench,
   AlertCircle,
   ClipboardCheck,
   Check,
+  Paperclip,
+  FileText,
+  X,
+  Eye,
+  Trash2,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
-import { MaintenanceLog } from '@/types/equipment';
+import { MaintenanceLog, EquipmentAttachment } from '@/types/equipment';
+import { generateId } from '@/utils/helpers';
 
 const SERVICE_TYPES: { value: MaintenanceLog['type']; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
   { value: 'routine', label: 'Routine Service', Icon: Wrench },
@@ -49,6 +61,11 @@ export default function EditMaintenanceScreen() {
   const [hoursAtService, setHoursAtService] = useState('');
   const [performedBy, setPerformedBy] = useState<MaintenanceLog['performedBy']>('owner');
   const [notes, setNotes] = useState('');
+  const [existingAttachments, setExistingAttachments] = useState<EquipmentAttachment[]>([]);
+  const [newAttachments, setNewAttachments] = useState<{ id: string; label: string; fileName: string; uri: string }[]>([]);
+  const [showAttachmentLabelModal, setShowAttachmentLabelModal] = useState(false);
+  const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; name: string } | null>(null);
+  const [attachmentLabel, setAttachmentLabel] = useState('');
 
   // Initialize form from log data
   useEffect(() => {
@@ -59,14 +76,156 @@ export default function EditMaintenanceScreen() {
       setHoursAtService(log.hoursAtService.toString());
       setPerformedBy(log.performedBy);
       setNotes(log.notes ?? '');
+      setExistingAttachments(log.attachments ?? []);
     }
   }, [log?.id]);
+
+  const handlePickAttachment = async () => {
+    try {
+      await new Promise<void>((resolve) => {
+        InteractionManager.runAfterInteractions(() => {
+          setTimeout(() => resolve(), Platform.OS === 'ios' ? 300 : 100);
+        });
+      });
+
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return;
+      }
+
+      const file = result.assets[0];
+      setPendingAttachment({ uri: file.uri, name: file.name });
+      setAttachmentLabel('');
+      setShowAttachmentLabelModal(true);
+    } catch (error) {
+      console.log('Error picking attachment:', error);
+      Alert.alert('Error', 'Failed to pick file. Please try again.');
+    }
+  };
+
+  const handleConfirmAttachmentLabel = () => {
+    if (!pendingAttachment || !attachmentLabel.trim()) return;
+
+    setNewAttachments(prev => [
+      ...prev,
+      {
+        id: generateId(),
+        label: attachmentLabel.trim(),
+        fileName: pendingAttachment.name,
+        uri: pendingAttachment.uri,
+      },
+    ]);
+    setShowAttachmentLabelModal(false);
+    setPendingAttachment(null);
+    setAttachmentLabel('');
+  };
+
+  const handleRemoveExistingAttachment = (attachmentId: string) => {
+    Alert.alert(
+      'Remove Attachment',
+      'Are you sure you want to remove this attachment?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            const attachment = existingAttachments.find(a => a.id === attachmentId);
+            if (attachment) {
+              try {
+                const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
+                if (fileInfo.exists) {
+                  await FileSystem.deleteAsync(attachment.fileUri);
+                }
+              } catch (error) {
+                console.log('Error deleting file:', error);
+              }
+            }
+            setExistingAttachments(prev => prev.filter(a => a.id !== attachmentId));
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRemoveNewAttachment = (attachmentId: string) => {
+    setNewAttachments(prev => prev.filter(a => a.id !== attachmentId));
+  };
+
+  const handleViewAttachment = async (attachment: EquipmentAttachment) => {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
+      if (!fileInfo.exists) {
+        Alert.alert('File Not Found', 'This file may have been deleted.');
+        return;
+      }
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(attachment.fileUri, {
+          dialogTitle: attachment.label,
+        });
+      } else {
+        Alert.alert('Cannot Open', 'File sharing is not available on this device.');
+      }
+    } catch (error) {
+      console.log('Error viewing attachment:', error);
+      Alert.alert('Error', 'Failed to open the file.');
+    }
+  };
+
+  const saveNewAttachmentFiles = async (): Promise<EquipmentAttachment[]> => {
+    const savedAttachments: EquipmentAttachment[] = [];
+
+    for (const attachment of newAttachments) {
+      try {
+        const attachmentDir = `${FileSystem.documentDirectory}maintenance-attachments/`;
+        const dirInfo = await FileSystem.getInfoAsync(attachmentDir);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(attachmentDir, { intermediates: true });
+        }
+
+        const fileExtension = attachment.fileName.split('.').pop() || 'file';
+        const newFileName = `${attachment.id}.${fileExtension}`;
+        const newUri = `${attachmentDir}${newFileName}`;
+
+        await FileSystem.copyAsync({
+          from: attachment.uri,
+          to: newUri,
+        });
+
+        savedAttachments.push({
+          id: attachment.id,
+          label: attachment.label,
+          fileName: attachment.fileName,
+          fileUri: newUri,
+          createdAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        console.log('Error saving attachment:', error);
+      }
+    }
+
+    return savedAttachments;
+  };
 
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!description.trim()) {
         throw new Error('Description is required');
       }
+
+      // Save any new attachment files
+      const savedNewAttachments = newAttachments.length > 0
+        ? await saveNewAttachmentFiles()
+        : [];
+
+      const allAttachments = [...existingAttachments, ...savedNewAttachments];
 
       await updateMaintenanceLog({
         id: id ?? '',
@@ -76,6 +235,7 @@ export default function EditMaintenanceScreen() {
         hoursAtService: parseFloat(hoursAtService) || 0,
         performedBy,
         notes: notes.trim() || undefined,
+        attachments: allAttachments.length > 0 ? allAttachments : undefined,
       });
     },
     onSuccess: () => {
@@ -241,6 +401,68 @@ export default function EditMaintenanceScreen() {
               />
             </View>
           </View>
+
+          {/* Attachments */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Attachments</Text>
+            <TouchableOpacity
+              style={styles.attachFileButton}
+              onPress={handlePickAttachment}
+            >
+              <Paperclip color={Colors.primary} size={18} />
+              <Text style={styles.attachFileText}>Attach a File</Text>
+            </TouchableOpacity>
+
+            {(existingAttachments.length > 0 || newAttachments.length > 0) && (
+              <View style={styles.attachmentsList}>
+                {existingAttachments.map((attachment) => (
+                  <View key={attachment.id} style={styles.attachmentItem}>
+                    <View style={styles.attachmentItemIcon}>
+                      <FileText color={Colors.primary} size={18} />
+                    </View>
+                    <View style={styles.attachmentItemInfo}>
+                      <Text style={styles.attachmentItemLabel}>{attachment.label}</Text>
+                      <Text style={styles.attachmentItemFileName} numberOfLines={1}>
+                        {attachment.fileName}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.attachmentActionButton}
+                      onPress={() => handleViewAttachment(attachment)}
+                    >
+                      <Eye color={Colors.primary} size={16} />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.attachmentActionButton}
+                      onPress={() => handleRemoveExistingAttachment(attachment.id)}
+                    >
+                      <Trash2 color={Colors.statusOverdue} size={16} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+
+                {newAttachments.map((attachment) => (
+                  <View key={attachment.id} style={styles.attachmentItem}>
+                    <View style={styles.attachmentItemIcon}>
+                      <FileText color={Colors.accent} size={18} />
+                    </View>
+                    <View style={styles.attachmentItemInfo}>
+                      <Text style={styles.attachmentItemLabel}>{attachment.label}</Text>
+                      <Text style={styles.attachmentItemFileName} numberOfLines={1}>
+                        {attachment.fileName} (new)
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.attachmentActionButton}
+                      onPress={() => handleRemoveNewAttachment(attachment.id)}
+                    >
+                      <X color={Colors.statusOverdue} size={16} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
         </ScrollView>
 
         <View style={styles.footer}>
@@ -261,6 +483,65 @@ export default function EditMaintenanceScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        <Modal
+          visible={showAttachmentLabelModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => {
+            setShowAttachmentLabelModal(false);
+            setPendingAttachment(null);
+          }}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => {
+              setShowAttachmentLabelModal(false);
+              setPendingAttachment(null);
+            }}
+          >
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.modalTitle}>Label This File</Text>
+              <Text style={styles.modalSubtitle} numberOfLines={2}>
+                {pendingAttachment?.name ?? 'Selected file'}
+              </Text>
+
+              <View style={styles.modalInputGroup}>
+                <Text style={styles.modalInputLabel}>File Label</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  value={attachmentLabel}
+                  onChangeText={setAttachmentLabel}
+                  placeholder={"e.g., Invoice, Work Order, Photo"}
+                  placeholderTextColor={Colors.textSecondary}
+                  autoFocus
+                />
+              </View>
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.modalCancelButton}
+                  onPress={() => {
+                    setShowAttachmentLabelModal(false);
+                    setPendingAttachment(null);
+                  }}
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalSaveButton,
+                    !attachmentLabel.trim() && styles.modalSaveButtonDisabled,
+                  ]}
+                  onPress={handleConfirmAttachmentLabel}
+                  disabled={!attachmentLabel.trim()}
+                >
+                  <Text style={styles.modalSaveText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </KeyboardAvoidingView>
     </>
   );
@@ -449,6 +730,144 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   saveButtonText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.textOnPrimary,
+  },
+  attachFileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 14,
+    gap: 8,
+  },
+  attachFileText: {
+    fontSize: 15,
+    fontWeight: '500' as const,
+    color: Colors.primary,
+  },
+  attachmentsList: {
+    marginTop: 10,
+    gap: 8,
+  },
+  attachmentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  attachmentItemIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: Colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  attachmentItemInfo: {
+    flex: 1,
+  },
+  attachmentItemLabel: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  attachmentItemFileName: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  attachmentActionButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: Colors.surface,
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: Colors.text,
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  modalInputGroup: {
+    marginBottom: 20,
+  },
+  modalInputLabel: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    color: Colors.textSecondary,
+    marginBottom: 8,
+  },
+  modalInput: {
+    backgroundColor: Colors.background,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    color: Colors.text,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  modalCancelButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '600' as const,
+    color: Colors.textSecondary,
+  },
+  modalSaveButton: {
+    flex: 1,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+  },
+  modalSaveButtonDisabled: {
+    opacity: 0.5,
+  },
+  modalSaveText: {
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.textOnPrimary,

@@ -9,6 +9,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import {
   Wrench,
   AlertCircle,
@@ -21,9 +23,12 @@ import {
   Trash2,
   ChevronRight,
   Package,
+  Paperclip,
+  Eye,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { EquipmentAttachment } from '@/types/equipment';
 import { formatDate, formatHours } from '@/utils/helpers';
 
 export default function MaintenanceDetailScreen() {
@@ -33,11 +38,67 @@ export default function MaintenanceDetailScreen() {
     getMaintenanceLogById,
     getEquipmentById,
     deleteMaintenanceLog,
+    updateMaintenanceLog,
     isLoading,
   } = useFarmData();
 
   const log = getMaintenanceLogById(id ?? '');
   const equipment = log ? getEquipmentById(log.equipmentId) : undefined;
+
+  const handleViewAttachment = async (attachment: EquipmentAttachment) => {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
+      if (!fileInfo.exists) {
+        Alert.alert('File Not Found', 'This file may have been deleted.');
+        return;
+      }
+
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(attachment.fileUri, {
+          dialogTitle: attachment.label,
+        });
+      } else {
+        Alert.alert('Cannot Open', 'File sharing is not available on this device.');
+      }
+    } catch (error) {
+      console.log('Error viewing attachment:', error);
+      Alert.alert('Error', 'Failed to open the file.');
+    }
+  };
+
+  const handleDeleteAttachment = (attachment: EquipmentAttachment) => {
+    Alert.alert(
+      'Delete File',
+      `Are you sure you want to delete "${attachment.label}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
+              if (fileInfo.exists) {
+                await FileSystem.deleteAsync(attachment.fileUri);
+              }
+
+              const updatedAttachments = (log?.attachments ?? []).filter(
+                a => a.id !== attachment.id
+              );
+              await updateMaintenanceLog({
+                id: id ?? '',
+                attachments: updatedAttachments.length > 0 ? updatedAttachments : undefined,
+              });
+            } catch (error) {
+              console.log('Error deleting attachment:', error);
+              Alert.alert('Error', 'Failed to delete the file.');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const getTypeIcon = (type: string) => {
     switch (type) {
@@ -255,6 +316,46 @@ export default function MaintenanceDetailScreen() {
             </View>
           </View>
         ) : null}
+
+        {/* Attachments */}
+        {log.attachments && log.attachments.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Attachments</Text>
+            <View style={styles.detailsCard}>
+              {log.attachments.map((attachment, index) => (
+                <View
+                  key={attachment.id}
+                  style={[
+                    styles.attachmentRow,
+                    index < (log.attachments?.length ?? 0) - 1 && styles.attachmentRowBorder,
+                  ]}
+                >
+                  <View style={styles.attachmentIcon}>
+                    <FileText color={Colors.primary} size={18} />
+                  </View>
+                  <View style={styles.attachmentInfo}>
+                    <Text style={styles.attachmentLabel}>{attachment.label}</Text>
+                    <Text style={styles.attachmentFileName} numberOfLines={1}>
+                      {attachment.fileName}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={styles.attachmentAction}
+                    onPress={() => handleViewAttachment(attachment)}
+                  >
+                    <Eye color={Colors.primary} size={18} />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.attachmentAction}
+                    onPress={() => handleDeleteAttachment(attachment)}
+                  >
+                    <Trash2 color={Colors.statusOverdue} size={18} />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Actions */}
         <View style={styles.actionsSection}>
@@ -489,6 +590,46 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.statusOverdue,
+  },
+  attachmentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  attachmentRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  attachmentIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: Colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  attachmentInfo: {
+    flex: 1,
+  },
+  attachmentLabel: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  attachmentFileName: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  attachmentAction: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 4,
   },
   bottomPadding: {
     height: 40,
