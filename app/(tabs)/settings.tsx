@@ -216,7 +216,6 @@ export default function SettingsScreen() {
 
       <View style={styles.footer}>
         <Text style={styles.footerText}>FarmGuard Maintenance</Text>
-        <Text style={styles.footerSubtext}>Keep your equipment running strong</Text>
       </View>
     </ScrollView>
   );
