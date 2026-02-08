@@ -63,6 +63,7 @@ export default function EditEquipmentScreen() {
   const [purchaseDate, setPurchaseDate] = useState('');
   const [notes, setNotes] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [oilCapacity, setOilCapacity] = useState('');
 
   useEffect(() => {
     if (equipment) {
@@ -76,6 +77,7 @@ export default function EditEquipmentScreen() {
       setPurchaseDate(equipment.purchaseDate);
       setNotes(equipment.notes ?? '');
       setImageUri(equipment.imageUrl ?? null);
+      setOilCapacity(equipment.oilCapacity ?? '');
     }
   }, [equipment]);
 
@@ -151,6 +153,7 @@ export default function EditEquipmentScreen() {
         purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
         notes: notes.trim(),
         imageUrl: imageUri || undefined,
+        oilCapacity: oilCapacity.trim() || undefined,
       });
     },
     onSuccess: () => {
@@ -318,6 +321,17 @@ export default function EditEquipmentScreen() {
                 placeholder="Enter serial number"
                 placeholderTextColor={Colors.textSecondary}
                 autoCapitalize="characters"
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Oil Capacity</Text>
+              <TextInput
+                style={styles.input}
+                value={oilCapacity}
+                onChangeText={setOilCapacity}
+                placeholder="e.g., 15 quarts, 3.5 gallons"
+                placeholderTextColor={Colors.textSecondary}
               />
             </View>
 

@@ -172,10 +172,25 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       };
       const updated = [...maintenanceLogs, newLog];
       await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
+
+      // Auto-update equipment hours if hoursAtService is provided and greater than current
+      if (log.hoursAtService > 0) {
+        const equip = equipment.find(e => e.id === log.equipmentId);
+        if (equip && log.hoursAtService > equip.currentHours) {
+          const updatedEquipment = equipment.map(e =>
+            e.id === log.equipmentId
+              ? { ...e, currentHours: log.hoursAtService, updatedAt: new Date().toISOString() }
+              : e
+          );
+          await saveData(STORAGE_KEYS.EQUIPMENT, updatedEquipment);
+        }
+      }
+
       return newLog;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment'] });
     },
   });
 

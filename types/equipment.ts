@@ -9,6 +9,14 @@ export type EquipmentType =
   | 'mower'
   | 'other';
 
+export interface EquipmentAttachment {
+  id: string;
+  label: string;
+  fileName: string;
+  fileUri: string;
+  createdAt: string;
+}
+
 export interface Equipment {
   id: string;
   name: string;
@@ -19,9 +27,11 @@ export interface Equipment {
   serialNumber: string;
   purchaseDate: string;
   currentHours: number;
+  oilCapacity?: string;
   imageUrl?: string;
   warrantyExpiry?: string;
   notes?: string;
+  attachments?: EquipmentAttachment[];
   createdAt: string;
   updatedAt: string;
 }
