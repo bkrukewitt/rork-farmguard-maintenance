@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform, ScrollView, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { Colors } from '@/constants/colors';
+import Colors from '@/constants/colors';
 
 export default function AuthScreen() {
   const [isLogin, setIsLogin] = useState<boolean>(true);
