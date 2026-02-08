@@ -544,7 +544,7 @@ export default function EquipmentDetailScreen() {
                 style={styles.modalInput}
                 value={attachmentLabel}
                 onChangeText={setAttachmentLabel}
-                placeholder='e.g., Filters, Owner\'s Manual'
+                placeholder={"e.g., Filters, Owner's Manual"}
                 placeholderTextColor={Colors.textSecondary}
                 autoFocus
               />
