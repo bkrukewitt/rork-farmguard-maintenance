@@ -94,6 +94,7 @@ export interface MaintenanceLog {
   performedByName?: string;
   downtimeHours?: number;
   notes?: string;
+  attachments?: EquipmentAttachment[];
   createdAt: string;
 }
 
