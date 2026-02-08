@@ -18,6 +18,7 @@ import {
 import { useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 
 import { 
   Upload, 
@@ -94,19 +95,16 @@ export default function ImportEquipmentScreen() {
     console.log('Platform:', Platform.OS);
 
     try {
-      const response = await fetch(uri);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch file: ${response.status}`);
-      }
-      const content = await response.text();
+      // On native platforms, use FileSystem (fetch doesn't work with file:// URIs)
+      const content = await FileSystem.readAsStringAsync(uri, { encoding: 'utf8' });
       if (!content || content.trim().length === 0) {
         throw new Error('File is empty (0 bytes)');
       }
       console.log(`File read successfully: ${content.length} characters`);
-      return content.replace(/^\uFEFF/, '');
-    } catch (fetchError) {
-      const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
-      console.error('Fetch read failed:', errorMsg);
+      return content.replace(/^\uFEFF/, ''); // Remove BOM if present
+    } catch (fileError) {
+      const errorMsg = fileError instanceof Error ? fileError.message : String(fileError);
+      console.error('File read failed:', errorMsg);
       throw new Error(
         `Unable to read the file. Please try: 1) Selecting the file again, 2) Moving the file to a different location (like Files app root), or 3) Using a Dropbox link instead.`
       );
