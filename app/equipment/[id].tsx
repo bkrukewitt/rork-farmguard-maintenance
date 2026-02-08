@@ -494,7 +494,12 @@ export default function EquipmentDetailScreen() {
             </View>
           ) : (
             logs.slice(0, 10).map(log => (
-              <View key={log.id} style={styles.logCard}>
+              <TouchableOpacity
+                key={log.id}
+                style={styles.logCard}
+                onPress={() => router.push(`/maintenance/${log.id}` as any)}
+                activeOpacity={0.7}
+              >
                 <View style={styles.logHeader}>
                   <Text style={styles.logDate}>{formatDate(log.date)}</Text>
                   <Text style={[
@@ -508,7 +513,7 @@ export default function EquipmentDetailScreen() {
                 <View style={styles.logMeta}>
                   <Text style={styles.logMetaText}>@ {formatHours(log.hoursAtService)}</Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))
           )}
         </View>

@@ -194,6 +194,37 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
   });
 
+  const updateMaintenanceLogMutation = useMutation({
+    mutationFn: async (updates: Partial<MaintenanceLog> & { id: string }) => {
+      const updated = maintenanceLogs.map(l =>
+        l.id === updates.id ? { ...l, ...updates } : l
+      );
+      await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
+
+      // Auto-update equipment hours if hoursAtService changed and is greater than current
+      if (updates.hoursAtService && updates.hoursAtService > 0) {
+        const log = updated.find(l => l.id === updates.id);
+        if (log) {
+          const equip = equipment.find(e => e.id === log.equipmentId);
+          if (equip && updates.hoursAtService > equip.currentHours) {
+            const updatedEquipment = equipment.map(e =>
+              e.id === log.equipmentId
+                ? { ...e, currentHours: updates.hoursAtService!, updatedAt: new Date().toISOString() }
+                : e
+            );
+            await saveData(STORAGE_KEYS.EQUIPMENT, updatedEquipment);
+          }
+        }
+      }
+
+      return updated.find(l => l.id === updates.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+    },
+  });
+
   const deleteMaintenanceLogMutation = useMutation({
     mutationFn: async (id: string) => {
       const updated = maintenanceLogs.filter(l => l.id !== id);
@@ -311,6 +342,11 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
     },
   });
+
+  const getMaintenanceLogById = useCallback(
+    (id: string) => maintenanceLogs.find(l => l.id === id),
+    [maintenanceLogs]
+  );
 
   const getConsumableById = useCallback(
     (id: string) => consumables.find(c => c.id === id),
@@ -481,7 +517,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     updateEquipment: updateEquipmentMutation.mutateAsync,
     deleteEquipment: deleteEquipmentMutation.mutateAsync,
     addMaintenanceLog: addMaintenanceLogMutation.mutateAsync,
+    updateMaintenanceLog: updateMaintenanceLogMutation.mutateAsync,
     deleteMaintenanceLog: deleteMaintenanceLogMutation.mutateAsync,
+    getMaintenanceLogById,
     addInterval: addIntervalMutation.mutateAsync,
     updateInterval: updateIntervalMutation.mutateAsync,
     getEquipmentById,
