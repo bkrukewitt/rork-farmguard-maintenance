@@ -3,23 +3,10 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { ThemeProvider, DefaultTheme } from "@react-navigation/native";
 import { FarmDataProvider } from "@/contexts/FarmDataContext";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Colors from "@/constants/colors";
 import { ActivityIndicator, View, StyleSheet } from "react-native";
-
-const appTheme = {
-  ...DefaultTheme,
-  colors: {
-    ...DefaultTheme.colors,
-    background: Colors.background,
-    card: Colors.surface,
-    text: Colors.text,
-    border: Colors.border,
-    primary: Colors.primary,
-  },
-};
 
 SplashScreen.preventAutoHideAsync();
 
@@ -142,13 +129,11 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <ThemeProvider value={appTheme}>
-          <AuthProvider>
-            <FarmDataProvider>
-              <RootLayoutNav />
-            </FarmDataProvider>
-          </AuthProvider>
-        </ThemeProvider>
+        <AuthProvider>
+          <FarmDataProvider>
+            <RootLayoutNav />
+          </FarmDataProvider>
+        </AuthProvider>
       </GestureHandlerRootView>
     </QueryClientProvider>
   );
