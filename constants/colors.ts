@@ -1,4 +1,4 @@
-export default {
+const Colors = {
   primary: "#2D5016",
   primaryLight: "#4A7C23",
   primaryDark: "#1E3A0F",
@@ -31,3 +31,5 @@ export default {
   
   cardShadow: "rgba(0, 0, 0, 0.08)",
 };
+
+export default Colors;
