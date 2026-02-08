@@ -1,52 +1,28 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { FarmDataProvider } from "@/contexts/FarmDataContext";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import Colors from "@/constants/colors";
-import { ActivityIndicator, View, StyleSheet } from "react-native";
 
 SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
+      // Ensure queries refetch on mount to load data from AsyncStorage
       refetchOnMount: true,
       refetchOnWindowFocus: false,
       refetchOnReconnect: false,
-      staleTime: 30000,
-      gcTime: 300000,
+      // Data from AsyncStorage should be considered fresh
+      staleTime: Infinity,
+      gcTime: Infinity,
     },
   },
 });
 
 function RootLayoutNav() {
-  const { isAuthenticated, isLoading } = useAuth();
-  const segments = useSegments();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (isLoading) return;
-
-    const inAuthGroup = segments[0] === 'auth';
-
-    if (!isAuthenticated && !inAuthGroup) {
-      router.replace('/auth');
-    } else if (isAuthenticated && inAuthGroup) {
-      router.replace('/(tabs)');
-    }
-  }, [isAuthenticated, isLoading, segments]);
-
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
-      </View>
-    );
-  }
-
   return (
     <Stack
       screenOptions={{
@@ -56,7 +32,6 @@ function RootLayoutNav() {
         headerTitleStyle: { fontWeight: '600' as const },
       }}
     >
-      <Stack.Screen name="auth" options={{ headerShown: false }} />
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
         name="equipment/add"
@@ -129,21 +104,10 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <AuthProvider>
-          <FarmDataProvider>
-            <RootLayoutNav />
-          </FarmDataProvider>
-        </AuthProvider>
+        <FarmDataProvider>
+          <RootLayoutNav />
+        </FarmDataProvider>
       </GestureHandlerRootView>
     </QueryClientProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: Colors.background,
-  },
-});

@@ -771,10 +771,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.primary,
   },
   typeLabel: {
-    fontSize: 12,
+    fontSize: 13,
     color: Colors.textSecondary,
     fontWeight: '500' as const,
-    textAlign: 'center',
   },
   typeLabelActive: {
     color: Colors.textOnPrimary,
