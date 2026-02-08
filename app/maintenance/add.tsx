@@ -56,6 +56,7 @@ export default function AddMaintenanceScreen() {
   const [showRoutinePicker, setShowRoutinePicker] = useState(false);
   const [selectedRoutine, setSelectedRoutine] = useState<ServiceRoutine | null>(null);
   const [checklistState, setChecklistState] = useState<ChecklistItem[]>([]);
+  const [showAllConsumables, setShowAllConsumables] = useState(false);
 
   const selectedEquipment = equipment.find(e => e.id === selectedEquipmentId);
 
@@ -63,6 +64,7 @@ export default function AddMaintenanceScreen() {
     if (selectedEquipment) {
       setHoursAtService(selectedEquipment.currentHours.toString());
     }
+    setShowAllConsumables(false);
   }, [selectedEquipment]);
 
   const handleSelectRoutine = (routine: ServiceRoutine | null) => {
@@ -426,60 +428,112 @@ export default function AddMaintenanceScreen() {
             <ChevronDown color={Colors.textSecondary} size={20} />
           </TouchableOpacity>
 
-          {showConsumablesPicker && (
-            <View style={styles.pickerDropdown}>
-              {consumables.length === 0 ? (
-                <Text style={styles.noEquipmentText}>
-                  No parts in inventory. Add parts in Inventory tab first.
-                </Text>
-              ) : (
-                consumables.map((item: Consumable) => {
-                  const selected = selectedConsumables.find(c => c.consumableId === item.id);
-                  return (
-                    <TouchableOpacity
-                      key={item.id}
-                      style={[
-                        styles.pickerOption,
-                        selected && styles.pickerOptionActive,
-                      ]}
-                      onPress={() => {
-                        if (selected) {
-                          setSelectedConsumables(prev =>
-                            prev.filter(c => c.consumableId !== item.id)
-                          );
-                        } else {
-                          setSelectedConsumables(prev => [
-                            ...prev,
-                            {
-                              consumableId: item.id,
-                              name: item.name,
-                              partNumber: item.partNumber,
-                              quantity: 1,
-                            },
-                          ]);
-                        }
-                      }}
-                    >
-                      <View style={styles.consumableRow}>
-                        <View style={[
-                          styles.checkbox,
-                          selected && styles.checkboxActive,
-                        ]}>
-                          {selected && <Check color={Colors.textOnPrimary} size={14} />}
-                        </View>
-                        <View style={styles.consumableInfo}>
-                          <Text style={styles.pickerOptionText}>{item.name}</Text>
-                          <Text style={styles.pickerOptionSubtext}>
-                            #{item.partNumber} • {item.quantity} in stock
+          {showConsumablesPicker && (() => {
+            const compatibleParts = selectedEquipmentId
+              ? consumables.filter((item: Consumable) =>
+                  item.compatibleEquipment?.includes(selectedEquipmentId)
+                )
+              : [];
+            const otherParts = selectedEquipmentId
+              ? consumables.filter((item: Consumable) =>
+                  !item.compatibleEquipment?.includes(selectedEquipmentId)
+                )
+              : consumables;
+            const hasCompatible = compatibleParts.length > 0;
+            const hasOther = otherParts.length > 0;
+
+            const renderConsumableItem = (item: Consumable) => {
+              const selected = selectedConsumables.find(c => c.consumableId === item.id);
+              return (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.pickerOption,
+                    selected && styles.pickerOptionActive,
+                  ]}
+                  onPress={() => {
+                    if (selected) {
+                      setSelectedConsumables(prev =>
+                        prev.filter(c => c.consumableId !== item.id)
+                      );
+                    } else {
+                      setSelectedConsumables(prev => [
+                        ...prev,
+                        {
+                          consumableId: item.id,
+                          name: item.name,
+                          partNumber: item.partNumber,
+                          quantity: 1,
+                        },
+                      ]);
+                    }
+                  }}
+                >
+                  <View style={styles.consumableRow}>
+                    <View style={[
+                      styles.checkbox,
+                      selected && styles.checkboxActive,
+                    ]}>
+                      {selected && <Check color={Colors.textOnPrimary} size={14} />}
+                    </View>
+                    <View style={styles.consumableInfo}>
+                      <Text style={styles.pickerOptionText}>{item.name}</Text>
+                      <Text style={styles.pickerOptionSubtext}>
+                        #{item.partNumber} • {item.quantity} in stock
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              );
+            };
+
+            return (
+              <View style={styles.pickerDropdown}>
+                {consumables.length === 0 ? (
+                  <Text style={styles.noEquipmentText}>
+                    No parts in inventory. Add parts in Inventory tab first.
+                  </Text>
+                ) : (
+                  <>
+                    {hasCompatible && (
+                      <>
+                        <View style={styles.consumablesSectionHeader}>
+                          <Text style={styles.consumablesSectionLabel}>
+                            Compatible with {selectedEquipment?.name}
                           </Text>
                         </View>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-            </View>
-          )}
+                        {compatibleParts.map(renderConsumableItem)}
+                      </>
+                    )}
+
+                    {hasCompatible && hasOther && (
+                      <TouchableOpacity
+                        style={styles.showAllPartsButton}
+                        onPress={() => setShowAllConsumables(!showAllConsumables)}
+                      >
+                        <Text style={styles.showAllPartsText}>
+                          {showAllConsumables
+                            ? 'Hide Other Parts'
+                            : `Show All Parts (+${otherParts.length})`}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+
+                    {(!hasCompatible || showAllConsumables) && hasOther && (
+                      <>
+                        {hasCompatible && showAllConsumables && (
+                          <View style={styles.consumablesSectionHeader}>
+                            <Text style={styles.consumablesSectionLabel}>All Other Parts</Text>
+                          </View>
+                        )}
+                        {otherParts.map(renderConsumableItem)}
+                      </>
+                    )}
+                  </>
+                )}
+              </View>
+            );
+          })()}
 
           {selectedConsumables.length > 0 && (
             <View style={styles.selectedPartsContainer}>
@@ -691,6 +745,33 @@ const styles = StyleSheet.create({
   },
   consumableInfo: {
     flex: 1,
+  },
+  consumablesSectionHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: Colors.surfaceAlt,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  consumablesSectionLabel: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: Colors.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  showAllPartsButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.primary + '08',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    alignItems: 'center',
+  },
+  showAllPartsText: {
+    fontSize: 14,
+    fontWeight: '500' as const,
+    color: Colors.primary,
   },
   selectedPartsContainer: {
     marginTop: 12,
