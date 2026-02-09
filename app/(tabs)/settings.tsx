@@ -7,6 +7,8 @@ import {
   TouchableOpacity,
   Alert,
   Switch,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -20,17 +22,23 @@ import {
   Shield,
   ClipboardList,
   Search,
+  Download,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as XLSX from 'xlsx';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { CONSUMABLE_CATEGORIES } from '@/types/equipment';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, serviceRoutines, inspectionRoutines } = useFarmData();
+  const { equipment, maintenanceLogs, serviceRoutines, inspectionRoutines, getLowStockConsumables } = useFarmData();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleClearData = () => {
     Alert.alert(
@@ -68,6 +76,84 @@ export default function SettingsScreen() {
       'Data export as PDF will be available in a future update. Your maintenance history will be exportable for resale documentation and warranty claims.',
       [{ text: 'OK' }]
     );
+  };
+
+  const handleExportLowStockParts = async () => {
+    try {
+      setIsExporting(true);
+      const lowStockParts = getLowStockConsumables();
+
+      if (lowStockParts.length === 0) {
+        Alert.alert('No Low Stock Parts', 'You don\'t have any parts that are at or below their low stock threshold.');
+        setIsExporting(false);
+        return;
+      }
+
+      const worksheetData = [
+        ['Part Name', 'Part Number', 'Category', 'Supplier', 'Supplier Part Number', 'Quantity', 'Low Stock Threshold', 'Equipment', 'Notes'],
+        ...lowStockParts.map(part => {
+          const categoryLabel = CONSUMABLE_CATEGORIES.find(c => c.value === part.category)?.label || part.category;
+          const equipmentNames = part.compatibleEquipment
+            ?.map(id => equipment.find(e => e.id === id)?.name)
+            .filter(Boolean)
+            .join(', ') || '';
+
+          return [
+            part.name,
+            part.partNumber,
+            categoryLabel,
+            part.supplier || '',
+            part.supplierPartNumber || '',
+            part.quantity,
+            part.lowStockThreshold,
+            equipmentNames,
+            part.notes || '',
+          ];
+        }),
+      ];
+
+      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Low Stock Parts');
+
+      const wbout = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+      const fileName = `Low_Stock_Parts_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const fileUri = FileSystem.cacheDirectory + fileName;
+
+      await FileSystem.writeAsStringAsync(fileUri, wbout, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob(
+          [Uint8Array.from(atob(wbout), c => c.charCodeAt(0))],
+          { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+        );
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
+        URL.revokeObjectURL(url);
+        Alert.alert('Success', `Exported ${lowStockParts.length} low stock part${lowStockParts.length !== 1 ? 's' : ''}.`);
+      } else {
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: 'Export Low Stock Parts',
+            UTI: 'com.microsoft.excel.xlsx',
+          });
+        } else {
+          Alert.alert('Success', `Exported ${lowStockParts.length} low stock part${lowStockParts.length !== 1 ? 's' : ''} to ${fileUri}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error exporting low stock parts:', error);
+      Alert.alert('Error', 'Failed to export low stock parts. Please try again.');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -165,6 +251,27 @@ export default function SettingsScreen() {
             </View>
           </View>
           <ChevronRight color={Colors.textSecondary} size={20} />
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.settingRow} 
+          onPress={handleExportLowStockParts}
+          disabled={isExporting}
+        >
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: Colors.accent + '15' }]}>
+              <Download color={Colors.accent} size={20} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingLabel}>Export Low Stock Parts</Text>
+              <Text style={styles.settingDescription}>Download parts inventory as Excel</Text>
+            </View>
+          </View>
+          {isExporting ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <ChevronRight color={Colors.textSecondary} size={20} />
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.settingRow} onPress={() => {}}>
