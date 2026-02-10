@@ -1,0 +1,17 @@
+node_modules/
+.git/
+.expo/
+.expo-shared/
+*.log
+.DS_Store
+android/.gradle/
+android/build/
+android/app/build/
+ios/build/
+ios/Pods/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xcuserstate
+*.xcworkspace/xcuserdata/
