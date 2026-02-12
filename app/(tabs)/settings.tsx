@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Switch,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -108,8 +109,18 @@ export default function SettingsScreen() {
       // Write to file
       await FSCompat.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));
 
-      // Share the file
-      if (await Sharing.isAvailableAsync()) {
+      if (Platform.OS === 'web') {
+        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        Alert.alert('Success', 'Backup file downloaded!');
+      } else if (await Sharing.isAvailableAsync()) {
         await Sharing.shareAsync(fileUri, {
           mimeType: 'application/json',
           dialogTitle: 'Save FarmGuard Backup',
