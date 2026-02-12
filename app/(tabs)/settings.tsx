@@ -25,7 +25,7 @@ import {
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
-import * as FileSystem from 'expo-file-system';
+import * as FSCompat from '@/utils/fileSystemCompat';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import Colors from '@/constants/colors';
@@ -103,10 +103,10 @@ export default function SettingsScreen() {
       // Create filename with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
       const filename = `farmguard-backup-${timestamp}.json`;
-      const fileUri = `${FileSystem.documentDirectory}${filename}`;
+      const fileUri = `${FSCompat.documentDirectory}${filename}`;
 
       // Write to file
-      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));
+      await FSCompat.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));
 
       // Share the file
       if (await Sharing.isAvailableAsync()) {
@@ -147,7 +147,7 @@ export default function SettingsScreen() {
               const fileUri = result.assets[0].uri;
               
               // Read the backup file
-              const fileContent = await FileSystem.readAsStringAsync(fileUri);
+              const fileContent = await FSCompat.readAsStringAsync(fileUri);
               const backup = JSON.parse(fileContent);
 
               // Validate backup structure

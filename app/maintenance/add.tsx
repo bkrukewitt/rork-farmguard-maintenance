@@ -16,7 +16,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FSCompat from '@/utils/fileSystemCompat';
 import { 
   Wrench, 
   AlertCircle, 
@@ -164,17 +164,17 @@ export default function AddMaintenanceScreen() {
 
     for (const attachment of attachments) {
       try {
-        const attachmentDir = `${FileSystem.documentDirectory}maintenance-attachments/`;
-        const dirInfo = await FileSystem.getInfoAsync(attachmentDir);
+        const attachmentDir = `${FSCompat.documentDirectory}maintenance-attachments/`;
+        const dirInfo = await FSCompat.getInfoAsync(attachmentDir);
         if (!dirInfo.exists) {
-          await FileSystem.makeDirectoryAsync(attachmentDir, { intermediates: true });
+          await FSCompat.makeDirectoryAsync(attachmentDir, { intermediates: true });
         }
 
         const fileExtension = attachment.fileName.split('.').pop() || 'file';
         const newFileName = `${attachment.id}.${fileExtension}`;
         const newUri = `${attachmentDir}${newFileName}`;
 
-        await FileSystem.copyAsync({
+        await FSCompat.copyAsync({
           from: attachment.uri,
           to: newUri,
         });

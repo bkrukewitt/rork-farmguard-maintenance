@@ -16,7 +16,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FSCompat from '@/utils/fileSystemCompat';
 import * as Sharing from 'expo-sharing';
 import { 
   Tractor, 
@@ -142,10 +142,10 @@ export default function EquipmentDetailScreen() {
     setIsUploading(true);
     try {
       // Copy the file to the app's document directory for persistence
-      const attachmentDir = `${FileSystem.documentDirectory}attachments/`;
-      const dirInfo = await FileSystem.getInfoAsync(attachmentDir);
+      const attachmentDir = `${FSCompat.documentDirectory}attachments/`;
+      const dirInfo = await FSCompat.getInfoAsync(attachmentDir);
       if (!dirInfo.exists) {
-        await FileSystem.makeDirectoryAsync(attachmentDir, { intermediates: true });
+        await FSCompat.makeDirectoryAsync(attachmentDir, { intermediates: true });
       }
 
       const fileId = generateId();
@@ -153,7 +153,7 @@ export default function EquipmentDetailScreen() {
       const newFileName = `${fileId}.${fileExtension}`;
       const newUri = `${attachmentDir}${newFileName}`;
 
-      await FileSystem.copyAsync({
+      await FSCompat.copyAsync({
         from: pendingFile.uri,
         to: newUri,
       });
@@ -185,7 +185,7 @@ export default function EquipmentDetailScreen() {
 
   const handleViewAttachment = async (attachment: EquipmentAttachment) => {
     try {
-      const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
+      const fileInfo = await FSCompat.getInfoAsync(attachment.fileUri);
       if (!fileInfo.exists) {
         Alert.alert('File Not Found', 'This file may have been deleted. Please remove it and upload again.');
         return;
@@ -218,9 +218,9 @@ export default function EquipmentDetailScreen() {
           onPress: async () => {
             try {
               // Delete the file from disk
-              const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
+              const fileInfo = await FSCompat.getInfoAsync(attachment.fileUri);
               if (fileInfo.exists) {
-                await FileSystem.deleteAsync(attachment.fileUri);
+                await FSCompat.deleteAsync(attachment.fileUri);
               }
 
               const updatedAttachments = (equipment?.attachments ?? []).filter(
