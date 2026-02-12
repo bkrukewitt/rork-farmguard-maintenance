@@ -12,8 +12,10 @@ import { useRouter } from 'expo-router';
 import { 
   Tractor, 
   Bell, 
+  Database,
   Trash2,
   FileText,
+  Info,
   ChevronRight,
   Shield,
   ClipboardList,
@@ -31,7 +33,7 @@ import { useFarmData } from '@/contexts/FarmDataContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, serviceRoutines, inspectionRoutines } = useFarmData();
+  const { equipment, maintenanceLogs, serviceRoutines, inspectionRoutines, consumables } = useFarmData();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
@@ -101,7 +103,7 @@ export default function SettingsScreen() {
       // Create filename with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
       const filename = `farmguard-backup-${timestamp}.json`;
-      const fileUri = `${(FileSystem as any).documentDirectory}${filename}`;
+      const fileUri = `${FileSystem.documentDirectory}${filename}`;
 
       // Write to file
       await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));
@@ -442,5 +444,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.primary,
+  },
+  footerSubtext: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 4,
   },
 });
