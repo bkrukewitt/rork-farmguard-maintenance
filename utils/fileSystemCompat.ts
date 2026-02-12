@@ -1,18 +1,16 @@
-import { File, Directory, Paths } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system';
 import { Platform } from 'react-native';
 
-export const documentDirectory = Paths.document.uri;
+export const documentDirectory = FileSystem.documentDirectory ?? '';
 
 export async function writeAsStringAsync(uri: string, content: string): Promise<void> {
   if (Platform.OS === 'web') {
     console.log('writeAsStringAsync not fully supported on web');
     return;
   }
-  const file = new File(uri);
-  if (!file.exists) {
-    file.create({ intermediates: true });
-  }
-  file.write(content);
+  await FileSystem.writeAsStringAsync(uri, content, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
 }
 
 export async function readAsStringAsync(uri: string): Promise<string> {
@@ -20,8 +18,9 @@ export async function readAsStringAsync(uri: string): Promise<string> {
     console.log('readAsStringAsync not fully supported on web');
     return '';
   }
-  const file = new File(uri);
-  return file.text();
+  return FileSystem.readAsStringAsync(uri, {
+    encoding: FileSystem.EncodingType.UTF8,
+  });
 }
 
 export async function getInfoAsync(uri: string): Promise<{ exists: boolean; uri?: string; size?: number }> {
@@ -29,13 +28,8 @@ export async function getInfoAsync(uri: string): Promise<{ exists: boolean; uri?
     return { exists: false };
   }
   try {
-    const pathInfo = Paths.info(uri);
-    if (pathInfo.isDirectory) {
-      const dir = new Directory(uri);
-      return { exists: dir.exists, uri };
-    }
-    const file = new File(uri);
-    return { exists: file.exists, uri, size: file.exists ? file.size : undefined };
+    const info = await FileSystem.getInfoAsync(uri);
+    return { exists: info.exists, uri: info.uri, size: info.exists ? info.size : undefined };
   } catch {
     return { exists: false };
   }
@@ -45,19 +39,14 @@ export async function makeDirectoryAsync(uri: string, options?: { intermediates?
   if (Platform.OS === 'web') {
     return;
   }
-  const dir = new Directory(uri);
-  if (!dir.exists) {
-    dir.create({ intermediates: options?.intermediates ?? false, idempotent: true });
-  }
+  await FileSystem.makeDirectoryAsync(uri, { intermediates: options?.intermediates ?? false });
 }
 
 export async function copyAsync(options: { from: string; to: string }): Promise<void> {
   if (Platform.OS === 'web') {
     return;
   }
-  const sourceFile = new File(options.from);
-  const destFile = new File(options.to);
-  sourceFile.copy(destFile);
+  await FileSystem.copyAsync(options);
 }
 
 export async function deleteAsync(uri: string): Promise<void> {
@@ -65,18 +54,8 @@ export async function deleteAsync(uri: string): Promise<void> {
     return;
   }
   try {
-    const file = new File(uri);
-    if (file.exists) {
-      file.delete();
-    }
-  } catch {
-    try {
-      const dir = new Directory(uri);
-      if (dir.exists) {
-        dir.delete();
-      }
-    } catch (e) {
-      console.log('deleteAsync error:', e);
-    }
+    await FileSystem.deleteAsync(uri, { idempotent: true });
+  } catch (e) {
+    console.log('deleteAsync error:', e);
   }
 }
