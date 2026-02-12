@@ -443,9 +443,4 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: Colors.primary,
   },
-  footerSubtext: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 4,
-  },
 });
