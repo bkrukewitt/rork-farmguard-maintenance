@@ -12,10 +12,8 @@ import { useRouter } from 'expo-router';
 import { 
   Tractor, 
   Bell, 
-  Database,
   Trash2,
   FileText,
-  Info,
   ChevronRight,
   Shield,
   ClipboardList,
@@ -33,7 +31,7 @@ import { useFarmData } from '@/contexts/FarmDataContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, serviceRoutines, inspectionRoutines, consumables } = useFarmData();
+  const { equipment, maintenanceLogs, serviceRoutines, inspectionRoutines } = useFarmData();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
