@@ -55,3 +55,4 @@ app/maintenance/add.tsx
 contexts/FarmDataContext.tsx
 types/equipment.ts
 utils/csvHelpers.ts
+eas.json
