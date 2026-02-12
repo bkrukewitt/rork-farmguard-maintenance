@@ -142,7 +142,7 @@ export default function EquipmentDetailScreen() {
     setIsUploading(true);
     try {
       // Copy the file to the app's document directory for persistence
-      const attachmentDir = `${FileSystem.documentDirectory}attachments/`;
+      const attachmentDir = `${(FileSystem as any).documentDirectory}attachments/`;
       const dirInfo = await FileSystem.getInfoAsync(attachmentDir);
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(attachmentDir, { intermediates: true });

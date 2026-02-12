@@ -103,7 +103,7 @@ export default function SettingsScreen() {
       // Create filename with timestamp
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
       const filename = `farmguard-backup-${timestamp}.json`;
-      const fileUri = `${FileSystem.documentDirectory}${filename}`;
+      const fileUri = `${(FileSystem as any).documentDirectory}${filename}`;
 
       // Write to file
       await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));

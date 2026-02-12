@@ -164,7 +164,7 @@ export default function AddMaintenanceScreen() {
 
     for (const attachment of attachments) {
       try {
-        const attachmentDir = `${FileSystem.documentDirectory}maintenance-attachments/`;
+        const attachmentDir = `${(FileSystem as any).documentDirectory}maintenance-attachments/`;
         const dirInfo = await FileSystem.getInfoAsync(attachmentDir);
         if (!dirInfo.exists) {
           await FileSystem.makeDirectoryAsync(attachmentDir, { intermediates: true });
