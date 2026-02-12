@@ -42,19 +42,3 @@ yarn-error.*
 
 .env
 rork-eslint.config.js
-core
-app/(tabs)/index.tsx
-app/(tabs)/maintenance.tsx
-app/(tabs)/settings.tsx
-app/equipment/\[id\].tsx
-app/equipment/add.tsx
-app/equipment/edit/\[id\].tsx
-app/equipment/import.tsx
-app/inventory/import.tsx
-app/maintenance/add.tsx
-contexts/FarmDataContext.tsx
-types/equipment.ts
-utils/csvHelpers.ts
-
-node_modules
-.expo
