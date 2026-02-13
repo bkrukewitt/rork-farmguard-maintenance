@@ -176,7 +176,7 @@ export default function ImportEquipmentScreen() {
             }),
             timeoutPromise
           ]);
-        } catch (retryError) {
+        } catch {
           throw pickerError; // Throw original error
         }
       }

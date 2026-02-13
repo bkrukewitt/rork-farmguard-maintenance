@@ -23,7 +23,6 @@ import {
   Trash2,
   ChevronRight,
   Package,
-  Paperclip,
   Eye,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';

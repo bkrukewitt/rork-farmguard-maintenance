@@ -17,7 +17,6 @@ import {
   Database,
   Trash2,
   FileText,
-  Info,
   ChevronRight,
   Shield,
   ClipboardList,

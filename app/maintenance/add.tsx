@@ -27,7 +27,6 @@ import {
   CheckSquare,
   ClipboardList,
   Paperclip,
-  Plus,
   X,
   FileText,
 } from 'lucide-react-native';

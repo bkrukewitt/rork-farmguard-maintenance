@@ -282,7 +282,7 @@ export default function ImportInventoryScreen() {
             }),
             timeoutPromise
           ]);
-        } catch (retryError) {
+        } catch {
           throw pickerError; // Throw original error
         }
       }

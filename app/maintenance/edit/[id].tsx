@@ -78,6 +78,7 @@ export default function EditMaintenanceScreen() {
       setNotes(log.notes ?? '');
       setExistingAttachments(log.attachments ?? []);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [log?.id]);
 
   const handlePickAttachment = async () => {
