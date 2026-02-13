@@ -24,6 +24,13 @@ import {
   Search,
   Download,
   Upload,
+  Building2,
+  Users,
+  LogOut,
+  RefreshCw,
+  Cloud,
+  CloudOff,
+  FolderUp,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
@@ -32,6 +39,8 @@ import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { useAuth } from '@/contexts/AuthContext';
+import { useOrganization } from '@/contexts/OrganizationContext';
 import { CONSUMABLE_CATEGORIES } from '@/types/equipment';
 
 export default function SettingsScreen() {
@@ -43,13 +52,21 @@ export default function SettingsScreen() {
     consumables,
     serviceRoutines, 
     inspectionRoutines, 
-    getLowStockConsumables 
+    getLowStockConsumables,
+    isSyncing,
+    lastSyncTime,
+    syncEnabled,
+    pullFromSupabase,
+    migrateLocalData,
   } = useFarmData();
+  const { profile, signOut } = useAuth();
+  const { organization, members, userRole, isAdmin } = useOrganization();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [isMigrating, setIsMigrating] = useState(false);
 
   const handleClearData = () => {
     Alert.alert(
@@ -68,6 +85,7 @@ export default function SettingsScreen() {
                 'farmguard_intervals',
                 'farmguard_consumables',
                 'farmguard_service_routines',
+                'farmguard_inspection_routines',
               ]);
               queryClient.invalidateQueries();
               Alert.alert('Success', 'All data has been cleared.');
@@ -286,12 +304,95 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSync = async () => {
+    try {
+      await pullFromSupabase();
+      Alert.alert('Success', 'Data synced successfully.');
+    } catch (err) {
+      Alert.alert('Error', 'Failed to sync data. Please try again.');
+    }
+  };
+
+  const handleMigrateData = () => {
+    Alert.alert(
+      'Migrate Local Data',
+      'This will upload all your existing local data to your farm\'s shared cloud. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Migrate',
+          onPress: async () => {
+            try {
+              setIsMigrating(true);
+              await migrateLocalData();
+              Alert.alert('Success', 'Local data has been uploaded to your farm.');
+            } catch (err: any) {
+              Alert.alert('Error', err.message || 'Failed to migrate data.');
+            } finally {
+              setIsMigrating(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleSignOut = () => {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut();
+            } catch (err) {
+              console.log('Sign out error:', err);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const formattedSyncTime = lastSyncTime
+    ? new Date(lastSyncTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })
+    : 'Never';
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <View style={styles.profileCard}>
+        <View style={styles.profileAvatar}>
+          <Text style={styles.profileInitial}>
+            {(profile?.full_name || profile?.email || '?')[0].toUpperCase()}
+          </Text>
+        </View>
+        <View style={styles.profileInfo}>
+          <Text style={styles.profileName}>{profile?.full_name || 'User'}</Text>
+          <Text style={styles.profileEmail}>{profile?.email || ''}</Text>
+          {organization && (
+            <View style={styles.orgBadge}>
+              <Building2 color={Colors.primary} size={12} />
+              <Text style={styles.orgBadgeText}>{organization.name}</Text>
+              {userRole && (
+                <View style={[styles.rolePill, { backgroundColor: userRole === 'owner' ? Colors.accent + '20' : Colors.primary + '20' }]}>
+                  <Text style={[styles.roleText, { color: userRole === 'owner' ? Colors.accent : Colors.primary }]}>
+                    {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+      </View>
+
       <View style={styles.statsCard}>
         <View style={styles.statsHeader}>
           <Tractor color={Colors.primary} size={24} />
-          <Text style={styles.statsTitle}>Your Farm Stats</Text>
+          <Text style={styles.statsTitle}>Farm Stats</Text>
         </View>
         <View style={styles.statsGrid}>
           <View style={styles.statItem}>
@@ -303,8 +404,92 @@ export default function SettingsScreen() {
             <Text style={styles.statValue}>{maintenanceLogs.length}</Text>
             <Text style={styles.statLabel}>Service Logs</Text>
           </View>
+          <View style={styles.statDivider} />
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{members.length}</Text>
+            <Text style={styles.statLabel}>Members</Text>
+          </View>
         </View>
       </View>
+
+      {syncEnabled && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Sync</Text>
+
+          <View style={styles.syncStatusRow}>
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: isSyncing ? Colors.accent + '15' : Colors.success + '15' }]}>
+                {isSyncing ? (
+                  <RefreshCw color={Colors.accent} size={20} />
+                ) : (
+                  <Cloud color={Colors.success} size={20} />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingLabel}>
+                  {isSyncing ? 'Syncing...' : 'Connected'}
+                </Text>
+                <Text style={styles.settingDescription}>Last sync: {formattedSyncTime}</Text>
+              </View>
+            </View>
+            <TouchableOpacity
+              style={styles.syncButton}
+              onPress={handleSync}
+              disabled={isSyncing}
+            >
+              {isSyncing ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <RefreshCw color={Colors.primary} size={18} />
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={handleMigrateData}
+            disabled={isMigrating}
+          >
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: '#8B5CF6' + '15' }]}>
+                <FolderUp color="#8B5CF6" size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingLabel}>Upload Local Data</Text>
+                <Text style={styles.settingDescription}>Push existing data to shared farm</Text>
+              </View>
+            </View>
+            {isMigrating ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <ChevronRight color={Colors.textSecondary} size={20} />
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {organization && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Farm</Text>
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => router.push('/organization/manage' as any)}
+          >
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: Colors.primary + '15' }]}>
+                <Users color={Colors.primary} size={20} />
+              </View>
+              <View>
+                <Text style={styles.settingLabel}>Manage Farm</Text>
+                <Text style={styles.settingDescription}>
+                  {members.length} member{members.length !== 1 ? 's' : ''} • Invite code & roles
+                </Text>
+              </View>
+            </View>
+            <ChevronRight color={Colors.textSecondary} size={20} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Service</Text>
@@ -463,7 +648,7 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
+        <Text style={styles.sectionTitle}>Account</Text>
         
         <View style={styles.settingRow}>
           <View style={styles.settingLeft}>
@@ -472,12 +657,20 @@ export default function SettingsScreen() {
             </View>
             <View>
               <Text style={styles.settingLabel}>Privacy Policy</Text>
-              <Text style={styles.settingDescription}>Your data stays on your device</Text>
+              <Text style={styles.settingDescription}>Data synced to your private farm</Text>
             </View>
           </View>
           <ChevronRight color={Colors.textSecondary} size={20} />
         </View>
 
+        <TouchableOpacity style={styles.signOutRow} onPress={handleSignOut}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: Colors.danger + '10' }]}>
+              <LogOut color={Colors.danger} size={20} />
+            </View>
+            <Text style={[styles.settingLabel, { color: Colors.danger }]}>Sign Out</Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.footer}>
@@ -492,9 +685,72 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.surface,
+    margin: 16,
+    marginBottom: 8,
+    borderRadius: 16,
+    padding: 18,
+    gap: 14,
+    shadowColor: Colors.cardShadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  profileAvatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: Colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileInitial: {
+    fontSize: 22,
+    fontWeight: '700' as const,
+    color: '#fff',
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: 17,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  profileEmail: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 1,
+  },
+  orgBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 6,
+  },
+  orgBadgeText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: Colors.primary,
+  },
+  rolePill: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 4,
+  },
+  roleText: {
+    fontSize: 10,
+    fontWeight: '700' as const,
+  },
   statsCard: {
     backgroundColor: Colors.surface,
     margin: 16,
+    marginTop: 8,
     borderRadius: 16,
     padding: 20,
     shadowColor: Colors.cardShadow,
@@ -548,6 +804,23 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: 12,
   },
+  syncStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  syncButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: Colors.primary + '10',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -580,6 +853,16 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 2,
   },
+  signOutRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.danger + '06',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.danger + '15',
+  },
   footer: {
     alignItems: 'center',
     paddingVertical: 40,
@@ -589,10 +872,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.primary,
-  },
-  footerSubtext: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 4,
   },
 });
