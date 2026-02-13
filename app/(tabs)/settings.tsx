@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
 import { 
   Tractor, 
@@ -22,6 +23,7 @@ import {
   ClipboardList,
   Search,
   Download,
+  Upload,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
@@ -34,10 +36,20 @@ import { CONSUMABLE_CATEGORIES } from '@/types/equipment';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, serviceRoutines, inspectionRoutines, getLowStockConsumables } = useFarmData();
+  const { 
+    equipment, 
+    maintenanceLogs, 
+    intervals,
+    consumables,
+    serviceRoutines, 
+    inspectionRoutines, 
+    getLowStockConsumables 
+  } = useFarmData();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
 
   const handleClearData = () => {
     Alert.alert(
@@ -74,6 +86,125 @@ export default function SettingsScreen() {
       'Export Data',
       'Data export as PDF will be available in a future update. Your maintenance history will be exportable for resale documentation and warranty claims.',
       [{ text: 'OK' }]
+    );
+  };
+
+  const handleBackupData = async () => {
+    try {
+      setIsBackingUp(true);
+      
+      const backupData = {
+        version: 1,
+        createdAt: new Date().toISOString(),
+        data: {
+          equipment,
+          maintenanceLogs,
+          intervals,
+          consumables,
+          serviceRoutines,
+          inspectionRoutines,
+        },
+      };
+
+      const jsonString = JSON.stringify(backupData, null, 2);
+      const fileName = `FarmGuard_Backup_${new Date().toISOString().split('T')[0]}.json`;
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
+        URL.revokeObjectURL(url);
+        Alert.alert('Success', 'Backup file downloaded successfully.');
+      } else {
+        const fileUri = FileSystem.cacheDirectory + fileName;
+        await FileSystem.writeAsStringAsync(fileUri, jsonString, {
+          encoding: FileSystem.EncodingType.UTF8,
+        });
+
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/json',
+            dialogTitle: 'Save FarmGuard Backup',
+            UTI: 'public.json',
+          });
+        } else {
+          Alert.alert('Success', `Backup saved to ${fileUri}`);
+        }
+      }
+    } catch (error) {
+      console.error('Error backing up data:', error);
+      Alert.alert('Error', 'Failed to create backup. Please try again.');
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleRestoreData = async () => {
+    Alert.alert(
+      'Restore Backup',
+      'This will replace all your current data with the backup data. This action cannot be undone. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          onPress: async () => {
+            try {
+              setIsRestoring(true);
+
+              const result = await DocumentPicker.getDocumentAsync({
+                type: 'application/json',
+                copyToCacheDirectory: true,
+              });
+
+              if (result.canceled || !result.assets || result.assets.length === 0) {
+                setIsRestoring(false);
+                return;
+              }
+
+              const file = result.assets[0];
+              let jsonContent: string;
+
+              if (Platform.OS === 'web') {
+                const response = await fetch(file.uri);
+                jsonContent = await response.text();
+              } else {
+                jsonContent = await FileSystem.readAsStringAsync(file.uri, {
+                  encoding: FileSystem.EncodingType.UTF8,
+                });
+              }
+
+              const backupData = JSON.parse(jsonContent);
+
+              if (!backupData.version || !backupData.data) {
+                throw new Error('Invalid backup file format');
+              }
+
+              const { data } = backupData;
+
+              await AsyncStorage.multiSet([
+                ['farmguard_equipment', JSON.stringify(data.equipment || [])],
+                ['farmguard_maintenance_logs', JSON.stringify(data.maintenanceLogs || [])],
+                ['farmguard_intervals', JSON.stringify(data.intervals || [])],
+                ['farmguard_consumables', JSON.stringify(data.consumables || [])],
+                ['farmguard_service_routines', JSON.stringify(data.serviceRoutines || [])],
+                ['farmguard_inspection_routines', JSON.stringify(data.inspectionRoutines || [])],
+              ]);
+
+              queryClient.invalidateQueries();
+              Alert.alert('Success', 'Data restored successfully. The app will now reload the data.');
+            } catch (error) {
+              console.error('Error restoring data:', error);
+              Alert.alert('Error', 'Failed to restore backup. Please ensure you selected a valid FarmGuard backup file.');
+            } finally {
+              setIsRestoring(false);
+            }
+          },
+        },
+      ]
     );
   };
 
@@ -273,17 +404,46 @@ export default function SettingsScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.settingRow} onPress={() => {}}>
+        <TouchableOpacity 
+          style={styles.settingRow} 
+          onPress={handleBackupData}
+          disabled={isBackingUp}
+        >
           <View style={styles.settingLeft}>
             <View style={[styles.settingIcon, { backgroundColor: Colors.statusOk + '15' }]}>
               <Database color={Colors.statusOk} size={20} />
             </View>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={styles.settingLabel}>Backup Data</Text>
-              <Text style={styles.settingDescription}>Sync to cloud storage</Text>
+              <Text style={styles.settingDescription}>Export all data as JSON file</Text>
             </View>
           </View>
-          <ChevronRight color={Colors.textSecondary} size={20} />
+          {isBackingUp ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <ChevronRight color={Colors.textSecondary} size={20} />
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={styles.settingRow} 
+          onPress={handleRestoreData}
+          disabled={isRestoring}
+        >
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: '#3B82F6' + '15' }]}>
+              <Upload color="#3B82F6" size={20} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingLabel}>Restore Backup</Text>
+              <Text style={styles.settingDescription}>Import data from JSON file</Text>
+            </View>
+          </View>
+          {isRestoring ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <ChevronRight color={Colors.textSecondary} size={20} />
+          )}
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.settingRow} onPress={handleClearData}>
