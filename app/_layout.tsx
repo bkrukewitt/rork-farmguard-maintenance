@@ -136,6 +136,38 @@ function RootLayoutNav() {
           name="routines/edit/[id]"
           options={{ title: "Edit Routine" }}
         />
+        <Stack.Screen
+          name="routines/service"
+          options={{ title: "Service Routines" }}
+        />
+        <Stack.Screen
+          name="routines/inspection"
+          options={{ title: "Inspection Routines" }}
+        />
+        <Stack.Screen
+          name="routines/add-inspection"
+          options={{ title: "New Inspection Routine", presentation: "modal" }}
+        />
+        <Stack.Screen
+          name="routines/edit-inspection/[id]"
+          options={{ title: "Edit Inspection Routine" }}
+        />
+        <Stack.Screen
+          name="maintenance/[id]"
+          options={{ title: "Maintenance Details" }}
+        />
+        <Stack.Screen
+          name="maintenance/edit/[id]"
+          options={{ title: "Edit Maintenance", presentation: "modal" }}
+        />
+        <Stack.Screen
+          name="equipment/import"
+          options={{ title: "Import Equipment", presentation: "modal" }}
+        />
+        <Stack.Screen
+          name="inventory/import"
+          options={{ title: "Import Inventory", presentation: "modal" }}
+        />
       </Stack>
     </>
   );
