@@ -28,7 +28,7 @@
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "app.rork.farmguardmaintenance",
+      "package": "app.rork.farmguard-maintenance",
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
@@ -63,11 +63,6 @@
     ],
     "experiments": {
       "typedRoutes": true
-    },
-    "extra": {
-      "eas": {
-        "projectId": "478f589f-8092-41a3-a754-d71119b0d572"
-      }
     }
   }
 }

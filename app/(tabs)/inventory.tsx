@@ -13,6 +13,7 @@ import {
   Platform,
   Image,
 } from 'react-native';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { 
@@ -57,8 +58,7 @@ export default function InventoryScreen() {
       Alert.alert('Success', 'Template downloaded successfully!');
     } else {
       try {
-        const { File: FSFile, Paths: FSPaths } = await import('expo-file-system');
-        const file = new FSFile(FSPaths.cache, 'parts_template.csv');
+        const file = new File(Paths.cache, 'parts_template.csv');
         file.create({ overwrite: true });
         file.write(templateContent);
         
@@ -105,10 +105,9 @@ export default function InventoryScreen() {
       Alert.alert('Success', 'Inventory exported successfully! Low stock items are highlighted in red.');
     } else {
       try {
-        const { File: FSFile, Paths: FSPaths } = await import('expo-file-system');
         const csvContent = exportConsumablesToCSV(consumables, equipmentList);
         const fileName = `inventory_export_${new Date().toISOString().split('T')[0]}.csv`;
-        const file = new FSFile(FSPaths.cache, fileName);
+        const file = new File(Paths.cache, fileName);
         file.create({ overwrite: true });
         file.write(csvContent);
         

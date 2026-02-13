@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import * as FSCompat from '@/utils/fileSystemCompat';
+import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import {
   Wrench,
@@ -47,7 +47,7 @@ export default function MaintenanceDetailScreen() {
 
   const handleViewAttachment = async (attachment: EquipmentAttachment) => {
     try {
-      const fileInfo = await FSCompat.getInfoAsync(attachment.fileUri);
+      const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
       if (!fileInfo.exists) {
         Alert.alert('File Not Found', 'This file may have been deleted.');
         return;
@@ -78,9 +78,9 @@ export default function MaintenanceDetailScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              const fileInfo = await FSCompat.getInfoAsync(attachment.fileUri);
+              const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
               if (fileInfo.exists) {
-                await FSCompat.deleteAsync(attachment.fileUri);
+                await FileSystem.deleteAsync(attachment.fileUri);
               }
 
               const updatedAttachments = (log?.attachments ?? []).filter(

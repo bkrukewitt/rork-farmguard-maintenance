@@ -8,6 +8,7 @@ import {
   Alert,
   Switch,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -22,21 +23,22 @@ import {
   ClipboardList,
   Search,
   Download,
-  Upload,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
-import * as FSCompat from '@/utils/fileSystemCompat';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import * as DocumentPicker from 'expo-document-picker';
+import * as XLSX from 'xlsx';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { CONSUMABLE_CATEGORIES } from '@/types/equipment';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, serviceRoutines, inspectionRoutines, consumables } = useFarmData();
+  const { equipment, maintenanceLogs, serviceRoutines, inspectionRoutines, getLowStockConsumables } = useFarmData();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
   const handleClearData = () => {
     Alert.alert(
@@ -55,7 +57,6 @@ export default function SettingsScreen() {
                 'farmguard_intervals',
                 'farmguard_consumables',
                 'farmguard_service_routines',
-                'farmguard_inspection_routines',
               ]);
               queryClient.invalidateQueries();
               Alert.alert('Success', 'All data has been cleared.');
@@ -77,116 +78,82 @@ export default function SettingsScreen() {
     );
   };
 
-  const handleBackupData = async () => {
+  const handleExportLowStockParts = async () => {
     try {
-      // Get all data from AsyncStorage
-      const keys = [
-        'farmguard_equipment',
-        'farmguard_maintenance_logs',
-        'farmguard_intervals',
-        'farmguard_consumables',
-        'farmguard_service_routines',
-        'farmguard_inspection_routines',
+      setIsExporting(true);
+      const lowStockParts = getLowStockConsumables();
+
+      if (lowStockParts.length === 0) {
+        Alert.alert('No Low Stock Parts', 'You don\'t have any parts that are at or below their low stock threshold.');
+        setIsExporting(false);
+        return;
+      }
+
+      const worksheetData = [
+        ['Part Name', 'Part Number', 'Category', 'Supplier', 'Supplier Part Number', 'Quantity', 'Low Stock Threshold', 'Equipment', 'Notes'],
+        ...lowStockParts.map(part => {
+          const categoryLabel = CONSUMABLE_CATEGORIES.find(c => c.value === part.category)?.label || part.category;
+          const equipmentNames = part.compatibleEquipment
+            ?.map(id => equipment.find(e => e.id === id)?.name)
+            .filter(Boolean)
+            .join(', ') || '';
+
+          return [
+            part.name,
+            part.partNumber,
+            categoryLabel,
+            part.supplier || '',
+            part.supplierPartNumber || '',
+            part.quantity,
+            part.lowStockThreshold,
+            equipmentNames,
+            part.notes || '',
+          ];
+        }),
       ];
-      
-      const data = await AsyncStorage.multiGet(keys);
-      
-      // Create backup object
-      const backup = {
-        version: '1.0',
-        timestamp: new Date().toISOString(),
-        data: data.reduce((acc, [key, value]) => {
-          acc[key] = value ? JSON.parse(value) : null;
-          return acc;
-        }, {} as Record<string, any>),
-      };
 
-      // Create filename with timestamp
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
-      const filename = `farmguard-backup-${timestamp}.json`;
-      const fileUri = `${FSCompat.documentDirectory}${filename}`;
+      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Low Stock Parts');
 
-      // Write to file
-      await FSCompat.writeAsStringAsync(fileUri, JSON.stringify(backup, null, 2));
+      const wbout = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+      const fileName = `Low_Stock_Parts_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const fileUri = FileSystem.cacheDirectory + fileName;
+
+      await FileSystem.writeAsStringAsync(fileUri, wbout, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
 
       if (Platform.OS === 'web') {
-        const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+        const blob = new Blob(
+          [Uint8Array.from(atob(wbout), c => c.charCodeAt(0))],
+          { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+        );
         const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
         URL.revokeObjectURL(url);
-        Alert.alert('Success', 'Backup file downloaded!');
-      } else if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'application/json',
-          dialogTitle: 'Save FarmGuard Backup',
-          UTI: 'public.json',
-        });
-        Alert.alert('Success', 'Backup file created! Save it to your cloud storage or email it to yourself.');
+        Alert.alert('Success', `Exported ${lowStockParts.length} low stock part${lowStockParts.length !== 1 ? 's' : ''}.`);
       } else {
-        Alert.alert('Error', 'Sharing is not available on this device.');
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: 'Export Low Stock Parts',
+            UTI: 'com.microsoft.excel.xlsx',
+          });
+        } else {
+          Alert.alert('Success', `Exported ${lowStockParts.length} low stock part${lowStockParts.length !== 1 ? 's' : ''} to ${fileUri}`);
+        }
       }
     } catch (error) {
-      console.error('Backup error:', error);
-      Alert.alert('Error', 'Failed to create backup. Please try again.');
+      console.error('Error exporting low stock parts:', error);
+      Alert.alert('Error', 'Failed to export low stock parts. Please try again.');
+    } finally {
+      setIsExporting(false);
     }
-  };
-
-  const handleRestoreData = async () => {
-    Alert.alert(
-      'Restore from Backup',
-      'This will replace all current data with the backup. Make sure you have a backup of your current data first.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Choose Backup File',
-          onPress: async () => {
-            try {
-              const result = await DocumentPicker.getDocumentAsync({
-                type: 'application/json',
-                copyToCacheDirectory: true,
-              });
-
-              if (result.canceled) {
-                return;
-              }
-
-              const fileUri = result.assets[0].uri;
-              
-              // Read the backup file
-              const fileContent = await FSCompat.readAsStringAsync(fileUri);
-              const backup = JSON.parse(fileContent);
-
-              // Validate backup structure
-              if (!backup.version || !backup.data) {
-                Alert.alert('Error', 'Invalid backup file format.');
-                return;
-              }
-
-              // Restore data to AsyncStorage
-              const entries = Object.entries(backup.data).map(([key, value]) => [
-                key,
-                JSON.stringify(value),
-              ]);
-
-              await AsyncStorage.multiSet(entries as [string, string][]);
-              
-              // Invalidate all queries to reload data
-              queryClient.invalidateQueries();
-
-              Alert.alert('Success', 'Data restored successfully! The app will now refresh.');
-            } catch (error) {
-              console.error('Restore error:', error);
-              Alert.alert('Error', 'Failed to restore backup. Make sure you selected a valid FarmGuard backup file.');
-            }
-          },
-        },
-      ]
-    );
   };
 
   return (
@@ -286,27 +253,35 @@ export default function SettingsScreen() {
           <ChevronRight color={Colors.textSecondary} size={20} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.settingRow} onPress={handleBackupData}>
+        <TouchableOpacity 
+          style={styles.settingRow} 
+          onPress={handleExportLowStockParts}
+          disabled={isExporting}
+        >
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: Colors.accent + '15' }]}>
+              <Download color={Colors.accent} size={20} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.settingLabel}>Export Low Stock Parts</Text>
+              <Text style={styles.settingDescription}>Download parts inventory as Excel</Text>
+            </View>
+          </View>
+          {isExporting ? (
+            <ActivityIndicator size="small" color={Colors.primary} />
+          ) : (
+            <ChevronRight color={Colors.textSecondary} size={20} />
+          )}
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.settingRow} onPress={() => {}}>
           <View style={styles.settingLeft}>
             <View style={[styles.settingIcon, { backgroundColor: Colors.statusOk + '15' }]}>
-              <Upload color={Colors.statusOk} size={20} />
+              <Database color={Colors.statusOk} size={20} />
             </View>
             <View>
               <Text style={styles.settingLabel}>Backup Data</Text>
-              <Text style={styles.settingDescription}>Export data to save anywhere</Text>
-            </View>
-          </View>
-          <ChevronRight color={Colors.textSecondary} size={20} />
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.settingRow} onPress={handleRestoreData}>
-          <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: '#3B82F6' + '15' }]}>
-              <Download color="#3B82F6" size={20} />
-            </View>
-            <View>
-              <Text style={styles.settingLabel}>Restore Data</Text>
-              <Text style={styles.settingDescription}>Import data from backup file</Text>
+              <Text style={styles.settingDescription}>Sync to cloud storage</Text>
             </View>
           </View>
           <ChevronRight color={Colors.textSecondary} size={20} />

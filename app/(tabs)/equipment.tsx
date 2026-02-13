@@ -13,6 +13,7 @@ import {
   Modal,
   Platform,
 } from 'react-native';
+import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { 
@@ -84,8 +85,7 @@ export default function EquipmentScreen() {
       Alert.alert('Success', 'Template downloaded successfully!');
     } else {
       try {
-        const { File: FSFile, Paths: FSPaths } = await import('expo-file-system');
-        const file = new FSFile(FSPaths.cache, 'equipment_template.csv');
+        const file = new File(Paths.cache, 'equipment_template.csv');
         file.create({ overwrite: true });
         file.write(templateContent);
         
@@ -131,9 +131,8 @@ export default function EquipmentScreen() {
       Alert.alert('Success', 'Equipment exported successfully!');
     } else {
       try {
-        const { File: FSFile, Paths: FSPaths } = await import('expo-file-system');
         const fileName = `equipment_export_${new Date().toISOString().split('T')[0]}.csv`;
-        const file = new FSFile(FSPaths.cache, fileName);
+        const file = new File(Paths.cache, fileName);
         file.create({ overwrite: true });
         file.write(csvContent);
         

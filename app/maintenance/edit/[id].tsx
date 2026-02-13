@@ -17,7 +17,7 @@ import {
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FSCompat from '@/utils/fileSystemCompat';
+import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import {
   Wrench,
@@ -138,9 +138,9 @@ export default function EditMaintenanceScreen() {
             const attachment = existingAttachments.find(a => a.id === attachmentId);
             if (attachment) {
               try {
-                const fileInfo = await FSCompat.getInfoAsync(attachment.fileUri);
+                const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
                 if (fileInfo.exists) {
-                  await FSCompat.deleteAsync(attachment.fileUri);
+                  await FileSystem.deleteAsync(attachment.fileUri);
                 }
               } catch (error) {
                 console.log('Error deleting file:', error);
@@ -159,7 +159,7 @@ export default function EditMaintenanceScreen() {
 
   const handleViewAttachment = async (attachment: EquipmentAttachment) => {
     try {
-      const fileInfo = await FSCompat.getInfoAsync(attachment.fileUri);
+      const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
       if (!fileInfo.exists) {
         Alert.alert('File Not Found', 'This file may have been deleted.');
         return;
@@ -184,17 +184,17 @@ export default function EditMaintenanceScreen() {
 
     for (const attachment of newAttachments) {
       try {
-        const attachmentDir = `${FSCompat.documentDirectory}maintenance-attachments/`;
-        const dirInfo = await FSCompat.getInfoAsync(attachmentDir);
+        const attachmentDir = `${FileSystem.documentDirectory}maintenance-attachments/`;
+        const dirInfo = await FileSystem.getInfoAsync(attachmentDir);
         if (!dirInfo.exists) {
-          await FSCompat.makeDirectoryAsync(attachmentDir, { intermediates: true });
+          await FileSystem.makeDirectoryAsync(attachmentDir, { intermediates: true });
         }
 
         const fileExtension = attachment.fileName.split('.').pop() || 'file';
         const newFileName = `${attachment.id}.${fileExtension}`;
         const newUri = `${attachmentDir}${newFileName}`;
 
-        await FSCompat.copyAsync({
+        await FileSystem.copyAsync({
           from: attachment.uri,
           to: newUri,
         });
