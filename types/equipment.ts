@@ -11,10 +11,10 @@ export type EquipmentType =
 
 export interface EquipmentAttachment {
   id: string;
-  fileUri: string;
   label: string;
   fileName: string;
-  createdAt?: string;
+  fileUri: string;
+  createdAt: string;
 }
 
 export interface Equipment {
@@ -27,10 +27,10 @@ export interface Equipment {
   serialNumber: string;
   purchaseDate: string;
   currentHours: number;
+  oilCapacity?: string;
   imageUrl?: string;
   warrantyExpiry?: string;
   notes?: string;
-  oilCapacity?: string;
   attachments?: EquipmentAttachment[];
   createdAt: string;
   updatedAt: string;

@@ -193,7 +193,12 @@ export default function DashboardScreen() {
             {recentLogs.map((log) => {
               const eq = equipment.find(e => e.id === log.equipmentId);
               return (
-                <View key={log.id} style={styles.logCard}>
+                <TouchableOpacity
+                  key={log.id}
+                  style={styles.logCard}
+                  onPress={() => router.push(`/maintenance/${log.id}` as any)}
+                  activeOpacity={0.7}
+                >
                   <View style={styles.logIcon}>
                     <Wrench color={Colors.primary} size={18} />
                   </View>
@@ -202,7 +207,7 @@ export default function DashboardScreen() {
                     <Text style={styles.logSubtitle}>{eq?.name ?? 'Unknown'}</Text>
                   </View>
                   <Text style={styles.logDate}>{formatDate(log.date)}</Text>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>

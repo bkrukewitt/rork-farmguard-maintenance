@@ -2,7 +2,7 @@
   "expo": {
     "name": "FarmGuard Maintenance",
     "slug": "farmguard-maintenance",
-    "version": "2.1.1",
+    "version": "1.1.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "rork-app",
@@ -19,8 +19,7 @@
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Allows FarmGuard Maintenance to access photos you select from your library to attach to maintenance records, such as choosing an existing photo of equipment or a repair.",
         "NSPhotoLibraryAddUsageDescription": "Allows FarmGuard Maintenance to save maintenance photos to your photo library, such as saving a photo of equipment or a completed repair for your personal records.",
-        "NSCameraUsageDescription": "FarmGuard Maintenance uses the camera to take photos of equipment and maintenance work, which are attached to maintenance records (for example, photographing a tractor, combine, damaged part, or completed repair while servicing equipment).",
-        "ITSAppUsesNonExemptEncryption": false
+        "NSCameraUsageDescription": "FarmGuard Maintenance uses the camera to take photos of equipment and maintenance work, which are attached to maintenance records (for example, photographing a tractor, combine, damaged part, or completed repair while servicing equipment)."
       },
       "usesIcloudStorage": true
     },
@@ -31,18 +30,22 @@
       },
       "package": "app.rork.farmguard-maintenance",
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.INTERNET",
-        "android.permission.RECORD_AUDIO"
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE",
+        "INTERNET"
       ]
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router",
+      [
+        "expo-router",
+        {
+          "origin": "https://rork.com/"
+        }
+      ],
       "expo-font",
       "expo-web-browser",
       [

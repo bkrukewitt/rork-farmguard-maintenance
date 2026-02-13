@@ -23,6 +23,7 @@ import {
   Trash2,
   ChevronRight,
   Package,
+  Paperclip,
   Eye,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
@@ -83,7 +84,7 @@ export default function MaintenanceDetailScreen() {
               }
 
               const updatedAttachments = (log?.attachments ?? []).filter(
-                (a: EquipmentAttachment) => a.id !== attachment.id
+                a => a.id !== attachment.id
               );
               await updateMaintenanceLog({
                 id: id ?? '',
@@ -285,7 +286,7 @@ export default function MaintenanceDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Parts & Consumables Used</Text>
             <View style={styles.detailsCard}>
-              {log.consumablesUsed.map((item: { consumableId: string; name: string; quantity: number }, index: number) => (
+              {log.consumablesUsed.map((item, index) => (
                 <View
                   key={`${item.consumableId}-${index}`}
                   style={[
@@ -321,7 +322,7 @@ export default function MaintenanceDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Attachments</Text>
             <View style={styles.detailsCard}>
-              {log.attachments.map((attachment: EquipmentAttachment, index: number) => (
+              {log.attachments.map((attachment, index) => (
                 <View
                   key={attachment.id}
                   style={[

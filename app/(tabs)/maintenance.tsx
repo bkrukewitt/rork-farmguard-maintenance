@@ -91,7 +91,7 @@ export default function MaintenanceScreen() {
     return (
       <TouchableOpacity
         style={styles.logCard}
-        onPress={() => router.push(`/equipment/${item.equipmentId}` as any)}
+        onPress={() => router.push(`/maintenance/${item.id}` as any)}
         activeOpacity={0.7}
       >
         <View style={[styles.logIconContainer, { backgroundColor: typeColor + '15' }]}>

@@ -17,7 +17,7 @@ import {
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import {
   Wrench,
@@ -78,7 +78,6 @@ export default function EditMaintenanceScreen() {
       setNotes(log.notes ?? '');
       setExistingAttachments(log.attachments ?? []);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [log?.id]);
 
   const handlePickAttachment = async () => {
