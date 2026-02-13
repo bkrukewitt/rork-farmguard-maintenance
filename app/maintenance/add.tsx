@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -30,10 +30,11 @@ import {
   Plus,
   X,
   FileText,
+  Search,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
-import { MaintenanceLog, Consumable, ServiceRoutine, ChecklistItem, EquipmentAttachment } from '@/types/equipment';
+import { MaintenanceLog, Consumable, ServiceRoutine, ChecklistItem, EquipmentAttachment, ConsumableCategory, CONSUMABLE_CATEGORIES } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 
 const SERVICE_TYPES: { value: MaintenanceLog['type']; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
@@ -51,7 +52,7 @@ const PERFORMER_OPTIONS: { value: MaintenanceLog['performedBy']; label: string }
 export default function AddMaintenanceScreen() {
   const router = useRouter();
   const { equipmentId: preselectedEquipmentId } = useLocalSearchParams<{ equipmentId?: string }>();
-  const { equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines } = useFarmData();
+  const { equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines, updateEquipment, addConsumable } = useFarmData();
 
   const [selectedEquipmentId, setSelectedEquipmentId] = useState(preselectedEquipmentId ?? '');
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
@@ -71,6 +72,12 @@ export default function AddMaintenanceScreen() {
   const [showAttachmentLabelModal, setShowAttachmentLabelModal] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; name: string } | null>(null);
   const [attachmentLabel, setAttachmentLabel] = useState('');
+  const [consumableSearch, setConsumableSearch] = useState('');
+  const [showAddConsumableModal, setShowAddConsumableModal] = useState(false);
+  const [newConsumableName, setNewConsumableName] = useState('');
+  const [newConsumablePartNumber, setNewConsumablePartNumber] = useState('');
+  const [newConsumableCategory, setNewConsumableCategory] = useState<ConsumableCategory>('other');
+  const [newConsumableQuantity, setNewConsumableQuantity] = useState('1');
 
   const selectedEquipment = equipment.find(e => e.id === selectedEquipmentId);
 
@@ -79,7 +86,54 @@ export default function AddMaintenanceScreen() {
       setHoursAtService(selectedEquipment.currentHours.toString());
     }
     setShowAllConsumables(false);
+    setConsumableSearch('');
   }, [selectedEquipment]);
+
+  const filteredConsumables = useMemo(() => {
+    const searchLower = consumableSearch.toLowerCase().trim();
+    if (!searchLower) return consumables;
+    return consumables.filter((item: Consumable) =>
+      item.partNumber.toLowerCase().includes(searchLower) ||
+      item.name.toLowerCase().includes(searchLower)
+    );
+  }, [consumables, consumableSearch]);
+
+  const handleAddNewConsumable = async () => {
+    if (!newConsumableName.trim() || !newConsumablePartNumber.trim()) {
+      Alert.alert('Error', 'Please enter both name and part number');
+      return;
+    }
+
+    try {
+      const newConsumable = await addConsumable({
+        name: newConsumableName.trim(),
+        partNumber: newConsumablePartNumber.trim(),
+        category: newConsumableCategory,
+        quantity: parseInt(newConsumableQuantity) || 1,
+        lowStockThreshold: 1,
+        compatibleEquipment: selectedEquipmentId ? [selectedEquipmentId] : [],
+      });
+
+      setSelectedConsumables(prev => [
+        ...prev,
+        {
+          consumableId: newConsumable.id,
+          name: newConsumable.name,
+          partNumber: newConsumable.partNumber,
+          quantity: 1,
+        },
+      ]);
+
+      setShowAddConsumableModal(false);
+      setNewConsumableName('');
+      setNewConsumablePartNumber('');
+      setNewConsumableCategory('other');
+      setNewConsumableQuantity('1');
+    } catch (error) {
+      console.log('Error adding consumable:', error);
+      Alert.alert('Error', 'Failed to add part');
+    }
+  };
 
   const handleSelectRoutine = (routine: ServiceRoutine | null) => {
     setSelectedRoutine(routine);
@@ -249,10 +303,42 @@ export default function AddMaintenanceScreen() {
         }
       }
 
-      return log;
+      return { log, equipmentId: selectedEquipmentId, serviceHours: parseFloat(hoursAtService) || 0 };
     },
-    onSuccess: () => {
-      router.back();
+    onSuccess: (result) => {
+      const equip = equipment.find(e => e.id === result.equipmentId);
+      const serviceHours = result.serviceHours;
+      
+      if (equip && serviceHours > 0 && serviceHours !== equip.currentHours) {
+        Alert.alert(
+          'Update Equipment Hours?',
+          `The service was logged at ${serviceHours.toLocaleString()} hours.\n\nWould you like to update "${equip.name}" from ${equip.currentHours.toLocaleString()} hours to ${serviceHours.toLocaleString()} hours?`,
+          [
+            {
+              text: 'No',
+              style: 'cancel',
+              onPress: () => router.back(),
+            },
+            {
+              text: 'Yes, Update',
+              onPress: async () => {
+                try {
+                  await updateEquipment({
+                    id: result.equipmentId,
+                    currentHours: serviceHours,
+                  });
+                  router.back();
+                } catch (error) {
+                  console.log('Error updating equipment hours:', error);
+                  router.back();
+                }
+              },
+            },
+          ]
+        );
+      } else {
+        router.back();
+      }
     },
     onError: (error: Error) => {
       Alert.alert('Error', error.message);
@@ -533,18 +619,20 @@ export default function AddMaintenanceScreen() {
           </TouchableOpacity>
 
           {showConsumablesPicker && (() => {
+            const partsToFilter = filteredConsumables;
             const compatibleParts = selectedEquipmentId
-              ? consumables.filter((item: Consumable) =>
+              ? partsToFilter.filter((item: Consumable) =>
                   item.compatibleEquipment?.includes(selectedEquipmentId)
                 )
               : [];
             const otherParts = selectedEquipmentId
-              ? consumables.filter((item: Consumable) =>
+              ? partsToFilter.filter((item: Consumable) =>
                   !item.compatibleEquipment?.includes(selectedEquipmentId)
                 )
-              : consumables;
+              : partsToFilter;
             const hasCompatible = compatibleParts.length > 0;
             const hasOther = otherParts.length > 0;
+            const hasSearchResults = partsToFilter.length > 0;
 
             const renderConsumableItem = (item: Consumable) => {
               const selected = selectedConsumables.find(c => c.consumableId === item.id);
@@ -593,9 +681,41 @@ export default function AddMaintenanceScreen() {
 
             return (
               <View style={styles.pickerDropdown}>
+                <View style={styles.consumablesSearchContainer}>
+                  <Search color={Colors.textSecondary} size={18} />
+                  <TextInput
+                    style={styles.consumablesSearchInput}
+                    value={consumableSearch}
+                    onChangeText={setConsumableSearch}
+                    placeholder="Search by part # or name..."
+                    placeholderTextColor={Colors.textSecondary}
+                    autoCapitalize="none"
+                  />
+                  {consumableSearch.length > 0 && (
+                    <TouchableOpacity onPress={() => setConsumableSearch('')}>
+                      <X color={Colors.textSecondary} size={18} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <TouchableOpacity
+                  style={styles.addNewPartButton}
+                  onPress={() => {
+                    setShowConsumablesPicker(false);
+                    setShowAddConsumableModal(true);
+                  }}
+                >
+                  <Plus color={Colors.primary} size={18} />
+                  <Text style={styles.addNewPartText}>Add New Part</Text>
+                </TouchableOpacity>
+
                 {consumables.length === 0 ? (
                   <Text style={styles.noEquipmentText}>
-                    No parts in inventory. Add parts in Inventory tab first.
+                    No parts in inventory. Add a new part above.
+                  </Text>
+                ) : !hasSearchResults && consumableSearch.length > 0 ? (
+                  <Text style={styles.noEquipmentText}>
+                    No parts found matching &quot;{consumableSearch}&quot;
                   </Text>
                 ) : (
                   <>
@@ -800,6 +920,104 @@ export default function AddMaintenanceScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={showAddConsumableModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddConsumableModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowAddConsumableModal(false)}
+        >
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Add New Part</Text>
+            <Text style={styles.modalSubtitle}>
+              {selectedEquipment ? `Will be linked to ${selectedEquipment.name}` : 'Select equipment first to link'}
+            </Text>
+
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>Part Name *</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={newConsumableName}
+                onChangeText={setNewConsumableName}
+                placeholder="e.g., Oil Filter"
+                placeholderTextColor={Colors.textSecondary}
+              />
+            </View>
+
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>Part Number *</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={newConsumablePartNumber}
+                onChangeText={setNewConsumablePartNumber}
+                placeholder="e.g., RE504836"
+                placeholderTextColor={Colors.textSecondary}
+                autoCapitalize="characters"
+              />
+            </View>
+
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>Category</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+                <View style={styles.categoryRow}>
+                  {CONSUMABLE_CATEGORIES.map(cat => (
+                    <TouchableOpacity
+                      key={cat.value}
+                      style={[
+                        styles.categoryChip,
+                        newConsumableCategory === cat.value && styles.categoryChipActive,
+                      ]}
+                      onPress={() => setNewConsumableCategory(cat.value)}
+                    >
+                      <Text style={[
+                        styles.categoryChipText,
+                        newConsumableCategory === cat.value && styles.categoryChipTextActive,
+                      ]}>
+                        {cat.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </ScrollView>
+            </View>
+
+            <View style={styles.modalInputGroup}>
+              <Text style={styles.modalInputLabel}>Quantity in Stock</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={newConsumableQuantity}
+                onChangeText={setNewConsumableQuantity}
+                placeholder="1"
+                placeholderTextColor={Colors.textSecondary}
+                keyboardType="number-pad"
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setShowAddConsumableModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalSaveButton,
+                  (!newConsumableName.trim() || !newConsumablePartNumber.trim()) && styles.modalSaveButtonDisabled,
+                ]}
+                onPress={handleAddNewConsumable}
+                disabled={!newConsumableName.trim() || !newConsumablePartNumber.trim()}
+              >
+                <Text style={styles.modalSaveText}>Add Part</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -970,6 +1188,66 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500' as const,
     color: Colors.primary,
+  },
+  consumablesSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.background,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    gap: 10,
+  },
+  consumablesSearchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: Colors.text,
+    padding: 0,
+  },
+  addNewPartButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.primary + '10',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+    gap: 8,
+  },
+  addNewPartText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+    color: Colors.primary,
+  },
+  categoryScroll: {
+    marginHorizontal: -4,
+  },
+  categoryRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 4,
+  },
+  categoryChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  categoryChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  categoryChipText: {
+    fontSize: 13,
+    color: Colors.textSecondary,
+    fontWeight: '500' as const,
+  },
+  categoryChipTextActive: {
+    color: Colors.textOnPrimary,
   },
   selectedPartsContainer: {
     marginTop: 12,
