@@ -59,7 +59,6 @@ export default function AddEquipmentScreen() {
   const [purchaseDate, setPurchaseDate] = useState('');
   const [notes, setNotes] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
-  const [oilCapacity, setOilCapacity] = useState('');
 
   const takePhoto = async () => {
     try {
@@ -132,7 +131,6 @@ export default function AddEquipmentScreen() {
         purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
         notes: notes.trim(),
         imageUrl: imageUri || undefined,
-        oilCapacity: oilCapacity.trim() || undefined,
       });
 
       for (const interval of DEFAULT_MAINTENANCE_INTERVALS) {
@@ -292,17 +290,6 @@ export default function AddEquipmentScreen() {
               placeholder="Enter serial number"
               placeholderTextColor={Colors.textSecondary}
               autoCapitalize="characters"
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Oil Capacity</Text>
-            <TextInput
-              style={styles.input}
-              value={oilCapacity}
-              onChangeText={setOilCapacity}
-              placeholder="e.g., 15 quarts, 3.5 gallons"
-              placeholderTextColor={Colors.textSecondary}
             />
           </View>
 

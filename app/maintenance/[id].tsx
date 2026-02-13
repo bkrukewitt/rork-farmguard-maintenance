@@ -84,7 +84,7 @@ export default function MaintenanceDetailScreen() {
               }
 
               const updatedAttachments = (log?.attachments ?? []).filter(
-                a => a.id !== attachment.id
+                (a: EquipmentAttachment) => a.id !== attachment.id
               );
               await updateMaintenanceLog({
                 id: id ?? '',
@@ -286,7 +286,7 @@ export default function MaintenanceDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Parts & Consumables Used</Text>
             <View style={styles.detailsCard}>
-              {log.consumablesUsed.map((item, index) => (
+              {log.consumablesUsed.map((item: { consumableId: string; name: string; quantity: number }, index: number) => (
                 <View
                   key={`${item.consumableId}-${index}`}
                   style={[
@@ -322,7 +322,7 @@ export default function MaintenanceDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Attachments</Text>
             <View style={styles.detailsCard}>
-              {log.attachments.map((attachment, index) => (
+              {log.attachments.map((attachment: EquipmentAttachment, index: number) => (
                 <View
                   key={attachment.id}
                   style={[

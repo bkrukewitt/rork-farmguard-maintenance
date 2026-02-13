@@ -53,8 +53,6 @@ export default function ImportInventoryScreen() {
   const [showSourceModal, setShowSourceModal] = useState(false);
   const [dropboxUrl, setDropboxUrl] = useState('');
   const [isLoadingDropbox, setIsLoadingDropbox] = useState(false);
-  const [showAllWarnings, setShowAllWarnings] = useState(false);
-  const [showAllItems, setShowAllItems] = useState(false);
 
   const matchEquipmentByName = (equipmentNames: string[]): { matched: string[]; unmatched: string[] } => {
     const matched: string[] = [];
@@ -516,15 +514,13 @@ export default function ImportInventoryScreen() {
               <AlertCircle color={Colors.warning} size={20} />
               <Text style={styles.warningsTitle}>Warnings</Text>
             </View>
-            {(showAllWarnings ? parseErrors : parseErrors.slice(0, 5)).map((error, index) => (
+            {parseErrors.slice(0, 5).map((error, index) => (
               <Text key={index} style={styles.warningText}>{error}</Text>
             ))}
             {parseErrors.length > 5 && (
-              <TouchableOpacity onPress={() => setShowAllWarnings(!showAllWarnings)}>
-                <Text style={styles.showMoreText}>
-                  {showAllWarnings ? 'Show Less' : `Show All ${parseErrors.length} Warnings`}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.warningMore}>
+                +{parseErrors.length - 5} more warnings
+              </Text>
             )}
           </View>
         )}
@@ -558,7 +554,7 @@ export default function ImportInventoryScreen() {
             <View style={styles.previewSection}>
               <Text style={styles.previewTitle}>Preview ({parsedData.length} rows)</Text>
               
-              {(showAllItems ? parsedData : parsedData.slice(0, 10)).map((part, index) => (
+              {parsedData.slice(0, 10).map((part, index) => (
                 <View 
                   key={index} 
                   style={[
@@ -639,11 +635,9 @@ export default function ImportInventoryScreen() {
               ))}
               
               {parsedData.length > 10 && (
-                <TouchableOpacity onPress={() => setShowAllItems(!showAllItems)}>
-                  <Text style={styles.showMoreText}>
-                    {showAllItems ? 'Show Less' : `Show All ${parsedData.length} Items`}
-                  </Text>
-                </TouchableOpacity>
+                <Text style={styles.moreItemsText}>
+                  +{parsedData.length - 10} more items
+                </Text>
               )}
             </View>
           </>
@@ -870,14 +864,6 @@ const styles = StyleSheet.create({
     color: Colors.warning,
     fontWeight: '500' as const,
     marginTop: 8,
-  },
-  showMoreText: {
-    fontSize: 14,
-    color: Colors.primary,
-    fontWeight: '600' as const,
-    textAlign: 'center',
-    marginTop: 12,
-    paddingVertical: 8,
   },
   summarySection: {
     backgroundColor: Colors.surface,

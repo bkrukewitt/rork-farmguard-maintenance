@@ -8,15 +8,14 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  InteractionManager,
+  Platform,
   Modal,
   Pressable,
-  TextInput,
-  Platform,
-  InteractionManager,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { 
   Tractor, 
@@ -37,14 +36,12 @@ import {
   Plus,
   FileText,
   Fan,
-  Paperclip,
-  Eye,
-  Droplet,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { EquipmentType, EquipmentAttachment } from '@/types/equipment';
-import { formatDate, formatHours, getMaintenanceStatus, generateId } from '@/utils/helpers';
+import { formatDate, formatHours, getMaintenanceStatus } from '@/utils/helpers';
+import { generateId } from '@/utils/helpers';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
   tractor: Tractor,
@@ -70,14 +67,14 @@ export default function EquipmentDetailScreen() {
     isLoading,
   } = useFarmData();
 
-  const equipment = getEquipmentById(id ?? '');
-  const logs = getLogsForEquipment(id ?? '');
-  const intervals = getIntervalsForEquipment(id ?? '');
-
   const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const [attachmentLabel, setAttachmentLabel] = useState('');
   const [pendingFile, setPendingFile] = useState<{ uri: string; name: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+
+  const equipment = getEquipmentById(id ?? '');
+  const logs = getLogsForEquipment(id ?? '');
+  const intervals = getIntervalsForEquipment(id ?? '');
 
   const maintenanceStatus = useMemo(() => {
     if (!equipment) return [];
@@ -370,67 +367,7 @@ export default function EquipmentDetailScreen() {
               <Text style={styles.detailLabel}>Service Records</Text>
               <Text style={styles.detailValue}>{logs.length}</Text>
             </View>
-            {equipment.oilCapacity ? (
-              <View style={styles.detailRow}>
-                <View style={styles.detailIcon}>
-                  <Droplet color={Colors.textSecondary} size={16} />
-                </View>
-                <Text style={styles.detailLabel}>Oil Capacity</Text>
-                <Text style={styles.detailValue}>{equipment.oilCapacity}</Text>
-              </View>
-            ) : null}
           </View>
-        </View>
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Documents</Text>
-            <TouchableOpacity
-              style={styles.addAttachmentButton}
-              onPress={handlePickAttachment}
-            >
-              <Plus color={Colors.primary} size={18} />
-              <Text style={styles.addAttachmentText}>Add File</Text>
-            </TouchableOpacity>
-          </View>
-          {(!equipment.attachments || equipment.attachments.length === 0) ? (
-            <View style={styles.emptyCard}>
-              <Paperclip color={Colors.textSecondary} size={32} />
-              <Text style={styles.emptyText}>No documents attached</Text>
-              <TouchableOpacity
-                style={styles.emptyButton}
-                onPress={handlePickAttachment}
-              >
-                <Text style={styles.emptyButtonText}>Upload a File</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            equipment.attachments.map(attachment => (
-              <View key={attachment.id} style={styles.attachmentCard}>
-                <View style={styles.attachmentIcon}>
-                  <FileText color={Colors.primary} size={20} />
-                </View>
-                <View style={styles.attachmentInfo}>
-                  <Text style={styles.attachmentLabel}>{attachment.label}</Text>
-                  <Text style={styles.attachmentFileName} numberOfLines={1}>
-                    {attachment.fileName}
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.attachmentAction}
-                  onPress={() => handleViewAttachment(attachment)}
-                >
-                  <Eye color={Colors.primary} size={18} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.attachmentAction}
-                  onPress={() => handleDeleteAttachment(attachment)}
-                >
-                  <Trash2 color={Colors.statusOverdue} size={18} />
-                </TouchableOpacity>
-              </View>
-            ))
-          )}
         </View>
 
         {equipment.notes && (
@@ -494,12 +431,7 @@ export default function EquipmentDetailScreen() {
             </View>
           ) : (
             logs.slice(0, 10).map(log => (
-              <TouchableOpacity
-                key={log.id}
-                style={styles.logCard}
-                onPress={() => router.push(`/maintenance/${log.id}` as any)}
-                activeOpacity={0.7}
-              >
+              <View key={log.id} style={styles.logCard}>
                 <View style={styles.logHeader}>
                   <Text style={styles.logDate}>{formatDate(log.date)}</Text>
                   <Text style={[
@@ -513,76 +445,13 @@ export default function EquipmentDetailScreen() {
                 <View style={styles.logMeta}>
                   <Text style={styles.logMetaText}>@ {formatHours(log.hoursAtService)}</Text>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))
           )}
         </View>
 
         <View style={styles.bottomPadding} />
       </ScrollView>
-
-      <Modal
-        visible={showAttachmentModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => {
-          setShowAttachmentModal(false);
-          setPendingFile(null);
-        }}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => {
-            setShowAttachmentModal(false);
-            setPendingFile(null);
-          }}
-        >
-          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.modalTitle}>Label This File</Text>
-            <Text style={styles.modalSubtitle}>
-              {pendingFile?.name ?? 'Selected file'}
-            </Text>
-
-            <View style={styles.modalInputGroup}>
-              <Text style={styles.modalInputLabel}>File Label</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={attachmentLabel}
-                onChangeText={setAttachmentLabel}
-                placeholder={"e.g., Filters, Owner's Manual"}
-                placeholderTextColor={Colors.textSecondary}
-                autoFocus
-              />
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => {
-                  setShowAttachmentModal(false);
-                  setPendingFile(null);
-                }}
-              >
-                <Text style={styles.modalCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.modalSaveButton,
-                  (!attachmentLabel.trim() || isUploading) && styles.modalSaveButtonDisabled,
-                ]}
-                onPress={handleSaveAttachment}
-                disabled={!attachmentLabel.trim() || isUploading}
-              >
-                {isUploading ? (
-                  <ActivityIndicator color={Colors.textOnPrimary} size="small" />
-                ) : (
-                  <Text style={styles.modalSaveText}>Save</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </>
   );
 }
@@ -833,141 +702,6 @@ const styles = StyleSheet.create({
   },
   emptyButtonText: {
     fontSize: 14,
-    fontWeight: '600' as const,
-    color: Colors.textOnPrimary,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  addAttachmentButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.primary + '15',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    gap: 4,
-  },
-  addAttachmentText: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-    color: Colors.primary,
-  },
-  attachmentCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 8,
-  },
-  attachmentIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 10,
-    backgroundColor: Colors.primary + '15',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
-  attachmentInfo: {
-    flex: 1,
-  },
-  attachmentLabel: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    color: Colors.text,
-  },
-  attachmentFileName: {
-    fontSize: 12,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  attachmentAction: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  modalContent: {
-    backgroundColor: Colors.surface,
-    borderRadius: 20,
-    padding: 24,
-    width: '100%',
-    maxWidth: 400,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '700' as const,
-    color: Colors.text,
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  modalSubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  modalInputGroup: {
-    marginBottom: 20,
-  },
-  modalInputLabel: {
-    fontSize: 14,
-    fontWeight: '500' as const,
-    color: Colors.textSecondary,
-    marginBottom: 8,
-  },
-  modalInput: {
-    backgroundColor: Colors.background,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: Colors.text,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  modalCancelButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-  },
-  modalCancelText: {
-    fontSize: 16,
-    fontWeight: '600' as const,
-    color: Colors.textSecondary,
-  },
-  modalSaveButton: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
-    backgroundColor: Colors.primary,
-    alignItems: 'center',
-  },
-  modalSaveButtonDisabled: {
-    opacity: 0.5,
-  },
-  modalSaveText: {
-    fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.textOnPrimary,
   },
