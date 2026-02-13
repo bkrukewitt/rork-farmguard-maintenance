@@ -17,6 +17,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Paths } from 'expo-file-system';
 import { 
   Wrench, 
   AlertCircle, 
@@ -163,7 +164,7 @@ export default function AddMaintenanceScreen() {
 
     for (const attachment of attachments) {
       try {
-        const attachmentDir = `${FileSystem.documentDirectory}maintenance-attachments/`;
+        const attachmentDir = `${Paths.document.uri}maintenance-attachments/`;
         const dirInfo = await FileSystem.getInfoAsync(attachmentDir);
         if (!dirInfo.exists) {
           await FileSystem.makeDirectoryAsync(attachmentDir, { intermediates: true });

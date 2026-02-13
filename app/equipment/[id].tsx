@@ -17,6 +17,7 @@ import {
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { 
   Tractor, 
@@ -142,7 +143,7 @@ export default function EquipmentDetailScreen() {
     setIsUploading(true);
     try {
       // Copy the file to the app's document directory for persistence
-      const attachmentDir = `${FileSystem.documentDirectory}attachments/`;
+      const attachmentDir = `${Paths.document.uri}attachments/`;
       const dirInfo = await FileSystem.getInfoAsync(attachmentDir);
       if (!dirInfo.exists) {
         await FileSystem.makeDirectoryAsync(attachmentDir, { intermediates: true });
