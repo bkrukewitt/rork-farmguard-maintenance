@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, useRouter, useSegments, useRootNavigationState } from "expo-router";
+import { Stack, useRouter, useSegments, useRootNavigation } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -28,10 +28,23 @@ function AuthGate() {
   const { hasOrganization, isLoading: orgLoading } = useOrganization();
   const segments = useSegments();
   const router = useRouter();
-  const rootNavigationState = useRootNavigationState();
+  const rootNavigation = useRootNavigation();
+  const [isNavigationReady, setIsNavigationReady] = useState(false);
 
   useEffect(() => {
-    if (!rootNavigationState?.key) return;
+    if (rootNavigation?.isReady()) {
+      setIsNavigationReady(true);
+    }
+    const unsubscribe = rootNavigation?.addListener('state', () => {
+      if (rootNavigation?.isReady()) {
+        setIsNavigationReady(true);
+      }
+    });
+    return () => unsubscribe?.();
+  }, [rootNavigation]);
+
+  useEffect(() => {
+    if (!isNavigationReady) return;
     if (authLoading || orgLoading) return;
 
     const inAuthGroup = segments[0] === ('(auth)' as string);
@@ -52,7 +65,7 @@ function AuthGate() {
       console.log('Redirecting to home - authenticated with org');
       router.replace('/' as any);
     }
-  }, [isAuthenticated, isGuest, hasOrganization, authLoading, orgLoading, segments, rootNavigationState?.key]);
+  }, [isAuthenticated, isGuest, hasOrganization, authLoading, orgLoading, segments, isNavigationReady]);
 
   return null;
 }
