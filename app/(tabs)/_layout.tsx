@@ -1,23 +1,25 @@
 import { Tabs } from "expo-router";
 import { LayoutDashboard, Tractor, Wrench, Settings, Package } from "lucide-react-native";
 import React from "react";
-import Colors from "@/constants/colors";
+import { useTheme } from "@/contexts/ThemeContext";
 
 export default function TabLayout() {
+  const { colors } = useTheme();
+  
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors.primary,
-        tabBarInactiveTintColor: Colors.textSecondary,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textSecondary,
         tabBarStyle: {
-          backgroundColor: Colors.surface,
-          borderTopColor: Colors.border,
+          backgroundColor: colors.surface,
+          borderTopColor: colors.border,
           paddingTop: 4,
         },
         headerStyle: {
-          backgroundColor: Colors.primary,
+          backgroundColor: colors.primary,
         },
-        headerTintColor: Colors.textOnPrimary,
+        headerTintColor: colors.textOnPrimary,
         headerTitleStyle: {
           fontWeight: '600' as const,
         },
