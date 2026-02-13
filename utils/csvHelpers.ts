@@ -202,15 +202,12 @@ export function parseCSV(csvContent: string): CSVParseResult {
       }
     }
     
-    // Strip commas from numeric values (e.g., "1,000" -> "1000") before parsing
-    const quantityStrClean = quantityStr.replace(/,/g, '');
-    const quantity = parseInt(quantityStrClean, 10);
+    const quantity = parseInt(quantityStr, 10);
     if (isNaN(quantity) || quantity < 0) {
       errors.push(`Row ${rowNumber}: Invalid quantity "${quantityStr}", using 0`);
     }
     
-    const thresholdStrClean = thresholdStr.replace(/,/g, '');
-    const lowStockThreshold = parseInt(thresholdStrClean, 10);
+    const lowStockThreshold = parseInt(thresholdStr, 10);
     if (isNaN(lowStockThreshold) || lowStockThreshold < 0) {
       errors.push(`Row ${rowNumber}: Invalid threshold "${thresholdStr}", using 2`);
     }
@@ -619,39 +616,7 @@ export function parseEquipmentCSV(csvContent: string): EquipmentCSVParseResult {
     const yearStr = yearIndex >= 0 ? values[yearIndex]?.trim() || '' : '';
     const serialNumber = serialIndex >= 0 ? values[serialIndex]?.trim() || '' : '';
     const purchaseDateStr = purchaseDateIndex >= 0 ? values[purchaseDateIndex]?.trim() || '' : '';
-    let hoursStr = hoursIndex >= 0 ? values[hoursIndex]?.trim() || '0' : '0';
-    
-    // Handle unquoted numbers with commas (e.g., 1,500 split into two columns)
-    // If hours looks like a number and the next value is purely digits, they were likely one number
-    if (hoursIndex >= 0) {
-      const hoursVal = values[hoursIndex]?.trim() || '';
-      let nextIdx = hoursIndex + 1;
-      let reconstructed = hoursVal;
-      while (nextIdx < values.length) {
-        const nextVal = values[nextIdx]?.trim() || '';
-        // If next value is purely digits (0-9), it's likely a comma-separated continuation
-        if (/^\d+$/.test(nextVal) && /^\d+$/.test(reconstructed.replace(/\./g, ''))) {
-          reconstructed += nextVal;
-          nextIdx++;
-        } else {
-          break;
-        }
-      }
-      // Only use reconstructed value if we actually merged something
-      if (nextIdx > hoursIndex + 1) {
-        hoursStr = reconstructed;
-        // Shift remaining columns back to correct positions
-        const extraColumns = nextIdx - hoursIndex - 1;
-        // Re-read warranty and notes from shifted positions
-        if (warrantyIndex >= 0 && warrantyIndex > hoursIndex) {
-          values[warrantyIndex] = values[warrantyIndex + extraColumns] || '';
-        }
-        if (notesIndex >= 0 && notesIndex > hoursIndex) {
-          values[notesIndex] = values[notesIndex + extraColumns] || '';
-        }
-      }
-    }
-    
+    const hoursStr = hoursIndex >= 0 ? values[hoursIndex]?.trim() || '0' : '0';
     const warrantyStr = warrantyIndex >= 0 ? values[warrantyIndex]?.trim() || '' : '';
     const notes = notesIndex >= 0 ? values[notesIndex]?.trim() || '' : '';
     
@@ -679,9 +644,7 @@ export function parseEquipmentCSV(csvContent: string): EquipmentCSVParseResult {
       errors.push(`Row ${rowNumber}: Invalid year "${yearStr}", using current year`);
     }
     
-    // Strip commas from hours (e.g., "1,500" -> "1500") before parsing
-    const hoursStrClean = hoursStr.replace(/,/g, '');
-    const currentHours = parseFloat(hoursStrClean);
+    const currentHours = parseFloat(hoursStr);
     if (isNaN(currentHours) || currentHours < 0) {
       errors.push(`Row ${rowNumber}: Invalid hours "${hoursStr}", using 0`);
     }

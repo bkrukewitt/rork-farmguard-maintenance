@@ -18,7 +18,6 @@ import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
-import { Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import {
   Wrench,

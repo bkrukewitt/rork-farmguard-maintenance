@@ -706,6 +706,24 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
   });
 
+  const updateMaintenanceLogMutation = useMutation({
+    mutationFn: async (updates: Partial<MaintenanceLog> & { id: string }) => {
+      const updated = maintenanceLogs.map(l =>
+        l.id === updates.id ? { ...l, ...updates } : l
+      );
+      await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
+      return updated.find(l => l.id === updates.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+    },
+  });
+
+  const getMaintenanceLogById = useCallback(
+    (id: string) => maintenanceLogs.find(l => l.id === id),
+    [maintenanceLogs]
+  );
+
   const addIntervalMutation = useMutation({
     mutationFn: async (interval: Omit<MaintenanceInterval, 'id'>) => {
       const newInterval: MaintenanceInterval = {
