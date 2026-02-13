@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useEffect } from 'react';
+import { useCallback, useMemo, useEffect, useState } from 'react';
 import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
+import { trpc } from '@/lib/trpc';
 
 const STORAGE_KEYS = {
   EQUIPMENT: 'farmguard_equipment',
@@ -12,6 +13,7 @@ const STORAGE_KEYS = {
   CONSUMABLES: 'farmguard_consumables',
   SERVICE_ROUTINES: 'farmguard_service_routines',
   INSPECTION_ROUTINES: 'farmguard_inspection_routines',
+  FARM_ID: 'farmguard_farm_id',
 };
 
 async function loadData<T>(key: string): Promise<T[]> {
@@ -27,7 +29,6 @@ async function loadData<T>(key: string): Promise<T[]> {
     }
   } catch (error) {
     console.error(`Error loading data: ${key}`, error);
-    // Return empty array on error to prevent app crash
     return [];
   }
 }
@@ -39,22 +40,63 @@ async function saveData<T>(key: string, data: T[]): Promise<void> {
     console.log(`Data saved successfully: ${key}, items: ${data.length}`);
   } catch (error) {
     console.error(`Error saving data: ${key}`, error);
-    // Re-throw error so mutations can handle it
     throw error;
+  }
+}
+
+async function getFarmId(): Promise<string> {
+  try {
+    let farmId = await AsyncStorage.getItem(STORAGE_KEYS.FARM_ID);
+    if (!farmId) {
+      farmId = generateId();
+      await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, farmId);
+      console.log(`Generated new farm ID: ${farmId}`);
+    }
+    return farmId;
+  } catch (error) {
+    console.error('Error getting farm ID:', error);
+    return generateId();
   }
 }
 
 export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const queryClient = useQueryClient();
+  const [farmId, setFarmId] = useState<string>('');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+
+  useEffect(() => {
+    getFarmId().then(setFarmId);
+  }, []);
+
+  const remoteDataQuery = trpc.farm.getData.useQuery(
+    { farmId },
+    {
+      enabled: !!farmId,
+      staleTime: 1000 * 60 * 2,
+      refetchOnMount: true,
+      refetchOnReconnect: true,
+    }
+  );
+
+  const syncDataMutation = trpc.farm.syncData.useMutation({
+    onSuccess: (result) => {
+      setLastSyncTime(result.timestamp);
+      console.log('Data synced to server successfully');
+    },
+    onError: (error) => {
+      console.error('Failed to sync data to server:', error);
+    },
+  });
 
   const equipmentQuery = useQuery({
     queryKey: ['equipment'],
     queryFn: () => loadData<Equipment>(STORAGE_KEYS.EQUIPMENT),
-    staleTime: Infinity, // Data from AsyncStorage is always fresh
-    gcTime: Infinity, // Never garbage collect this data
-    refetchOnMount: true, // Always refetch on mount to ensure data is loaded
-    refetchOnWindowFocus: false, // Don't refetch on window focus
-    refetchOnReconnect: false, // Don't refetch on reconnect
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 
   const maintenanceLogsQuery = useQuery({
@@ -114,6 +156,78 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const serviceRoutines = useMemo(() => serviceRoutinesQuery.data ?? [], [serviceRoutinesQuery.data]);
   const inspectionRoutines = useMemo(() => inspectionRoutinesQuery.data ?? [], [inspectionRoutinesQuery.data]);
 
+  useEffect(() => {
+    if (remoteDataQuery.data && farmId) {
+      const remote = remoteDataQuery.data;
+      const hasRemoteData = 
+        remote.equipment.length > 0 ||
+        remote.maintenanceLogs.length > 0 ||
+        remote.consumables.length > 0 ||
+        remote.intervals.length > 0 ||
+        remote.serviceRoutines.length > 0 ||
+        remote.inspectionRoutines.length > 0;
+
+      if (hasRemoteData) {
+        console.log('Remote data found, merging with local...');
+        const mergeArrays = <T extends { id: string }>(local: T[], remote: T[]): T[] => {
+          const map = new Map<string, T>();
+          local.forEach(item => map.set(item.id, item));
+          remote.forEach(item => {
+            if (!map.has(item.id)) {
+              map.set(item.id, item);
+            }
+          });
+          return Array.from(map.values());
+        };
+
+        const mergedEquipment = mergeArrays(equipment, remote.equipment);
+        const mergedLogs = mergeArrays(maintenanceLogs, remote.maintenanceLogs);
+        const mergedConsumables = mergeArrays(consumables, remote.consumables);
+        const mergedIntervals = mergeArrays(intervals, remote.intervals);
+        const mergedServiceRoutines = mergeArrays(serviceRoutines, remote.serviceRoutines);
+        const mergedInspectionRoutines = mergeArrays(inspectionRoutines, remote.inspectionRoutines);
+
+        Promise.all([
+          saveData(STORAGE_KEYS.EQUIPMENT, mergedEquipment),
+          saveData(STORAGE_KEYS.MAINTENANCE_LOGS, mergedLogs),
+          saveData(STORAGE_KEYS.CONSUMABLES, mergedConsumables),
+          saveData(STORAGE_KEYS.INTERVALS, mergedIntervals),
+          saveData(STORAGE_KEYS.SERVICE_ROUTINES, mergedServiceRoutines),
+          saveData(STORAGE_KEYS.INSPECTION_ROUTINES, mergedInspectionRoutines),
+        ]).then(() => {
+          queryClient.invalidateQueries({ queryKey: ['equipment'] });
+          queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+          queryClient.invalidateQueries({ queryKey: ['consumables'] });
+          queryClient.invalidateQueries({ queryKey: ['intervals'] });
+          queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+          queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+          console.log('Data merged and saved locally');
+        });
+      }
+    }
+  }, [remoteDataQuery.data, farmId]);
+
+  const syncToServer = useCallback(async () => {
+    if (!farmId) return;
+    
+    setIsSyncing(true);
+    try {
+      await syncDataMutation.mutateAsync({
+        farmId,
+        data: {
+          equipment,
+          maintenanceLogs,
+          intervals,
+          consumables,
+          serviceRoutines,
+          inspectionRoutines,
+        },
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [farmId, equipment, maintenanceLogs, intervals, consumables, serviceRoutines, inspectionRoutines, syncDataMutation]);
+
   const addEquipmentMutation = useMutation({
     mutationFn: async (newEquipment: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>) => {
       const now = new Date().toISOString();
@@ -129,6 +243,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      syncToServer();
     },
   });
 
@@ -144,6 +259,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      syncToServer();
     },
   });
 
@@ -160,6 +276,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
       queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
       queryClient.invalidateQueries({ queryKey: ['intervals'] });
+      syncToServer();
     },
   });
 
@@ -173,7 +290,6 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       const updated = [...maintenanceLogs, newLog];
       await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
 
-      // Auto-update equipment hours if hoursAtService is provided and greater than current
       if (log.hoursAtService > 0) {
         const equip = equipment.find(e => e.id === log.equipmentId);
         if (equip && log.hoursAtService > equip.currentHours) {
@@ -191,6 +307,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      syncToServer();
     },
   });
 
@@ -201,7 +318,6 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       );
       await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
 
-      // Auto-update equipment hours if hoursAtService changed and is greater than current
       if (updates.hoursAtService && updates.hoursAtService > 0) {
         const log = updated.find(l => l.id === updates.id);
         if (log) {
@@ -222,6 +338,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      syncToServer();
     },
   });
 
@@ -232,6 +349,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+      syncToServer();
     },
   });
 
@@ -247,6 +365,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intervals'] });
+      syncToServer();
     },
   });
 
@@ -259,6 +378,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intervals'] });
+      syncToServer();
     },
   });
 
@@ -295,6 +415,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      syncToServer();
     },
   });
 
@@ -310,6 +431,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      syncToServer();
     },
   });
 
@@ -320,6 +442,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      syncToServer();
     },
   });
 
@@ -340,6 +463,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      syncToServer();
     },
   });
 
@@ -373,6 +497,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      syncToServer();
     },
   });
 
@@ -391,6 +516,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      syncToServer();
     },
   });
 
@@ -409,6 +535,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+      syncToServer();
     },
   });
 
@@ -424,6 +551,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+      syncToServer();
     },
   });
 
@@ -434,6 +562,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+      syncToServer();
     },
   });
 
@@ -457,6 +586,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+      syncToServer();
     },
   });
 
@@ -472,6 +602,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+      syncToServer();
     },
   });
 
@@ -482,6 +613,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+      syncToServer();
     },
   });
 
@@ -489,6 +621,12 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     (id: string) => inspectionRoutines.find(r => r.id === id),
     [inspectionRoutines]
   );
+
+  const setFarmIdAndSync = useCallback(async (newFarmId: string) => {
+    await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
+    setFarmId(newFarmId);
+    queryClient.invalidateQueries({ queryKey: ['farm', 'getData'] });
+  }, [queryClient]);
 
   const isLoading =
     equipmentQuery.isLoading ||
@@ -498,7 +636,6 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     serviceRoutinesQuery.isLoading ||
     inspectionRoutinesQuery.isLoading;
 
-  // Verify data is loaded - log if any data exists
   useEffect(() => {
     if (!isLoading) {
       console.log('Data loaded - Equipment:', equipment.length, 'Maintenance Logs:', maintenanceLogs.length, 'Consumables:', consumables.length);
@@ -506,6 +643,11 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   }, [isLoading, equipment.length, maintenanceLogs.length, consumables.length]);
 
   return {
+    farmId,
+    setFarmId: setFarmIdAndSync,
+    isSyncing,
+    lastSyncTime,
+    syncToServer,
     equipment,
     maintenanceLogs,
     intervals,

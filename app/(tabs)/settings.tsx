@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Modal,
+  TextInput,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
@@ -28,7 +29,12 @@ import {
   Palette,
   Check,
   X,
+  Cloud,
+  RefreshCw,
+  Users,
+  Copy,
 } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -39,7 +45,20 @@ import { useTheme } from '@/contexts/ThemeContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, intervals, consumables, serviceRoutines, inspectionRoutines, getLowStockConsumables } = useFarmData();
+  const { 
+    equipment, 
+    maintenanceLogs, 
+    intervals, 
+    consumables, 
+    serviceRoutines, 
+    inspectionRoutines, 
+    getLowStockConsumables,
+    farmId,
+    setFarmId,
+    isSyncing,
+    lastSyncTime,
+    syncToServer,
+  } = useFarmData();
   const { colors, colorSchemes, currentSchemeId, setColorScheme, currentScheme } = useTheme();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -47,6 +66,8 @@ export default function SettingsScreen() {
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showJoinFarmModal, setShowJoinFarmModal] = useState(false);
+  const [joinFarmId, setJoinFarmId] = useState('');
 
   const handleClearData = () => {
     Alert.alert(
@@ -207,6 +228,47 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleCopyFarmId = async () => {
+    if (farmId) {
+      await Clipboard.setStringAsync(farmId);
+      Alert.alert('Copied!', 'Farm ID copied to clipboard. Share this with team members to sync data across devices.');
+    }
+  };
+
+  const handleJoinFarm = async () => {
+    if (!joinFarmId.trim()) {
+      Alert.alert('Error', 'Please enter a Farm ID');
+      return;
+    }
+
+    Alert.alert(
+      'Join Farm',
+      'This will sync your app with the farm data. Your local data will be merged with the farm data. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Join',
+          onPress: async () => {
+            await setFarmId(joinFarmId.trim());
+            setShowJoinFarmModal(false);
+            setJoinFarmId('');
+            Alert.alert('Success', 'You have joined the farm! Data will sync automatically.');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleManualSync = async () => {
+    try {
+      await syncToServer();
+      Alert.alert('Success', 'Data synced to cloud successfully!');
+    } catch (error) {
+      console.error('Sync error:', error);
+      Alert.alert('Error', 'Failed to sync data. Please try again.');
+    }
+  };
+
   const handleExportLowStockParts = async () => {
     try {
       setIsExporting(true);
@@ -286,6 +348,59 @@ export default function SettingsScreen() {
           <View style={styles.statItem}>
             <Text style={[styles.statValue, { color: colors.primary }]}>{maintenanceLogs.length}</Text>
             <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Service Logs</Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Cloud Sync</Text>
+        
+        <View style={[styles.syncCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.syncHeader}>
+            <Cloud color={colors.primary} size={24} />
+            <View style={styles.syncInfo}>
+              <Text style={[styles.syncTitle, { color: colors.text }]}>Farm ID</Text>
+              <Text style={[styles.syncId, { color: colors.textSecondary }]} numberOfLines={1}>
+                {farmId || 'Loading...'}
+              </Text>
+            </View>
+            <TouchableOpacity 
+              style={[styles.copyButton, { backgroundColor: colors.primary + '15' }]}
+              onPress={handleCopyFarmId}
+            >
+              <Copy color={colors.primary} size={18} />
+            </TouchableOpacity>
+          </View>
+          
+          {lastSyncTime && (
+            <Text style={[styles.lastSync, { color: colors.textSecondary }]}>
+              Last synced: {new Date(lastSyncTime).toLocaleString()}
+            </Text>
+          )}
+          
+          <View style={styles.syncActions}>
+            <TouchableOpacity 
+              style={[styles.syncButton, { backgroundColor: colors.primary }]}
+              onPress={handleManualSync}
+              disabled={isSyncing}
+            >
+              {isSyncing ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <RefreshCw color="#fff" size={18} />
+              )}
+              <Text style={styles.syncButtonText}>
+                {isSyncing ? 'Syncing...' : 'Sync Now'}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[styles.syncButton, { backgroundColor: colors.secondary }]}
+              onPress={() => setShowJoinFarmModal(true)}
+            >
+              <Users color="#fff" size={18} />
+              <Text style={styles.syncButtonText}>Join Farm</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -539,6 +654,47 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={showJoinFarmModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowJoinFarmModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Join Existing Farm</Text>
+              <TouchableOpacity onPress={() => setShowJoinFarmModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              Enter the Farm ID shared by another team member to sync data across devices.
+            </Text>
+            
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Enter Farm ID"
+                placeholderTextColor={colors.textSecondary}
+                value={joinFarmId}
+                onChangeText={setJoinFarmId}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            
+            <TouchableOpacity 
+              style={[styles.joinButton, { backgroundColor: colors.primary }]}
+              onPress={handleJoinFarm}
+            >
+              <Text style={styles.joinButtonText}>Join Farm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -694,5 +850,86 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '500' as const,
+  },
+  syncCard: {
+    borderRadius: 16,
+    padding: 16,
+    shadowColor: 'rgba(0, 0, 0, 0.08)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  syncHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  syncInfo: {
+    flex: 1,
+  },
+  syncTitle: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  syncId: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  copyButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  lastSync: {
+    fontSize: 11,
+    marginTop: 12,
+    textAlign: 'center',
+  },
+  syncActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 14,
+  },
+  syncButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  syncButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  joinDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  joinInput: {
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginBottom: 16,
+  },
+  joinInputText: {
+    fontSize: 16,
+  },
+  joinButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  joinButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600' as const,
   },
 });
