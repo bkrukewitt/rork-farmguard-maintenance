@@ -7,6 +7,7 @@ export type EquipmentType =
   | 'planter'
   | 'loader'
   | 'mower'
+  | 'utv'
   | 'other';
 
 export interface EquipmentAttachment {
@@ -107,6 +108,7 @@ export const EQUIPMENT_TYPES: { value: EquipmentType; label: string; icon: strin
   { value: 'planter', label: 'Planter', icon: 'planter' },
   { value: 'loader', label: 'Loader', icon: 'loader' },
   { value: 'mower', label: 'Mower', icon: 'mower' },
+  { value: 'utv', label: 'UTV', icon: 'utv' },
   { value: 'other', label: 'Other', icon: 'settings' },
 ];
 

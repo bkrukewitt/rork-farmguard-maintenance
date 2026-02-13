@@ -29,6 +29,7 @@ import {
   Camera,
   Image as ImageIcon,
   X,
+  CarFront,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -43,6 +44,7 @@ const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.Compon
   { value: 'planter', label: 'Planter', Icon: Sprout },
   { value: 'loader', label: 'Loader', Icon: Container },
   { value: 'mower', label: 'Mower', Icon: Fan },
+  { value: 'utv', label: 'UTV', Icon: CarFront },
   { value: 'other', label: 'Other', Icon: Settings },
 ];
 
