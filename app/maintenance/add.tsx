@@ -715,7 +715,7 @@ export default function AddMaintenanceScreen() {
                   </Text>
                 ) : !hasSearchResults && consumableSearch.length > 0 ? (
                   <Text style={styles.noEquipmentText}>
-                    No parts found matching &quot;{consumableSearch}&quot;
+                    No parts found matching "{consumableSearch}"
                   </Text>
                 ) : (
                   <>
