@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, useRouter, useSegments } from "expo-router";
+import { Stack, useRouter, useSegments, useRootNavigationState } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
@@ -28,8 +28,10 @@ function AuthGate() {
   const { hasOrganization, isLoading: orgLoading } = useOrganization();
   const segments = useSegments();
   const router = useRouter();
+  const rootNavigationState = useRootNavigationState();
 
   useEffect(() => {
+    if (!rootNavigationState?.key) return;
     if (authLoading || orgLoading) return;
 
     const inAuthGroup = segments[0] === ('(auth)' as string);
@@ -50,7 +52,7 @@ function AuthGate() {
       console.log('Redirecting to home - authenticated with org');
       router.replace('/' as any);
     }
-  }, [isAuthenticated, isGuest, hasOrganization, authLoading, orgLoading, segments]);
+  }, [isAuthenticated, isGuest, hasOrganization, authLoading, orgLoading, segments, rootNavigationState?.key]);
 
   return null;
 }
