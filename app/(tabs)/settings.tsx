@@ -90,26 +90,11 @@ export default function SettingsScreen() {
       }
 
       const worksheetData = [
-        ['Part Name', 'Part Number', 'Category', 'Supplier', 'Supplier Part Number', 'Quantity', 'Low Stock Threshold', 'Equipment', 'Notes'],
-        ...lowStockParts.map(part => {
-          const categoryLabel = CONSUMABLE_CATEGORIES.find(c => c.value === part.category)?.label || part.category;
-          const equipmentNames = part.compatibleEquipment
-            ?.map(id => equipment.find(e => e.id === id)?.name)
-            .filter(Boolean)
-            .join(', ') || '';
-
-          return [
-            part.name,
-            part.partNumber,
-            categoryLabel,
-            part.supplier || '',
-            part.supplierPartNumber || '',
-            part.quantity,
-            part.lowStockThreshold,
-            equipmentNames,
-            part.notes || '',
-          ];
-        }),
+        ['Part Name', 'Quantity'],
+        ...lowStockParts.map(part => [
+          part.name,
+          part.lowStockThreshold + 1,
+        ]),
       ];
 
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
