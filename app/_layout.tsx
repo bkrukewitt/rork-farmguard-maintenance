@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Stack, useRouter, useSegments, useRootNavigationState } from "expo-router";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -28,31 +28,43 @@ function AuthGate() {
   const { hasOrganization, isLoading: orgLoading } = useOrganization();
   const segments = useSegments();
   const router = useRouter();
-  const rootNavigationState = useRootNavigationState();
 
   useEffect(() => {
-    if (!rootNavigationState?.key) return;
-    if (authLoading || orgLoading) return;
+    if (authLoading || orgLoading) {
+      console.log("AuthGate: waiting for auth/org state");
+      return;
+    }
+    if (segments.length === 0) {
+      console.log("AuthGate: segments not ready yet");
+      return;
+    }
 
     const inAuthGroup = segments[0] === ('(auth)' as string);
     const inOrgSetup = segments[0] === ('organization' as string) && segments[1] === ('setup' as string);
 
+    console.log("AuthGate: evaluating route", {
+      segments,
+      isAuthenticated,
+      isGuest,
+      hasOrganization,
+    });
+
     if (isGuest) {
       if (inAuthGroup || inOrgSetup) {
-        console.log('Guest user - redirecting to home');
+        console.log("AuthGate: guest redirecting to home");
         router.replace('/' as any);
       }
       return;
     }
 
     if (!isAuthenticated && !inAuthGroup) {
-      console.log('Redirecting to login - not authenticated');
+      console.log("AuthGate: redirecting to login - not authenticated");
       router.replace('/(auth)/login' as any);
     } else if (isAuthenticated && hasOrganization && (inAuthGroup || inOrgSetup)) {
-      console.log('Redirecting to home - authenticated with org');
+      console.log("AuthGate: redirecting to home - authenticated with org");
       router.replace('/' as any);
     }
-  }, [isAuthenticated, isGuest, hasOrganization, authLoading, orgLoading, segments, rootNavigationState?.key]);
+  }, [isAuthenticated, isGuest, hasOrganization, authLoading, orgLoading, segments, router]);
 
   return null;
 }
