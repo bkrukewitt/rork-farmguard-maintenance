@@ -9,6 +9,7 @@ import {
   Switch,
   Platform,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
@@ -24,23 +25,28 @@ import {
   Search,
   Download,
   Upload,
+  Palette,
+  Check,
+  X,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
-import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
   const { equipment, maintenanceLogs, intervals, consumables, serviceRoutines, inspectionRoutines, getLowStockConsumables } = useFarmData();
+  const { colors, colorSchemes, currentSchemeId, setColorScheme, currentScheme } = useTheme();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
   const handleClearData = () => {
     Alert.alert(
@@ -265,48 +271,75 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.statsCard}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+      <View style={[styles.statsCard, { backgroundColor: colors.surface }]}>
         <View style={styles.statsHeader}>
-          <Tractor color={Colors.primary} size={24} />
-          <Text style={styles.statsTitle}>Your Farm Stats</Text>
+          <Tractor color={colors.primary} size={24} />
+          <Text style={[styles.statsTitle, { color: colors.text }]}>Your Farm Stats</Text>
         </View>
         <View style={styles.statsGrid}>
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{equipment.length}</Text>
-            <Text style={styles.statLabel}>Equipment</Text>
+            <Text style={[styles.statValue, { color: colors.primary }]}>{equipment.length}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Equipment</Text>
           </View>
-          <View style={styles.statDivider} />
+          <View style={[styles.statDivider, { backgroundColor: colors.borderLight }]} />
           <View style={styles.statItem}>
-            <Text style={styles.statValue}>{maintenanceLogs.length}</Text>
-            <Text style={styles.statLabel}>Service Logs</Text>
+            <Text style={[styles.statValue, { color: colors.primary }]}>{maintenanceLogs.length}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Service Logs</Text>
           </View>
         </View>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Service</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Appearance</Text>
         
         <TouchableOpacity 
-          style={styles.settingRow} 
+          style={[styles.settingRow, { backgroundColor: colors.surface }]} 
+          onPress={() => setShowColorPicker(true)}
+        >
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: colors.primary + '15' }]}>
+              <Palette color={colors.primary} size={20} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Color Scheme</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                {currentScheme.name}
+              </Text>
+            </View>
+          </View>
+          <View style={styles.colorPreview}>
+            <View style={[styles.colorDot, { backgroundColor: colors.primary }]} />
+            <View style={[styles.colorDot, { backgroundColor: colors.secondary }]} />
+            <View style={[styles.colorDot, { backgroundColor: colors.accent }]} />
+          </View>
+          <ChevronRight color={colors.textSecondary} size={20} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Service</Text>
+        
+        <TouchableOpacity 
+          style={[styles.settingRow, { backgroundColor: colors.surface }]} 
           onPress={() => router.push('/routines' as any)}
         >
           <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: Colors.primary + '15' }]}>
-              <ClipboardList color={Colors.primary} size={20} />
+            <View style={[styles.settingIcon, { backgroundColor: colors.primary + '15' }]}>
+              <ClipboardList color={colors.primary} size={20} />
             </View>
             <View>
-              <Text style={styles.settingLabel}>Service Routines</Text>
-              <Text style={styles.settingDescription}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Service Routines</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
                 {serviceRoutines.length} routine{serviceRoutines.length !== 1 ? 's' : ''} created
               </Text>
             </View>
           </View>
-          <ChevronRight color={Colors.textSecondary} size={20} />
+          <ChevronRight color={colors.textSecondary} size={20} />
         </TouchableOpacity>
 
         <TouchableOpacity 
-          style={styles.settingRow} 
+          style={[styles.settingRow, { backgroundColor: colors.surface }]} 
           onPress={() => router.push('/routines/inspection' as any)}
         >
           <View style={styles.settingLeft}>
@@ -314,153 +347,198 @@ export default function SettingsScreen() {
               <Search color="#8B5CF6" size={20} />
             </View>
             <View>
-              <Text style={styles.settingLabel}>Inspection Routines</Text>
-              <Text style={styles.settingDescription}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Inspection Routines</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
                 {inspectionRoutines.length} routine{inspectionRoutines.length !== 1 ? 's' : ''} created
               </Text>
             </View>
           </View>
-          <ChevronRight color={Colors.textSecondary} size={20} />
+          <ChevronRight color={colors.textSecondary} size={20} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notifications</Text>
-        <View style={styles.settingRow}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Notifications</Text>
+        <View style={[styles.settingRow, { backgroundColor: colors.surface }]}>
           <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: Colors.accent + '15' }]}>
-              <Bell color={Colors.accent} size={20} />
+            <View style={[styles.settingIcon, { backgroundColor: colors.accent + '15' }]}>
+              <Bell color={colors.accent} size={20} />
             </View>
             <View>
-              <Text style={styles.settingLabel}>Maintenance Reminders</Text>
-              <Text style={styles.settingDescription}>Get notified when service is due</Text>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Maintenance Reminders</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Get notified when service is due</Text>
             </View>
           </View>
           <Switch
             value={notificationsEnabled}
             onValueChange={setNotificationsEnabled}
-            trackColor={{ false: Colors.border, true: Colors.primary + '60' }}
-            thumbColor={notificationsEnabled ? Colors.primary : Colors.textSecondary}
+            trackColor={{ false: colors.border, true: colors.primary + '60' }}
+            thumbColor={notificationsEnabled ? colors.primary : colors.textSecondary}
           />
         </View>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Data Management</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Data Management</Text>
         
-        <TouchableOpacity style={styles.settingRow} onPress={handleExportData}>
+        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={handleExportData}>
           <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: Colors.primary + '15' }]}>
-              <FileText color={Colors.primary} size={20} />
+            <View style={[styles.settingIcon, { backgroundColor: colors.primary + '15' }]}>
+              <FileText color={colors.primary} size={20} />
             </View>
             <View>
-              <Text style={styles.settingLabel}>Export Records</Text>
-              <Text style={styles.settingDescription}>Download maintenance history as PDF</Text>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Export Records</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Download maintenance history as PDF</Text>
             </View>
           </View>
-          <ChevronRight color={Colors.textSecondary} size={20} />
+          <ChevronRight color={colors.textSecondary} size={20} />
         </TouchableOpacity>
 
         <TouchableOpacity 
-          style={styles.settingRow} 
+          style={[styles.settingRow, { backgroundColor: colors.surface }]} 
           onPress={handleExportLowStockParts}
           disabled={isExporting}
         >
           <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: Colors.accent + '15' }]}>
-              <Download color={Colors.accent} size={20} />
+            <View style={[styles.settingIcon, { backgroundColor: colors.accent + '15' }]}>
+              <Download color={colors.accent} size={20} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.settingLabel}>Export Low Stock Parts</Text>
-              <Text style={styles.settingDescription}>Download parts inventory as Excel</Text>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Export Low Stock Parts</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Download parts inventory as Excel</Text>
             </View>
           </View>
           {isExporting ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
+            <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <ChevronRight color={Colors.textSecondary} size={20} />
+            <ChevronRight color={colors.textSecondary} size={20} />
           )}
         </TouchableOpacity>
 
         <TouchableOpacity 
-          style={styles.settingRow} 
+          style={[styles.settingRow, { backgroundColor: colors.surface }]} 
           onPress={handleBackupData}
           disabled={isBackingUp}
         >
           <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: Colors.statusOk + '15' }]}>
-              <Database color={Colors.statusOk} size={20} />
+            <View style={[styles.settingIcon, { backgroundColor: colors.statusOk + '15' }]}>
+              <Database color={colors.statusOk} size={20} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.settingLabel}>Backup Data</Text>
-              <Text style={styles.settingDescription}>Export all data as JSON file</Text>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Backup Data</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Export all data as JSON file</Text>
             </View>
           </View>
           {isBackingUp ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
+            <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <ChevronRight color={Colors.textSecondary} size={20} />
+            <ChevronRight color={colors.textSecondary} size={20} />
           )}
         </TouchableOpacity>
 
         <TouchableOpacity 
-          style={styles.settingRow} 
+          style={[styles.settingRow, { backgroundColor: colors.surface }]} 
           onPress={handleRestoreData}
           disabled={isRestoring}
         >
           <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: Colors.secondary + '15' }]}>
-              <Upload color={Colors.secondary} size={20} />
+            <View style={[styles.settingIcon, { backgroundColor: colors.secondary + '15' }]}>
+              <Upload color={colors.secondary} size={20} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.settingLabel}>Restore Data</Text>
-              <Text style={styles.settingDescription}>Import from backup file</Text>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Restore Data</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Import from backup file</Text>
             </View>
           </View>
           {isRestoring ? (
-            <ActivityIndicator size="small" color={Colors.primary} />
+            <ActivityIndicator size="small" color={colors.primary} />
           ) : (
-            <ChevronRight color={Colors.textSecondary} size={20} />
+            <ChevronRight color={colors.textSecondary} size={20} />
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.settingRow} onPress={handleClearData}>
+        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={handleClearData}>
           <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: Colors.statusOverdue + '15' }]}>
-              <Trash2 color={Colors.statusOverdue} size={20} />
+            <View style={[styles.settingIcon, { backgroundColor: colors.statusOverdue + '15' }]}>
+              <Trash2 color={colors.statusOverdue} size={20} />
             </View>
             <View>
-              <Text style={[styles.settingLabel, { color: Colors.statusOverdue }]}>
+              <Text style={[styles.settingLabel, { color: colors.statusOverdue }]}>
                 Clear All Data
               </Text>
-              <Text style={styles.settingDescription}>Delete all equipment and logs</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Delete all equipment and logs</Text>
             </View>
           </View>
-          <ChevronRight color={Colors.textSecondary} size={20} />
+          <ChevronRight color={colors.textSecondary} size={20} />
         </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>About</Text>
         
-        <View style={styles.settingRow}>
+        <View style={[styles.settingRow, { backgroundColor: colors.surface }]}>
           <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: Colors.secondary + '15' }]}>
-              <Shield color={Colors.secondary} size={20} />
+            <View style={[styles.settingIcon, { backgroundColor: colors.secondary + '15' }]}>
+              <Shield color={colors.secondary} size={20} />
             </View>
             <View>
-              <Text style={styles.settingLabel}>Privacy Policy</Text>
-              <Text style={styles.settingDescription}>Your data stays on your device</Text>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Privacy Policy</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Your data stays on your device</Text>
             </View>
           </View>
-          <ChevronRight color={Colors.textSecondary} size={20} />
+          <ChevronRight color={colors.textSecondary} size={20} />
         </View>
 
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>FarmGuard Maintenance</Text>
+        <Text style={[styles.footerText, { color: colors.primary }]}>FarmGuard Maintenance</Text>
       </View>
+
+      <Modal
+        visible={showColorPicker}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowColorPicker(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Choose Color Scheme</Text>
+              <TouchableOpacity onPress={() => setShowColorPicker(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.schemeList} showsVerticalScrollIndicator={false}>
+              {colorSchemes.map((scheme) => (
+                <TouchableOpacity
+                  key={scheme.id}
+                  style={[
+                    styles.schemeOption,
+                    { backgroundColor: colors.background },
+                    currentSchemeId === scheme.id && { borderColor: scheme.primary, borderWidth: 2 },
+                  ]}
+                  onPress={() => {
+                    setColorScheme(scheme.id);
+                    setShowColorPicker(false);
+                  }}
+                >
+                  <View style={styles.schemeColors}>
+                    <View style={[styles.schemeSwatch, { backgroundColor: scheme.primary }]} />
+                    <View style={[styles.schemeSwatch, { backgroundColor: scheme.secondary }]} />
+                    <View style={[styles.schemeSwatch, { backgroundColor: scheme.accent }]} />
+                  </View>
+                  <Text style={[styles.schemeName, { color: colors.text }]}>{scheme.name}</Text>
+                  {currentSchemeId === scheme.id && (
+                    <Check color={scheme.primary} size={20} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -468,14 +546,12 @@ export default function SettingsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   statsCard: {
-    backgroundColor: Colors.surface,
     margin: 16,
     borderRadius: 16,
     padding: 20,
-    shadowColor: Colors.cardShadow,
+    shadowColor: 'rgba(0, 0, 0, 0.08)',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 8,
@@ -490,7 +566,6 @@ const styles = StyleSheet.create({
   statsTitle: {
     fontSize: 18,
     fontWeight: '600' as const,
-    color: Colors.text,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -502,17 +577,14 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 24,
     fontWeight: '700' as const,
-    color: Colors.primary,
   },
   statLabel: {
     fontSize: 12,
-    color: Colors.textSecondary,
     marginTop: 4,
   },
   statDivider: {
     width: 1,
     height: 40,
-    backgroundColor: Colors.borderLight,
   },
   section: {
     paddingHorizontal: 16,
@@ -521,7 +593,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: '600' as const,
-    color: Colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 12,
@@ -530,7 +601,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: Colors.surface,
     padding: 14,
     borderRadius: 12,
     marginBottom: 8,
@@ -551,11 +621,9 @@ const styles = StyleSheet.create({
   settingLabel: {
     fontSize: 15,
     fontWeight: '500' as const,
-    color: Colors.text,
   },
   settingDescription: {
     fontSize: 12,
-    color: Colors.textSecondary,
     marginTop: 2,
   },
   footer: {
@@ -566,11 +634,65 @@ const styles = StyleSheet.create({
   footerText: {
     fontSize: 16,
     fontWeight: '600' as const,
-    color: Colors.primary,
   },
   footerSubtext: {
     fontSize: 12,
-    color: Colors.textSecondary,
     marginTop: 4,
+  },
+  colorPreview: {
+    flexDirection: 'row',
+    gap: 4,
+    marginRight: 8,
+  },
+  colorDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '70%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '600' as const,
+  },
+  schemeList: {
+    paddingBottom: 20,
+  },
+  schemeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  schemeColors: {
+    flexDirection: 'row',
+    gap: 6,
+    marginRight: 14,
+  },
+  schemeSwatch: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+  },
+  schemeName: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500' as const,
   },
 });

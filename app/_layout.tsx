@@ -4,7 +4,7 @@ import * as SplashScreen from "expo-splash-screen";
 import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { FarmDataProvider } from "@/contexts/FarmDataContext";
-import Colors from "@/constants/colors";
+import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -23,12 +23,14 @@ const queryClient = new QueryClient({
 });
 
 function RootLayoutNav() {
+  const { colors } = useTheme();
+  
   return (
     <Stack
       screenOptions={{
         headerBackTitle: "Back",
-        headerStyle: { backgroundColor: Colors.primary },
-        headerTintColor: Colors.textOnPrimary,
+        headerStyle: { backgroundColor: colors.primary },
+        headerTintColor: colors.textOnPrimary,
         headerTitleStyle: { fontWeight: '600' as const },
       }}
     >
@@ -104,9 +106,11 @@ export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <FarmDataProvider>
-          <RootLayoutNav />
-        </FarmDataProvider>
+        <ThemeProvider>
+          <FarmDataProvider>
+            <RootLayoutNav />
+          </FarmDataProvider>
+        </ThemeProvider>
       </GestureHandlerRootView>
     </QueryClientProvider>
   );
