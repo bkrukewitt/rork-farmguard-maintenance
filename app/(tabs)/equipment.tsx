@@ -36,6 +36,7 @@ import {
   Upload,
   Share2,
   X,
+  CarFront,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -52,6 +53,7 @@ const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string
   planter: Sprout,
   loader: Container,
   mower: Fan,
+  utv: CarFront,
   other: Settings,
 };
 
