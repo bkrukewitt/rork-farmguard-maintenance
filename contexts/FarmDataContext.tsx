@@ -229,13 +229,18 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   useEffect(() => {
     if (remoteDataQuery.data && farmId) {
       const remote = remoteDataQuery.data;
+      const remoteWorkOrders = (remote as Record<string, unknown[]>).workOrders as WorkOrder[] ?? [];
+      const remoteEmployees = (remote as Record<string, unknown[]>).employees as Employee[] ?? [];
+
       const hasRemoteData = 
         remote.equipment.length > 0 ||
         remote.maintenanceLogs.length > 0 ||
         remote.consumables.length > 0 ||
         remote.intervals.length > 0 ||
         remote.serviceRoutines.length > 0 ||
-        remote.inspectionRoutines.length > 0;
+        remote.inspectionRoutines.length > 0 ||
+        remoteWorkOrders.length > 0 ||
+        remoteEmployees.length > 0;
 
       if (hasRemoteData) {
         console.log('Remote data found, merging with local...');
@@ -256,6 +261,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         const mergedIntervals = mergeArrays(intervals, remote.intervals);
         const mergedServiceRoutines = mergeArrays(serviceRoutines, remote.serviceRoutines);
         const mergedInspectionRoutines = mergeArrays(inspectionRoutines, remote.inspectionRoutines);
+        const mergedWorkOrders = mergeArrays(workOrders, remoteWorkOrders);
+        const mergedEmployees = mergeArrays(employees, remoteEmployees);
 
         Promise.all([
           saveData(STORAGE_KEYS.EQUIPMENT, mergedEquipment),
@@ -264,6 +271,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           saveData(STORAGE_KEYS.INTERVALS, mergedIntervals),
           saveData(STORAGE_KEYS.SERVICE_ROUTINES, mergedServiceRoutines),
           saveData(STORAGE_KEYS.INSPECTION_ROUTINES, mergedInspectionRoutines),
+          saveData(STORAGE_KEYS.WORK_ORDERS, mergedWorkOrders),
+          saveData(STORAGE_KEYS.EMPLOYEES, mergedEmployees),
         ]).then(() => {
           queryClient.invalidateQueries({ queryKey: ['equipment'] });
           queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
@@ -271,6 +280,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           queryClient.invalidateQueries({ queryKey: ['intervals'] });
           queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
           queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+          queryClient.invalidateQueries({ queryKey: ['workOrders'] });
+          queryClient.invalidateQueries({ queryKey: ['employees'] });
           console.log('Data merged and saved locally');
         });
       }
@@ -291,12 +302,14 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           consumables,
           serviceRoutines,
           inspectionRoutines,
+          workOrders,
+          employees,
         },
       });
     } finally {
       setIsSyncing(false);
     }
-  }, [farmId, equipment, maintenanceLogs, intervals, consumables, serviceRoutines, inspectionRoutines, syncDataMutation]);
+  }, [farmId, equipment, maintenanceLogs, intervals, consumables, serviceRoutines, inspectionRoutines, workOrders, employees, syncDataMutation]);
 
   const addEquipmentMutation = useMutation({
     mutationFn: async (newEquipment: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -809,7 +822,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       queryFn: async () => {
         const response = await fetch(`${process.env.EXPO_PUBLIC_RORK_API_BASE_URL}/trpc/farm.getData?input=${encodeURIComponent(JSON.stringify({ farmId: newFarmId }))}`);
         const json = await response.json();
-        return json.result?.data || { equipment: [], maintenanceLogs: [], intervals: [], consumables: [], serviceRoutines: [], inspectionRoutines: [] };
+        return json.result?.data || { equipment: [], maintenanceLogs: [], intervals: [], consumables: [], serviceRoutines: [], inspectionRoutines: [], workOrders: [], employees: [] };
       },
     });
 
@@ -868,7 +881,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       queryFn: async () => {
         const response = await fetch(`${process.env.EXPO_PUBLIC_RORK_API_BASE_URL}/trpc/farm.getData?input=${encodeURIComponent(JSON.stringify({ farmId: newFarmId }))}`);
         const json = await response.json();
-        return json.result?.data || { equipment: [], maintenanceLogs: [], intervals: [], consumables: [], serviceRoutines: [], inspectionRoutines: [] };
+        return json.result?.data || { equipment: [], maintenanceLogs: [], intervals: [], consumables: [], serviceRoutines: [], inspectionRoutines: [], workOrders: [], employees: [] };
       },
     });
 
@@ -878,6 +891,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     let mergedInspectionRoutines = [...inspectionRoutines];
     let mergedLogs = [...maintenanceLogs];
     let mergedIntervals = [...intervals];
+    let mergedWorkOrders = [...workOrders];
+    let mergedEmployees = [...employees];
 
     const equipmentResolutions = resolutions.filter(r => r.type === 'equipment');
     const consumableResolutions = resolutions.filter(r => r.type === 'consumable');
@@ -960,6 +975,20 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       }
     });
 
+    const remoteWO = (remoteData as Record<string, unknown[]>).workOrders as WorkOrder[] ?? [];
+    remoteWO.forEach((remoteItem: WorkOrder) => {
+      if (!mergedWorkOrders.find(w => w.id === remoteItem.id)) {
+        mergedWorkOrders.push(remoteItem);
+      }
+    });
+
+    const remoteEmp = (remoteData as Record<string, unknown[]>).employees as Employee[] ?? [];
+    remoteEmp.forEach((remoteItem: Employee) => {
+      if (!mergedEmployees.find(e => e.id === remoteItem.id)) {
+        mergedEmployees.push(remoteItem);
+      }
+    });
+
     await Promise.all([
       saveData(STORAGE_KEYS.EQUIPMENT, mergedEquipment),
       saveData(STORAGE_KEYS.CONSUMABLES, mergedConsumables),
@@ -967,6 +996,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       saveData(STORAGE_KEYS.INSPECTION_ROUTINES, mergedInspectionRoutines),
       saveData(STORAGE_KEYS.MAINTENANCE_LOGS, mergedLogs),
       saveData(STORAGE_KEYS.INTERVALS, mergedIntervals),
+      saveData(STORAGE_KEYS.WORK_ORDERS, mergedWorkOrders),
+      saveData(STORAGE_KEYS.EMPLOYEES, mergedEmployees),
     ]);
 
     await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
@@ -982,11 +1013,13 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
     queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
     queryClient.invalidateQueries({ queryKey: ['intervals'] });
+    queryClient.invalidateQueries({ queryKey: ['workOrders'] });
+    queryClient.invalidateQueries({ queryKey: ['employees'] });
     queryClient.invalidateQueries({ queryKey: ['farm', 'getData'] });
     queryClient.invalidateQueries({ queryKey: ['farm', 'getMemberCount'] });
 
     console.log('Data merged and saved after duplicate resolution');
-  }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, deviceId, queryClient, joinFarmMutation]);
+  }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, workOrders, employees, deviceId, queryClient, joinFarmMutation]);
 
   const isLoading =
     equipmentQuery.isLoading ||

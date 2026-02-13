@@ -1,5 +1,6 @@
 import * as z from "zod";
 import { createTRPCRouter, publicProcedure } from "../create-context";
+import { getFarmData, upsertFarmData, getFarmMembers, upsertFarmMember, updateMemberActivity } from "../../utils/supabase";
 
 const EquipmentTypeSchema = z.enum([
   'tractor', 'combine', 'truck', 'implement', 'sprayer', 
@@ -109,6 +110,32 @@ const InspectionRoutineSchema = z.object({
   updatedAt: z.string(),
 });
 
+const WorkOrderSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  description: z.string(),
+  equipmentId: z.string().optional(),
+  assignedTo: z.array(z.string()).optional(),
+  priority: z.enum(['low', 'medium', 'high', 'urgent']),
+  status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
+  dueDate: z.string().optional(),
+  estimatedHours: z.number().optional(),
+  notes: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  completedAt: z.string().optional(),
+});
+
+const EmployeeSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  role: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
 const FarmDataSchema = z.object({
   equipment: z.array(EquipmentSchema),
   maintenanceLogs: z.array(MaintenanceLogSchema),
@@ -116,52 +143,59 @@ const FarmDataSchema = z.object({
   consumables: z.array(ConsumableSchema),
   serviceRoutines: z.array(ServiceRoutineSchema),
   inspectionRoutines: z.array(InspectionRoutineSchema),
+  workOrders: z.array(WorkOrderSchema).optional(),
+  employees: z.array(EmployeeSchema).optional(),
 });
 
 type FarmData = z.infer<typeof FarmDataSchema>;
 
-interface FarmMember {
-  deviceId: string;
-  joinedAt: string;
-  lastActiveAt: string;
+const DEFAULT_FARM_DATA: FarmData = {
+  equipment: [],
+  maintenanceLogs: [],
+  intervals: [],
+  consumables: [],
+  serviceRoutines: [],
+  inspectionRoutines: [],
+  workOrders: [],
+  employees: [],
+};
+
+async function getOrCreateFarmData(farmId: string): Promise<FarmData> {
+  const data = await getFarmData(farmId);
+  if (data) {
+    return {
+      equipment: (data.equipment as FarmData['equipment']) || [],
+      maintenanceLogs: (data.maintenanceLogs as FarmData['maintenanceLogs']) || [],
+      intervals: (data.intervals as FarmData['intervals']) || [],
+      consumables: (data.consumables as FarmData['consumables']) || [],
+      serviceRoutines: (data.serviceRoutines as FarmData['serviceRoutines']) || [],
+      inspectionRoutines: (data.inspectionRoutines as FarmData['inspectionRoutines']) || [],
+      workOrders: (data.workOrders as FarmData['workOrders']) || [],
+      employees: (data.employees as FarmData['employees']) || [],
+    };
+  }
+  return { ...DEFAULT_FARM_DATA };
 }
 
-const farmDataStore = new Map<string, FarmData>();
-const farmMembersStore = new Map<string, FarmMember[]>();
-
-function getOrCreateFarmData(farmId: string): FarmData {
-  if (!farmDataStore.has(farmId)) {
-    farmDataStore.set(farmId, {
-      equipment: [],
-      maintenanceLogs: [],
-      intervals: [],
-      consumables: [],
-      serviceRoutines: [],
-      inspectionRoutines: [],
-    });
+async function saveFarmData(farmId: string, data: FarmData): Promise<void> {
+  const success = await upsertFarmData(farmId, data as unknown as Record<string, unknown>);
+  if (!success) {
+    throw new Error(`Failed to save farm data for farm: ${farmId}`);
   }
-  return farmDataStore.get(farmId)!;
-}
-
-function getOrCreateFarmMembers(farmId: string): FarmMember[] {
-  if (!farmMembersStore.has(farmId)) {
-    farmMembersStore.set(farmId, []);
-  }
-  return farmMembersStore.get(farmId)!;
 }
 
 export const farmRouter = createTRPCRouter({
   getData: publicProcedure
     .input(z.object({ farmId: z.string() }))
-    .query(({ input }) => {
+    .query(async ({ input }) => {
       console.log(`[Farm] Getting data for farm: ${input.farmId}`);
-      return getOrCreateFarmData(input.farmId);
+      return await getOrCreateFarmData(input.farmId);
     }),
 
   getMemberCount: publicProcedure
     .input(z.object({ farmId: z.string() }))
-    .query(({ input }) => {
-      const members = getOrCreateFarmMembers(input.farmId);
+    .query(async ({ input }) => {
+      const members = await getFarmMembers(input.farmId);
       return { count: members.length };
     }),
 
@@ -170,22 +204,10 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       deviceId: z.string(),
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Device ${input.deviceId} joining farm: ${input.farmId}`);
-      const members = getOrCreateFarmMembers(input.farmId);
-      const existingIndex = members.findIndex(m => m.deviceId === input.deviceId);
-      const now = new Date().toISOString();
-      
-      if (existingIndex !== -1) {
-        members[existingIndex].lastActiveAt = now;
-      } else {
-        members.push({
-          deviceId: input.deviceId,
-          joinedAt: now,
-          lastActiveAt: now,
-        });
-      }
-      
+      await upsertFarmMember(input.farmId, input.deviceId);
+      const members = await getFarmMembers(input.farmId);
       return { success: true, memberCount: members.length };
     }),
 
@@ -194,12 +216,8 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       deviceId: z.string(),
     }))
-    .mutation(({ input }) => {
-      const members = getOrCreateFarmMembers(input.farmId);
-      const member = members.find(m => m.deviceId === input.deviceId);
-      if (member) {
-        member.lastActiveAt = new Date().toISOString();
-      }
+    .mutation(async ({ input }) => {
+      await updateMemberActivity(input.farmId, input.deviceId);
       return { success: true };
     }),
 
@@ -208,9 +226,14 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       data: FarmDataSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Syncing data for farm: ${input.farmId}`);
-      farmDataStore.set(input.farmId, input.data);
+      const dataToSave: FarmData = {
+        ...input.data,
+        workOrders: input.data.workOrders || [],
+        employees: input.data.employees || [],
+      };
+      await saveFarmData(input.farmId, dataToSave);
       return { success: true, timestamp: new Date().toISOString() };
     }),
 
@@ -219,10 +242,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       equipment: EquipmentSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Adding equipment for farm: ${input.farmId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.equipment.push(input.equipment);
+      await saveFarmData(input.farmId, data);
       return input.equipment;
     }),
 
@@ -231,13 +255,14 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       equipment: EquipmentSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Updating equipment: ${input.equipment.id}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       const index = data.equipment.findIndex(e => e.id === input.equipment.id);
       if (index !== -1) {
         data.equipment[index] = input.equipment;
       }
+      await saveFarmData(input.farmId, data);
       return input.equipment;
     }),
 
@@ -246,12 +271,13 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       equipmentId: z.string(),
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Deleting equipment: ${input.equipmentId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.equipment = data.equipment.filter(e => e.id !== input.equipmentId);
       data.maintenanceLogs = data.maintenanceLogs.filter(l => l.equipmentId !== input.equipmentId);
       data.intervals = data.intervals.filter(i => i.equipmentId !== input.equipmentId);
+      await saveFarmData(input.farmId, data);
       return { success: true };
     }),
 
@@ -260,10 +286,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       log: MaintenanceLogSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Adding maintenance log for farm: ${input.farmId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.maintenanceLogs.push(input.log);
+      await saveFarmData(input.farmId, data);
       return input.log;
     }),
 
@@ -272,13 +299,14 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       log: MaintenanceLogSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Updating maintenance log: ${input.log.id}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       const index = data.maintenanceLogs.findIndex(l => l.id === input.log.id);
       if (index !== -1) {
         data.maintenanceLogs[index] = input.log;
       }
+      await saveFarmData(input.farmId, data);
       return input.log;
     }),
 
@@ -287,10 +315,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       logId: z.string(),
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Deleting maintenance log: ${input.logId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.maintenanceLogs = data.maintenanceLogs.filter(l => l.id !== input.logId);
+      await saveFarmData(input.farmId, data);
       return { success: true };
     }),
 
@@ -299,10 +328,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       consumable: ConsumableSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Adding consumable for farm: ${input.farmId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.consumables.push(input.consumable);
+      await saveFarmData(input.farmId, data);
       return input.consumable;
     }),
 
@@ -311,13 +341,14 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       consumable: ConsumableSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Updating consumable: ${input.consumable.id}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       const index = data.consumables.findIndex(c => c.id === input.consumable.id);
       if (index !== -1) {
         data.consumables[index] = input.consumable;
       }
+      await saveFarmData(input.farmId, data);
       return input.consumable;
     }),
 
@@ -326,10 +357,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       consumableId: z.string(),
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Deleting consumable: ${input.consumableId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.consumables = data.consumables.filter(c => c.id !== input.consumableId);
+      await saveFarmData(input.farmId, data);
       return { success: true };
     }),
 
@@ -338,10 +370,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       interval: MaintenanceIntervalSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Adding interval for farm: ${input.farmId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.intervals.push(input.interval);
+      await saveFarmData(input.farmId, data);
       return input.interval;
     }),
 
@@ -350,13 +383,14 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       interval: MaintenanceIntervalSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Updating interval: ${input.interval.id}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       const index = data.intervals.findIndex(i => i.id === input.interval.id);
       if (index !== -1) {
         data.intervals[index] = input.interval;
       }
+      await saveFarmData(input.farmId, data);
       return input.interval;
     }),
 
@@ -365,10 +399,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routine: ServiceRoutineSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Adding service routine for farm: ${input.farmId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.serviceRoutines.push(input.routine);
+      await saveFarmData(input.farmId, data);
       return input.routine;
     }),
 
@@ -377,13 +412,14 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routine: ServiceRoutineSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Updating service routine: ${input.routine.id}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       const index = data.serviceRoutines.findIndex(r => r.id === input.routine.id);
       if (index !== -1) {
         data.serviceRoutines[index] = input.routine;
       }
+      await saveFarmData(input.farmId, data);
       return input.routine;
     }),
 
@@ -392,10 +428,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routineId: z.string(),
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Deleting service routine: ${input.routineId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.serviceRoutines = data.serviceRoutines.filter(r => r.id !== input.routineId);
+      await saveFarmData(input.farmId, data);
       return { success: true };
     }),
 
@@ -404,10 +441,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routine: InspectionRoutineSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Adding inspection routine for farm: ${input.farmId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.inspectionRoutines.push(input.routine);
+      await saveFarmData(input.farmId, data);
       return input.routine;
     }),
 
@@ -416,13 +454,14 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routine: InspectionRoutineSchema,
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Updating inspection routine: ${input.routine.id}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       const index = data.inspectionRoutines.findIndex(r => r.id === input.routine.id);
       if (index !== -1) {
         data.inspectionRoutines[index] = input.routine;
       }
+      await saveFarmData(input.farmId, data);
       return input.routine;
     }),
 
@@ -431,10 +470,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routineId: z.string(),
     }))
-    .mutation(({ input }) => {
+    .mutation(async ({ input }) => {
       console.log(`[Farm] Deleting inspection routine: ${input.routineId}`);
-      const data = getOrCreateFarmData(input.farmId);
+      const data = await getOrCreateFarmData(input.farmId);
       data.inspectionRoutines = data.inspectionRoutines.filter(r => r.id !== input.routineId);
+      await saveFarmData(input.farmId, data);
       return { success: true };
     }),
 });
