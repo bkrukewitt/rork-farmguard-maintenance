@@ -16,7 +16,21 @@ const STORAGE_KEYS = {
   WORK_ORDERS: 'farmguard_work_orders',
   EMPLOYEES: 'farmguard_employees',
   FARM_ID: 'farmguard_farm_id',
+  DEVICE_ID: 'farmguard_device_id',
 };
+
+export interface DuplicateItem {
+  type: 'equipment' | 'consumable' | 'serviceRoutine' | 'inspectionRoutine';
+  local: Equipment | Consumable | ServiceRoutine | InspectionRoutine;
+  remote: Equipment | Consumable | ServiceRoutine | InspectionRoutine;
+  resolution?: 'keep_local' | 'keep_remote' | 'keep_both';
+}
+
+export interface DuplicateResolutionResult {
+  duplicates: DuplicateItem[];
+  hasLocalData: boolean;
+  hasRemoteData: boolean;
+}
 
 async function loadData<T>(key: string): Promise<T[]> {
   try {
@@ -61,15 +75,47 @@ async function getFarmId(): Promise<string> {
   }
 }
 
+async function getDeviceId(): Promise<string> {
+  try {
+    let deviceId = await AsyncStorage.getItem(STORAGE_KEYS.DEVICE_ID);
+    if (!deviceId) {
+      deviceId = generateId();
+      await AsyncStorage.setItem(STORAGE_KEYS.DEVICE_ID, deviceId);
+      console.log(`Generated new device ID: ${deviceId}`);
+    }
+    return deviceId;
+  } catch (error) {
+    console.error('Error getting device ID:', error);
+    return generateId();
+  }
+}
+
 export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const queryClient = useQueryClient();
   const [farmId, setFarmId] = useState<string>('');
+  const [deviceId, setDeviceId] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  
 
   useEffect(() => {
     getFarmId().then(setFarmId);
+    getDeviceId().then(setDeviceId);
   }, []);
+
+  const memberCountQuery = trpc.farm.getMemberCount.useQuery(
+    { farmId },
+    {
+      enabled: !!farmId,
+      staleTime: 1000 * 60 * 5,
+    }
+  );
+
+  const joinFarmMutation = trpc.farm.joinFarm.useMutation({
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['farm', 'getMemberCount'] });
+    },
+  });
 
   const remoteDataQuery = trpc.farm.getData.useQuery(
     { farmId },
@@ -754,6 +800,194 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     queryClient.invalidateQueries({ queryKey: ['farm', 'getData'] });
   }, [queryClient]);
 
+  const checkForDuplicatesOnJoin = useCallback(async (newFarmId: string): Promise<DuplicateResolutionResult> => {
+    const hasLocalData = equipment.length > 0 || consumables.length > 0 || 
+                         serviceRoutines.length > 0 || inspectionRoutines.length > 0;
+    
+    const remoteData = await queryClient.fetchQuery({
+      queryKey: ['farm', 'getData', { farmId: newFarmId }],
+      queryFn: async () => {
+        const response = await fetch(`${process.env.EXPO_PUBLIC_RORK_API_BASE_URL}/trpc/farm.getData?input=${encodeURIComponent(JSON.stringify({ farmId: newFarmId }))}`);
+        const json = await response.json();
+        return json.result?.data || { equipment: [], maintenanceLogs: [], intervals: [], consumables: [], serviceRoutines: [], inspectionRoutines: [] };
+      },
+    });
+
+    const hasRemoteData = remoteData.equipment.length > 0 || remoteData.consumables.length > 0 ||
+                          remoteData.serviceRoutines.length > 0 || remoteData.inspectionRoutines.length > 0;
+
+    const duplicates: DuplicateItem[] = [];
+
+    equipment.forEach(localItem => {
+      const remoteMatch = remoteData.equipment.find((r: Equipment) => 
+        (r.serialNumber && localItem.serialNumber && r.serialNumber.toLowerCase() === localItem.serialNumber.toLowerCase()) ||
+        (r.name.toLowerCase() === localItem.name.toLowerCase() && r.make.toLowerCase() === localItem.make.toLowerCase() && r.model.toLowerCase() === localItem.model.toLowerCase())
+      );
+      if (remoteMatch) {
+        duplicates.push({ type: 'equipment', local: localItem, remote: remoteMatch });
+      }
+    });
+
+    consumables.forEach(localItem => {
+      const remoteMatch = remoteData.consumables.find((r: Consumable) => 
+        (r.partNumber && localItem.partNumber && r.partNumber.toLowerCase() === localItem.partNumber.toLowerCase()) ||
+        r.name.toLowerCase() === localItem.name.toLowerCase()
+      );
+      if (remoteMatch) {
+        duplicates.push({ type: 'consumable', local: localItem, remote: remoteMatch });
+      }
+    });
+
+    serviceRoutines.forEach(localItem => {
+      const remoteMatch = remoteData.serviceRoutines.find((r: ServiceRoutine) => 
+        r.name.toLowerCase() === localItem.name.toLowerCase()
+      );
+      if (remoteMatch) {
+        duplicates.push({ type: 'serviceRoutine', local: localItem, remote: remoteMatch });
+      }
+    });
+
+    inspectionRoutines.forEach(localItem => {
+      const remoteMatch = remoteData.inspectionRoutines.find((r: InspectionRoutine) => 
+        r.name.toLowerCase() === localItem.name.toLowerCase()
+      );
+      if (remoteMatch) {
+        duplicates.push({ type: 'inspectionRoutine', local: localItem, remote: remoteMatch });
+      }
+    });
+
+    return { duplicates, hasLocalData, hasRemoteData };
+  }, [equipment, consumables, serviceRoutines, inspectionRoutines, queryClient]);
+
+  const applyDuplicateResolutions = useCallback(async (
+    newFarmId: string,
+    resolutions: DuplicateItem[]
+  ) => {
+    const remoteData = await queryClient.fetchQuery({
+      queryKey: ['farm', 'getData', { farmId: newFarmId }],
+      queryFn: async () => {
+        const response = await fetch(`${process.env.EXPO_PUBLIC_RORK_API_BASE_URL}/trpc/farm.getData?input=${encodeURIComponent(JSON.stringify({ farmId: newFarmId }))}`);
+        const json = await response.json();
+        return json.result?.data || { equipment: [], maintenanceLogs: [], intervals: [], consumables: [], serviceRoutines: [], inspectionRoutines: [] };
+      },
+    });
+
+    let mergedEquipment = [...equipment];
+    let mergedConsumables = [...consumables];
+    let mergedServiceRoutines = [...serviceRoutines];
+    let mergedInspectionRoutines = [...inspectionRoutines];
+    let mergedLogs = [...maintenanceLogs];
+    let mergedIntervals = [...intervals];
+
+    const equipmentResolutions = resolutions.filter(r => r.type === 'equipment');
+    const consumableResolutions = resolutions.filter(r => r.type === 'consumable');
+    const serviceResolutions = resolutions.filter(r => r.type === 'serviceRoutine');
+    const inspectionResolutions = resolutions.filter(r => r.type === 'inspectionRoutine');
+
+    remoteData.equipment.forEach((remoteItem: Equipment) => {
+      const resolution = equipmentResolutions.find(r => (r.remote as Equipment).id === remoteItem.id);
+      if (resolution) {
+        if (resolution.resolution === 'keep_remote') {
+          mergedEquipment = mergedEquipment.filter(e => e.id !== (resolution.local as Equipment).id);
+          mergedEquipment.push(remoteItem);
+        } else if (resolution.resolution === 'keep_both') {
+          if (!mergedEquipment.find(e => e.id === remoteItem.id)) {
+            mergedEquipment.push(remoteItem);
+          }
+        }
+      } else if (!mergedEquipment.find(e => e.id === remoteItem.id)) {
+        mergedEquipment.push(remoteItem);
+      }
+    });
+
+    remoteData.consumables.forEach((remoteItem: Consumable) => {
+      const resolution = consumableResolutions.find(r => (r.remote as Consumable).id === remoteItem.id);
+      if (resolution) {
+        if (resolution.resolution === 'keep_remote') {
+          mergedConsumables = mergedConsumables.filter(c => c.id !== (resolution.local as Consumable).id);
+          mergedConsumables.push(remoteItem);
+        } else if (resolution.resolution === 'keep_both') {
+          if (!mergedConsumables.find(c => c.id === remoteItem.id)) {
+            mergedConsumables.push(remoteItem);
+          }
+        }
+      } else if (!mergedConsumables.find(c => c.id === remoteItem.id)) {
+        mergedConsumables.push(remoteItem);
+      }
+    });
+
+    remoteData.serviceRoutines.forEach((remoteItem: ServiceRoutine) => {
+      const resolution = serviceResolutions.find(r => (r.remote as ServiceRoutine).id === remoteItem.id);
+      if (resolution) {
+        if (resolution.resolution === 'keep_remote') {
+          mergedServiceRoutines = mergedServiceRoutines.filter(s => s.id !== (resolution.local as ServiceRoutine).id);
+          mergedServiceRoutines.push(remoteItem);
+        } else if (resolution.resolution === 'keep_both') {
+          if (!mergedServiceRoutines.find(s => s.id === remoteItem.id)) {
+            mergedServiceRoutines.push(remoteItem);
+          }
+        }
+      } else if (!mergedServiceRoutines.find(s => s.id === remoteItem.id)) {
+        mergedServiceRoutines.push(remoteItem);
+      }
+    });
+
+    remoteData.inspectionRoutines.forEach((remoteItem: InspectionRoutine) => {
+      const resolution = inspectionResolutions.find(r => (r.remote as InspectionRoutine).id === remoteItem.id);
+      if (resolution) {
+        if (resolution.resolution === 'keep_remote') {
+          mergedInspectionRoutines = mergedInspectionRoutines.filter(i => i.id !== (resolution.local as InspectionRoutine).id);
+          mergedInspectionRoutines.push(remoteItem);
+        } else if (resolution.resolution === 'keep_both') {
+          if (!mergedInspectionRoutines.find(i => i.id === remoteItem.id)) {
+            mergedInspectionRoutines.push(remoteItem);
+          }
+        }
+      } else if (!mergedInspectionRoutines.find(i => i.id === remoteItem.id)) {
+        mergedInspectionRoutines.push(remoteItem);
+      }
+    });
+
+    remoteData.maintenanceLogs.forEach((remoteLog: MaintenanceLog) => {
+      if (!mergedLogs.find(l => l.id === remoteLog.id)) {
+        mergedLogs.push(remoteLog);
+      }
+    });
+
+    remoteData.intervals.forEach((remoteInterval: MaintenanceInterval) => {
+      if (!mergedIntervals.find(i => i.id === remoteInterval.id)) {
+        mergedIntervals.push(remoteInterval);
+      }
+    });
+
+    await Promise.all([
+      saveData(STORAGE_KEYS.EQUIPMENT, mergedEquipment),
+      saveData(STORAGE_KEYS.CONSUMABLES, mergedConsumables),
+      saveData(STORAGE_KEYS.SERVICE_ROUTINES, mergedServiceRoutines),
+      saveData(STORAGE_KEYS.INSPECTION_ROUTINES, mergedInspectionRoutines),
+      saveData(STORAGE_KEYS.MAINTENANCE_LOGS, mergedLogs),
+      saveData(STORAGE_KEYS.INTERVALS, mergedIntervals),
+    ]);
+
+    await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
+    setFarmId(newFarmId);
+
+    if (deviceId) {
+      await joinFarmMutation.mutateAsync({ farmId: newFarmId, deviceId });
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['equipment'] });
+    queryClient.invalidateQueries({ queryKey: ['consumables'] });
+    queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+    queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+    queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+    queryClient.invalidateQueries({ queryKey: ['intervals'] });
+    queryClient.invalidateQueries({ queryKey: ['farm', 'getData'] });
+    queryClient.invalidateQueries({ queryKey: ['farm', 'getMemberCount'] });
+
+    console.log('Data merged and saved after duplicate resolution');
+  }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, deviceId, queryClient, joinFarmMutation]);
+
   const isLoading =
     equipmentQuery.isLoading ||
     maintenanceLogsQuery.isLoading ||
@@ -776,6 +1010,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     isSyncing,
     lastSyncTime,
     syncToServer,
+    memberCount: memberCountQuery.data?.count ?? 0,
+    checkForDuplicatesOnJoin,
+    applyDuplicateResolutions,
     equipment,
     maintenanceLogs,
     intervals,

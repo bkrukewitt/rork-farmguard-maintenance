@@ -120,7 +120,14 @@ const FarmDataSchema = z.object({
 
 type FarmData = z.infer<typeof FarmDataSchema>;
 
+interface FarmMember {
+  deviceId: string;
+  joinedAt: string;
+  lastActiveAt: string;
+}
+
 const farmDataStore = new Map<string, FarmData>();
+const farmMembersStore = new Map<string, FarmMember[]>();
 
 function getOrCreateFarmData(farmId: string): FarmData {
   if (!farmDataStore.has(farmId)) {
@@ -136,12 +143,64 @@ function getOrCreateFarmData(farmId: string): FarmData {
   return farmDataStore.get(farmId)!;
 }
 
+function getOrCreateFarmMembers(farmId: string): FarmMember[] {
+  if (!farmMembersStore.has(farmId)) {
+    farmMembersStore.set(farmId, []);
+  }
+  return farmMembersStore.get(farmId)!;
+}
+
 export const farmRouter = createTRPCRouter({
   getData: publicProcedure
     .input(z.object({ farmId: z.string() }))
     .query(({ input }) => {
       console.log(`[Farm] Getting data for farm: ${input.farmId}`);
       return getOrCreateFarmData(input.farmId);
+    }),
+
+  getMemberCount: publicProcedure
+    .input(z.object({ farmId: z.string() }))
+    .query(({ input }) => {
+      const members = getOrCreateFarmMembers(input.farmId);
+      return { count: members.length };
+    }),
+
+  joinFarm: publicProcedure
+    .input(z.object({
+      farmId: z.string(),
+      deviceId: z.string(),
+    }))
+    .mutation(({ input }) => {
+      console.log(`[Farm] Device ${input.deviceId} joining farm: ${input.farmId}`);
+      const members = getOrCreateFarmMembers(input.farmId);
+      const existingIndex = members.findIndex(m => m.deviceId === input.deviceId);
+      const now = new Date().toISOString();
+      
+      if (existingIndex !== -1) {
+        members[existingIndex].lastActiveAt = now;
+      } else {
+        members.push({
+          deviceId: input.deviceId,
+          joinedAt: now,
+          lastActiveAt: now,
+        });
+      }
+      
+      return { success: true, memberCount: members.length };
+    }),
+
+  updateActivity: publicProcedure
+    .input(z.object({
+      farmId: z.string(),
+      deviceId: z.string(),
+    }))
+    .mutation(({ input }) => {
+      const members = getOrCreateFarmMembers(input.farmId);
+      const member = members.find(m => m.deviceId === input.deviceId);
+      if (member) {
+        member.lastActiveAt = new Date().toISOString();
+      }
+      return { success: true };
     }),
 
   syncData: publicProcedure

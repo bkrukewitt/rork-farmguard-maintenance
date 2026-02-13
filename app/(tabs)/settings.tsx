@@ -40,8 +40,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
-import { useFarmData } from '@/contexts/FarmDataContext';
+import { useFarmData, DuplicateItem } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
+import { Equipment, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -58,6 +59,9 @@ export default function SettingsScreen() {
     isSyncing,
     lastSyncTime,
     syncToServer,
+    memberCount,
+    checkForDuplicatesOnJoin,
+    applyDuplicateResolutions,
   } = useFarmData();
   const { colors, colorSchemes, currentSchemeId, setColorScheme, currentScheme } = useTheme();
   const queryClient = useQueryClient();
@@ -68,6 +72,10 @@ export default function SettingsScreen() {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showJoinFarmModal, setShowJoinFarmModal] = useState(false);
   const [joinFarmId, setJoinFarmId] = useState('');
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicates, setDuplicates] = useState<DuplicateItem[]>([]);
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [pendingJoinFarmId, setPendingJoinFarmId] = useState('');
 
   const handleClearData = () => {
     Alert.alert(
@@ -241,22 +249,87 @@ export default function SettingsScreen() {
       return;
     }
 
-    Alert.alert(
-      'Join Farm',
-      'This will sync your app with the farm data. Your local data will be merged with the farm data. Continue?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Join',
-          onPress: async () => {
-            await setFarmId(joinFarmId.trim());
-            setShowJoinFarmModal(false);
-            setJoinFarmId('');
-            Alert.alert('Success', 'You have joined the farm! Data will sync automatically.');
-          },
-        },
-      ]
-    );
+    setIsCheckingDuplicates(true);
+    try {
+      const result = await checkForDuplicatesOnJoin(joinFarmId.trim());
+      
+      if (result.duplicates.length > 0) {
+        setDuplicates(result.duplicates.map(d => ({ ...d, resolution: 'keep_both' as const })));
+        setPendingJoinFarmId(joinFarmId.trim());
+        setShowJoinFarmModal(false);
+        setJoinFarmId('');
+        setShowDuplicateModal(true);
+      } else if (result.hasLocalData && result.hasRemoteData) {
+        Alert.alert(
+          'Join Farm',
+          'No duplicates found. Your local data will be merged with the farm data. Continue?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Join',
+              onPress: async () => {
+                await applyDuplicateResolutions(joinFarmId.trim(), []);
+                setShowJoinFarmModal(false);
+                setJoinFarmId('');
+                Alert.alert('Success', 'You have joined the farm! Data has been merged.');
+              },
+            },
+          ]
+        );
+      } else {
+        await applyDuplicateResolutions(joinFarmId.trim(), []);
+        setShowJoinFarmModal(false);
+        setJoinFarmId('');
+        Alert.alert('Success', 'You have joined the farm! Data will sync automatically.');
+      }
+    } catch (error) {
+      console.error('Error checking duplicates:', error);
+      Alert.alert('Error', 'Failed to check for duplicates. Please try again.');
+    } finally {
+      setIsCheckingDuplicates(false);
+    }
+  };
+
+  const handleDuplicateResolution = (index: number, resolution: 'keep_local' | 'keep_remote' | 'keep_both') => {
+    setDuplicates(prev => prev.map((d, i) => i === index ? { ...d, resolution } : d));
+  };
+
+  const handleApplyResolutions = async () => {
+    try {
+      await applyDuplicateResolutions(pendingJoinFarmId, duplicates);
+      setShowDuplicateModal(false);
+      setDuplicates([]);
+      setPendingJoinFarmId('');
+      Alert.alert('Success', 'You have joined the farm! Data has been merged based on your selections.');
+    } catch (error) {
+      console.error('Error applying resolutions:', error);
+      Alert.alert('Error', 'Failed to merge data. Please try again.');
+    }
+  };
+
+  const getDuplicateDisplayName = (item: DuplicateItem) => {
+    switch (item.type) {
+      case 'equipment':
+        return (item.local as Equipment).name;
+      case 'consumable':
+        return (item.local as Consumable).name;
+      case 'serviceRoutine':
+        return (item.local as ServiceRoutine).name;
+      case 'inspectionRoutine':
+        return (item.local as InspectionRoutine).name;
+      default:
+        return 'Unknown';
+    }
+  };
+
+  const getDuplicateTypeLabel = (type: DuplicateItem['type']) => {
+    switch (type) {
+      case 'equipment': return 'Equipment';
+      case 'consumable': return 'Part';
+      case 'serviceRoutine': return 'Service Routine';
+      case 'inspectionRoutine': return 'Inspection Routine';
+      default: return 'Item';
+    }
   };
 
   const handleManualSync = async () => {
@@ -372,6 +445,15 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
           
+          {memberCount > 0 && (
+            <View style={[styles.memberCountBadge, { backgroundColor: colors.primary + '15' }]}>
+              <Users color={colors.primary} size={16} />
+              <Text style={[styles.memberCountText, { color: colors.primary }]}>
+                {memberCount} {memberCount === 1 ? 'device' : 'devices'} connected
+              </Text>
+            </View>
+          )}
+          
           {lastSyncTime && (
             <Text style={[styles.lastSync, { color: colors.textSecondary }]}>
               Last synced: {new Date(lastSyncTime).toLocaleString()}
@@ -397,9 +479,16 @@ export default function SettingsScreen() {
             <TouchableOpacity 
               style={[styles.syncButton, { backgroundColor: colors.secondary }]}
               onPress={() => setShowJoinFarmModal(true)}
+              disabled={isCheckingDuplicates}
             >
-              <Users color="#fff" size={18} />
-              <Text style={styles.syncButtonText}>Join Farm</Text>
+              {isCheckingDuplicates ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Users color="#fff" size={18} />
+              )}
+              <Text style={styles.syncButtonText}>
+                {isCheckingDuplicates ? 'Checking...' : 'Join Farm'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -689,8 +778,110 @@ export default function SettingsScreen() {
             <TouchableOpacity 
               style={[styles.joinButton, { backgroundColor: colors.primary }]}
               onPress={handleJoinFarm}
+              disabled={isCheckingDuplicates}
             >
-              <Text style={styles.joinButtonText}>Join Farm</Text>
+              {isCheckingDuplicates ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.joinButtonText}>Join Farm</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={showDuplicateModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDuplicateModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.duplicateModalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Resolve Duplicates</Text>
+              <TouchableOpacity onPress={() => {
+                setShowDuplicateModal(false);
+                setDuplicates([]);
+                setPendingJoinFarmId('');
+              }}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.duplicateDescription, { color: colors.textSecondary }]}>
+              We found {duplicates.length} item{duplicates.length !== 1 ? 's' : ''} that exist in both your local data and the farm you are joining. Choose how to handle each:
+            </Text>
+            
+            <ScrollView style={styles.duplicateList} showsVerticalScrollIndicator={false}>
+              {duplicates.map((item, index) => (
+                <View key={index} style={[styles.duplicateItem, { backgroundColor: colors.background }]}>
+                  <View style={styles.duplicateHeader}>
+                    <View style={[styles.duplicateTypeBadge, { backgroundColor: colors.primary + '20' }]}>
+                      <Text style={[styles.duplicateTypeText, { color: colors.primary }]}>
+                        {getDuplicateTypeLabel(item.type)}
+                      </Text>
+                    </View>
+                    <Text style={[styles.duplicateName, { color: colors.text }]} numberOfLines={1}>
+                      {getDuplicateDisplayName(item)}
+                    </Text>
+                  </View>
+                  
+                  <View style={styles.resolutionOptions}>
+                    <TouchableOpacity
+                      style={[
+                        styles.resolutionButton,
+                        { borderColor: colors.border },
+                        item.resolution === 'keep_local' && { backgroundColor: colors.primary, borderColor: colors.primary },
+                      ]}
+                      onPress={() => handleDuplicateResolution(index, 'keep_local')}
+                    >
+                      <Text style={[
+                        styles.resolutionText,
+                        { color: colors.text },
+                        item.resolution === 'keep_local' && { color: '#fff' },
+                      ]}>Keep Mine</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={[
+                        styles.resolutionButton,
+                        { borderColor: colors.border },
+                        item.resolution === 'keep_remote' && { backgroundColor: colors.secondary, borderColor: colors.secondary },
+                      ]}
+                      onPress={() => handleDuplicateResolution(index, 'keep_remote')}
+                    >
+                      <Text style={[
+                        styles.resolutionText,
+                        { color: colors.text },
+                        item.resolution === 'keep_remote' && { color: '#fff' },
+                      ]}>Keep Farm</Text>
+                    </TouchableOpacity>
+                    
+                    <TouchableOpacity
+                      style={[
+                        styles.resolutionButton,
+                        { borderColor: colors.border },
+                        item.resolution === 'keep_both' && { backgroundColor: colors.accent, borderColor: colors.accent },
+                      ]}
+                      onPress={() => handleDuplicateResolution(index, 'keep_both')}
+                    >
+                      <Text style={[
+                        styles.resolutionText,
+                        { color: colors.text },
+                        item.resolution === 'keep_both' && { color: '#fff' },
+                      ]}>Keep Both</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+            
+            <TouchableOpacity 
+              style={[styles.applyButton, { backgroundColor: colors.primary }]}
+              onPress={handleApplyResolutions}
+            >
+              <Text style={styles.applyButtonText}>Apply & Join Farm</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -928,6 +1119,85 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   joinButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600' as const,
+  },
+  memberCountBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginTop: 12,
+    alignSelf: 'flex-start',
+  },
+  memberCountText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  duplicateModalContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    maxHeight: '85%',
+  },
+  duplicateDescription: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  duplicateList: {
+    marginBottom: 16,
+  },
+  duplicateItem: {
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  duplicateHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 12,
+  },
+  duplicateTypeBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  duplicateTypeText: {
+    fontSize: 11,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase',
+  },
+  duplicateName: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    flex: 1,
+  },
+  resolutionOptions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  resolutionButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  resolutionText: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+  },
+  applyButton: {
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  applyButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '600' as const,
