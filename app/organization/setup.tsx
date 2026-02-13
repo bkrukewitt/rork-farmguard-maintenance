@@ -12,7 +12,7 @@ import {
   Animated,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Building2, UserPlus, Tractor, LogOut } from 'lucide-react-native';
+import { Building2, UserPlus, Tractor, LogOut, ArrowRight } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/colors';
 import { useOrganization } from '@/contexts/OrganizationContext';
@@ -111,6 +111,15 @@ export default function OrganizationSetupScreen() {
               <Text style={styles.optionTitle}>Join a Farm</Text>
               <Text style={styles.optionDesc}>Enter an invite code from your farm owner</Text>
             </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.skipSetupButton}
+            onPress={() => router.replace('/' as any)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.skipSetupText}>Skip for now</Text>
+            <ArrowRight color="rgba(255,255,255,0.8)" size={18} />
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
@@ -296,6 +305,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textSecondary,
     lineHeight: 18,
+  },
+  skipSetupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  skipSetupText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: 'rgba(255,255,255,0.85)',
   },
   signOutButton: {
     flexDirection: 'row',

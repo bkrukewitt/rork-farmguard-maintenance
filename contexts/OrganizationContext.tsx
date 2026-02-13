@@ -8,7 +8,7 @@ import { Organization, OrganizationMember, UserRole } from '@/types/organization
 const ORG_STORAGE_KEY = 'farmguard_current_org_id';
 
 export const [OrganizationProvider, useOrganization] = createContextHook(() => {
-  const { user, isAuthenticated, profile } = useAuth();
+  const { user, isAuthenticated, isGuest, profile } = useAuth();
   const [organization, setOrganization] = useState<Organization | null>(null);
   const [members, setMembers] = useState<OrganizationMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -83,6 +83,12 @@ export const [OrganizationProvider, useOrganization] = createContextHook(() => {
   }, [user]);
 
   useEffect(() => {
+    if (isGuest) {
+      setOrganization(null);
+      setMembers([]);
+      setIsLoading(false);
+      return;
+    }
     if (isAuthenticated) {
       fetchOrganization();
     } else {
@@ -90,7 +96,7 @@ export const [OrganizationProvider, useOrganization] = createContextHook(() => {
       setMembers([]);
       setIsLoading(false);
     }
-  }, [isAuthenticated, fetchOrganization]);
+  }, [isAuthenticated, isGuest, fetchOrganization]);
 
   const createOrganization = useCallback(async (name: string) => {
     if (!user) throw new Error('Must be logged in');

@@ -31,6 +31,7 @@ import {
   Cloud,
   CloudOff,
   FolderUp,
+  UserPlus,
 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
@@ -59,7 +60,7 @@ export default function SettingsScreen() {
     pullFromSupabase,
     migrateLocalData,
   } = useFarmData();
-  const { profile, signOut } = useAuth();
+  const { profile, signOut, isAuthenticated, isGuest } = useAuth();
   const { organization, members, userRole, isAdmin } = useOrganization();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
@@ -338,6 +339,26 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = () => {
+    if (isGuest) {
+      Alert.alert(
+        'Exit Guest Mode',
+        'You will be taken to the login screen. Your local data will be preserved.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Continue',
+            onPress: async () => {
+              try {
+                await signOut();
+              } catch (err) {
+                console.log('Guest exit error:', err);
+              }
+            },
+          },
+        ]
+      );
+      return;
+    }
     Alert.alert(
       'Sign Out',
       'Are you sure you want to sign out?',
@@ -364,30 +385,72 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.profileCard}>
-        <View style={styles.profileAvatar}>
-          <Text style={styles.profileInitial}>
-            {(profile?.full_name || profile?.email || '?')[0].toUpperCase()}
-          </Text>
-        </View>
-        <View style={styles.profileInfo}>
-          <Text style={styles.profileName}>{profile?.full_name || 'User'}</Text>
-          <Text style={styles.profileEmail}>{profile?.email || ''}</Text>
-          {organization && (
-            <View style={styles.orgBadge}>
-              <Building2 color={Colors.primary} size={12} />
-              <Text style={styles.orgBadgeText}>{organization.name}</Text>
-              {userRole && (
-                <View style={[styles.rolePill, { backgroundColor: userRole === 'owner' ? Colors.accent + '20' : Colors.primary + '20' }]}>
-                  <Text style={[styles.roleText, { color: userRole === 'owner' ? Colors.accent : Colors.primary }]}>
-                    {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
-                  </Text>
-                </View>
-              )}
+      {isGuest ? (
+        <TouchableOpacity
+          style={styles.guestBanner}
+          onPress={() => router.push('/(auth)/login' as any)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.guestBannerLeft}>
+            <View style={styles.guestIconCircle}>
+              <UserPlus color={Colors.primary} size={22} />
             </View>
-          )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.guestBannerTitle}>Using as Guest</Text>
+              <Text style={styles.guestBannerDesc}>
+                Create an account to sync data, join a farm, and collaborate with your team
+              </Text>
+            </View>
+          </View>
+          <ChevronRight color={Colors.primary} size={20} />
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.profileCard}>
+          <View style={styles.profileAvatar}>
+            <Text style={styles.profileInitial}>
+              {(profile?.full_name || profile?.email || '?')[0].toUpperCase()}
+            </Text>
+          </View>
+          <View style={styles.profileInfo}>
+            <Text style={styles.profileName}>{profile?.full_name || 'User'}</Text>
+            <Text style={styles.profileEmail}>{profile?.email || ''}</Text>
+            {organization && (
+              <View style={styles.orgBadge}>
+                <Building2 color={Colors.primary} size={12} />
+                <Text style={styles.orgBadgeText}>{organization.name}</Text>
+                {userRole && (
+                  <View style={[styles.rolePill, { backgroundColor: userRole === 'owner' ? Colors.accent + '20' : Colors.primary + '20' }]}>
+                    <Text style={[styles.roleText, { color: userRole === 'owner' ? Colors.accent : Colors.primary }]}>
+                      {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
         </View>
-      </View>
+      )}
+
+      {isAuthenticated && !organization && !isGuest && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Farm</Text>
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => router.push('/organization/setup' as any)}
+          >
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: Colors.primary + '15' }]}>
+                <Building2 color={Colors.primary} size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.settingLabel}>Set Up Farm</Text>
+                <Text style={styles.settingDescription}>Create or join a farm to sync and collaborate</Text>
+              </View>
+            </View>
+            <ChevronRight color={Colors.textSecondary} size={20} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.statsCard}>
         <View style={styles.statsHeader}>
@@ -657,20 +720,40 @@ export default function SettingsScreen() {
             </View>
             <View>
               <Text style={styles.settingLabel}>Privacy Policy</Text>
-              <Text style={styles.settingDescription}>Data synced to your private farm</Text>
+              <Text style={styles.settingDescription}>
+                {isGuest ? 'Data stored locally on device' : 'Data synced to your private farm'}
+              </Text>
             </View>
           </View>
           <ChevronRight color={Colors.textSecondary} size={20} />
         </View>
 
-        <TouchableOpacity style={styles.signOutRow} onPress={handleSignOut}>
-          <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: Colors.danger + '10' }]}>
-              <LogOut color={Colors.danger} size={20} />
+        {isGuest ? (
+          <TouchableOpacity
+            style={styles.settingRow}
+            onPress={() => router.push('/(auth)/login' as any)}
+          >
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: Colors.primary + '15' }]}>
+                <UserPlus color={Colors.primary} size={20} />
+              </View>
+              <View>
+                <Text style={[styles.settingLabel, { color: Colors.primary }]}>Create Account / Sign In</Text>
+                <Text style={styles.settingDescription}>Enable sync & farm collaboration</Text>
+              </View>
             </View>
-            <Text style={[styles.settingLabel, { color: Colors.danger }]}>Sign Out</Text>
-          </View>
-        </TouchableOpacity>
+            <ChevronRight color={Colors.primary} size={20} />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.signOutRow} onPress={handleSignOut}>
+            <View style={styles.settingLeft}>
+              <View style={[styles.settingIcon, { backgroundColor: Colors.danger + '10' }]}>
+                <LogOut color={Colors.danger} size={20} />
+              </View>
+              <Text style={[styles.settingLabel, { color: Colors.danger }]}>Sign Out</Text>
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.footer}>
@@ -684,6 +767,43 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  guestBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.primary + '08',
+    margin: 16,
+    marginBottom: 8,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: Colors.primary + '20',
+  },
+  guestBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    flex: 1,
+  },
+  guestIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.primary + '15',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  guestBannerTitle: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  guestBannerDesc: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    lineHeight: 17,
   },
   profileCard: {
     flexDirection: 'row',

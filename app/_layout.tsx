@@ -24,7 +24,7 @@ const queryClient = new QueryClient({
 });
 
 function AuthGate() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isAuthenticated, isGuest, isLoading: authLoading } = useAuth();
   const { hasOrganization, isLoading: orgLoading } = useOrganization();
   const segments = useSegments();
   const router = useRouter();
@@ -35,17 +35,22 @@ function AuthGate() {
     const inAuthGroup = segments[0] === ('(auth)' as string);
     const inOrgSetup = segments[0] === ('organization' as string) && segments[1] === ('setup' as string);
 
+    if (isGuest) {
+      if (inAuthGroup || inOrgSetup) {
+        console.log('Guest user - redirecting to home');
+        router.replace('/' as any);
+      }
+      return;
+    }
+
     if (!isAuthenticated && !inAuthGroup) {
       console.log('Redirecting to login - not authenticated');
       router.replace('/(auth)/login' as any);
-    } else if (isAuthenticated && !hasOrganization && !inOrgSetup && !inAuthGroup) {
-      console.log('Redirecting to org setup - no organization');
-      router.replace('/organization/setup' as any);
     } else if (isAuthenticated && hasOrganization && (inAuthGroup || inOrgSetup)) {
       console.log('Redirecting to home - authenticated with org');
       router.replace('/' as any);
     }
-  }, [isAuthenticated, hasOrganization, authLoading, orgLoading, segments]);
+  }, [isAuthenticated, isGuest, hasOrganization, authLoading, orgLoading, segments]);
 
   return null;
 }

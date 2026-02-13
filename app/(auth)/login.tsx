@@ -21,7 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 export default function LoginScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { signIn } = useAuth();
+  const { signIn, enterGuestMode } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -153,6 +153,15 @@ export default function LoginScreen() {
             </Animated.View>
           </View>
 
+          <TouchableOpacity
+            style={styles.skipButton}
+            onPress={enterGuestMode}
+            activeOpacity={0.7}
+            testID="login-skip"
+          >
+            <Text style={styles.skipText}>Continue without an account</Text>
+          </TouchableOpacity>
+
           <View style={styles.footer}>
             <Text style={styles.footerText}>Don't have an account? </Text>
             <TouchableOpacity onPress={() => router.push('/(auth)/signup' as any)}>
@@ -283,10 +292,23 @@ const styles = StyleSheet.create({
     fontWeight: '700' as const,
     color: '#fff',
   },
+  skipButton: {
+    alignItems: 'center',
+    marginTop: 20,
+    paddingVertical: 14,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  skipText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: 'rgba(255,255,255,0.85)',
+  },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
-    marginTop: 28,
+    marginTop: 20,
   },
   footerText: {
     fontSize: 14,
