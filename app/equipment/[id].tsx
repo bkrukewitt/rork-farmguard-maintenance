@@ -40,8 +40,7 @@ import {
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { EquipmentType, EquipmentAttachment } from '@/types/equipment';
-import { formatDate, formatHours, getMaintenanceStatus } from '@/utils/helpers';
-import { generateId } from '@/utils/helpers';
+import { formatDate, formatHours, getMaintenanceStatus, generateId } from '@/utils/helpers';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
   tractor: Tractor,

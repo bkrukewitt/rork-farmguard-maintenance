@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
@@ -34,7 +34,7 @@ function AuthGate() {
       console.log("AuthGate: waiting for auth/org state");
       return;
     }
-    if (segments.length === 0) {
+    if ((segments as string[]).length === 0) {
       console.log("AuthGate: segments not ready yet");
       return;
     }

@@ -29,7 +29,6 @@ import {
   LogOut,
   RefreshCw,
   Cloud,
-  CloudOff,
   FolderUp,
   UserPlus,
 } from 'lucide-react-native';
@@ -61,7 +60,7 @@ export default function SettingsScreen() {
     migrateLocalData,
   } = useFarmData();
   const { profile, signOut, isAuthenticated, isGuest } = useAuth();
-  const { organization, members, userRole, isAdmin } = useOrganization();
+  const { organization, members, userRole } = useOrganization();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [isExporting, setIsExporting] = useState(false);
