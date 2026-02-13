@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useEffect, useState } from 'react';
-import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
+import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine, WorkOrder, Employee } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 import { trpc } from '@/lib/trpc';
 
@@ -13,6 +13,8 @@ const STORAGE_KEYS = {
   CONSUMABLES: 'farmguard_consumables',
   SERVICE_ROUTINES: 'farmguard_service_routines',
   INSPECTION_ROUTINES: 'farmguard_inspection_routines',
+  WORK_ORDERS: 'farmguard_work_orders',
+  EMPLOYEES: 'farmguard_employees',
   FARM_ID: 'farmguard_farm_id',
 };
 
@@ -149,12 +151,34 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     refetchOnReconnect: false,
   });
 
+  const workOrdersQuery = useQuery({
+    queryKey: ['workOrders'],
+    queryFn: () => loadData<WorkOrder>(STORAGE_KEYS.WORK_ORDERS),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const employeesQuery = useQuery({
+    queryKey: ['employees'],
+    queryFn: () => loadData<Employee>(STORAGE_KEYS.EMPLOYEES),
+    staleTime: Infinity,
+    gcTime: Infinity,
+    refetchOnMount: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
   const equipment = useMemo(() => equipmentQuery.data ?? [], [equipmentQuery.data]);
   const maintenanceLogs = useMemo(() => maintenanceLogsQuery.data ?? [], [maintenanceLogsQuery.data]);
   const intervals = useMemo(() => intervalsQuery.data ?? [], [intervalsQuery.data]);
   const consumables = useMemo(() => consumablesQuery.data ?? [], [consumablesQuery.data]);
   const serviceRoutines = useMemo(() => serviceRoutinesQuery.data ?? [], [serviceRoutinesQuery.data]);
   const inspectionRoutines = useMemo(() => inspectionRoutinesQuery.data ?? [], [inspectionRoutinesQuery.data]);
+  const workOrders = useMemo(() => workOrdersQuery.data ?? [], [workOrdersQuery.data]);
+  const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
 
   useEffect(() => {
     if (remoteDataQuery.data && farmId) {
@@ -622,6 +646,108 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     [inspectionRoutines]
   );
 
+  const addWorkOrderMutation = useMutation({
+    mutationFn: async (newWorkOrder: Omit<WorkOrder, 'id' | 'createdAt' | 'updatedAt'>) => {
+      const now = new Date().toISOString();
+      const workOrderItem: WorkOrder = {
+        ...newWorkOrder,
+        id: generateId(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const updated = [...workOrders, workOrderItem];
+      await saveData(STORAGE_KEYS.WORK_ORDERS, updated);
+      return workOrderItem;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrders'] });
+      syncToServer();
+    },
+  });
+
+  const updateWorkOrderMutation = useMutation({
+    mutationFn: async (updates: Partial<WorkOrder> & { id: string }) => {
+      const updated = workOrders.map(w =>
+        w.id === updates.id
+          ? { ...w, ...updates, updatedAt: new Date().toISOString() }
+          : w
+      );
+      await saveData(STORAGE_KEYS.WORK_ORDERS, updated);
+      return updated.find(w => w.id === updates.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrders'] });
+      syncToServer();
+    },
+  });
+
+  const deleteWorkOrderMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const updated = workOrders.filter(w => w.id !== id);
+      await saveData(STORAGE_KEYS.WORK_ORDERS, updated);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workOrders'] });
+      syncToServer();
+    },
+  });
+
+  const getWorkOrderById = useCallback(
+    (id: string) => workOrders.find(w => w.id === id),
+    [workOrders]
+  );
+
+  const addEmployeeMutation = useMutation({
+    mutationFn: async (newEmployee: Omit<Employee, 'id' | 'createdAt' | 'updatedAt'>) => {
+      const now = new Date().toISOString();
+      const employeeItem: Employee = {
+        ...newEmployee,
+        id: generateId(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      const updated = [...employees, employeeItem];
+      await saveData(STORAGE_KEYS.EMPLOYEES, updated);
+      return employeeItem;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      syncToServer();
+    },
+  });
+
+  const updateEmployeeMutation = useMutation({
+    mutationFn: async (updates: Partial<Employee> & { id: string }) => {
+      const updated = employees.map(e =>
+        e.id === updates.id
+          ? { ...e, ...updates, updatedAt: new Date().toISOString() }
+          : e
+      );
+      await saveData(STORAGE_KEYS.EMPLOYEES, updated);
+      return updated.find(e => e.id === updates.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      syncToServer();
+    },
+  });
+
+  const deleteEmployeeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const updated = employees.filter(e => e.id !== id);
+      await saveData(STORAGE_KEYS.EMPLOYEES, updated);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      syncToServer();
+    },
+  });
+
+  const getEmployeeById = useCallback(
+    (id: string) => employees.find(e => e.id === id),
+    [employees]
+  );
+
   const setFarmIdAndSync = useCallback(async (newFarmId: string) => {
     await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
     setFarmId(newFarmId);
@@ -634,7 +760,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     intervalsQuery.isLoading ||
     consumablesQuery.isLoading ||
     serviceRoutinesQuery.isLoading ||
-    inspectionRoutinesQuery.isLoading;
+    inspectionRoutinesQuery.isLoading ||
+    workOrdersQuery.isLoading ||
+    employeesQuery.isLoading;
 
   useEffect(() => {
     if (!isLoading) {
@@ -683,5 +811,15 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     updateInspectionRoutine: updateInspectionRoutineMutation.mutateAsync,
     deleteInspectionRoutine: deleteInspectionRoutineMutation.mutateAsync,
     getInspectionRoutineById,
+    workOrders,
+    employees,
+    addWorkOrder: addWorkOrderMutation.mutateAsync,
+    updateWorkOrder: updateWorkOrderMutation.mutateAsync,
+    deleteWorkOrder: deleteWorkOrderMutation.mutateAsync,
+    getWorkOrderById,
+    addEmployee: addEmployeeMutation.mutateAsync,
+    updateEmployee: updateEmployeeMutation.mutateAsync,
+    deleteEmployee: deleteEmployeeMutation.mutateAsync,
+    getEmployeeById,
   };
 });

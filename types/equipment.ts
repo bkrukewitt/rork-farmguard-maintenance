@@ -149,6 +149,49 @@ export interface InspectionRoutine {
   updatedAt: string;
 }
 
+export interface Employee {
+  id: string;
+  name: string;
+  role?: string;
+  phone?: string;
+  email?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type WorkOrderPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type WorkOrderStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface WorkOrder {
+  id: string;
+  title: string;
+  description: string;
+  equipmentId?: string;
+  assignedTo?: string[];
+  priority: WorkOrderPriority;
+  status: WorkOrderStatus;
+  dueDate?: string;
+  estimatedHours?: number;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+}
+
+export const WORK_ORDER_PRIORITIES: { value: WorkOrderPriority; label: string; color: string }[] = [
+  { value: 'low', label: 'Low', color: '#6B7280' },
+  { value: 'medium', label: 'Medium', color: '#F59E0B' },
+  { value: 'high', label: 'High', color: '#EF4444' },
+  { value: 'urgent', label: 'Urgent', color: '#DC2626' },
+];
+
+export const WORK_ORDER_STATUSES: { value: WorkOrderStatus; label: string; color: string }[] = [
+  { value: 'pending', label: 'Pending', color: '#6B7280' },
+  { value: 'in_progress', label: 'In Progress', color: '#3B82F6' },
+  { value: 'completed', label: 'Completed', color: '#10B981' },
+  { value: 'cancelled', label: 'Cancelled', color: '#9CA3AF' },
+];
+
 export const DEFAULT_SERVICE_ROUTINES: Omit<ServiceRoutine, 'id' | 'createdAt' | 'updatedAt'>[] = [
   {
     name: '250 Hour Service',

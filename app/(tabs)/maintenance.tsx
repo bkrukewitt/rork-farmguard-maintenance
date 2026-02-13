@@ -20,6 +20,7 @@ import {
   X,
   ClipboardList,
   Search,
+  FileText,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -268,6 +269,22 @@ export default function MaintenanceScreen() {
               <View style={styles.menuItemContent}>
                 <Text style={styles.menuItemTitle}>Inspection Routines</Text>
                 <Text style={styles.menuItemSubtitle}>Manage inspection checklists</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomWidth: 0 }]}
+              onPress={() => {
+                setShowAddMenu(false);
+                router.push('/workorders' as any);
+              }}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: '#F59E0B' + '15' }]}>
+                <FileText color="#F59E0B" size={22} />
+              </View>
+              <View style={styles.menuItemContent}>
+                <Text style={styles.menuItemTitle}>Work Orders</Text>
+                <Text style={styles.menuItemSubtitle}>Plan and assign future tasks</Text>
               </View>
             </TouchableOpacity>
           </Pressable>
