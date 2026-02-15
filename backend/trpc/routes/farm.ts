@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { createTRPCRouter, publicProcedure } from "../create-context";
-import { getFarmData, upsertFarmData, getFarmMembers, upsertFarmMember, updateMemberActivity } from "../../utils/supabase";
+import { getFarmData, upsertFarmData, getFarmMembers, upsertFarmMember, updateMemberActivity } from "../../utils/rork-db";
 
 const EquipmentTypeSchema = z.enum([
   'tractor', 'combine', 'truck', 'implement', 'sprayer', 
