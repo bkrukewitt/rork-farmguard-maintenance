@@ -38,8 +38,8 @@ import {
   X,
   CarFront,
 } from 'lucide-react-native';
-import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Equipment, EquipmentType } from '@/types/equipment';
 import { formatHours, getMaintenanceStatus } from '@/utils/helpers';
 import { generateEquipmentCSVTemplate, exportEquipmentToCSV } from '@/utils/csvHelpers';
@@ -61,6 +61,7 @@ export default function EquipmentScreen() {
   const router = useRouter();
   const { showAddMenu: showAddMenuParam } = useLocalSearchParams<{ showAddMenu?: string }>();
   const { equipment, intervals, isLoading } = useFarmData();
+  const { colors } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(showAddMenuParam === 'true');
 
@@ -195,12 +196,12 @@ export default function EquipmentScreen() {
     
     const StatusIcon = status === 'overdue' ? AlertTriangle : 
                        status === 'due' ? Clock : CheckCircle;
-    const statusColor = status === 'overdue' ? Colors.statusOverdue :
-                        status === 'due' ? Colors.statusDue : Colors.statusOk;
+    const statusColor = status === 'overdue' ? colors.statusOverdue :
+                        status === 'due' ? colors.statusDue : colors.statusOk;
 
     return (
       <TouchableOpacity
-        style={styles.equipmentCard}
+        style={[styles.equipmentCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
         onPress={() => router.push(`/equipment/${item.id}` as any)}
         activeOpacity={0.7}
       >
@@ -208,47 +209,47 @@ export default function EquipmentScreen() {
           {item.imageUrl ? (
             <Image source={{ uri: item.imageUrl }} style={styles.thumbnailImage} />
           ) : (
-            <View style={[styles.iconContainer, { backgroundColor: Colors.primary + '15' }]}>
-              <Icon color={Colors.primary} size={28} />
+            <View style={[styles.iconContainer, { backgroundColor: colors.primary + '15' }]}>
+              <Icon color={colors.primary} size={28} />
             </View>
           )}
         </View>
         
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
-            <Text style={styles.equipmentName} numberOfLines={1}>{item.name}</Text>
+            <Text style={[styles.equipmentName, { color: colors.text }]} numberOfLines={1}>{item.name}</Text>
             <StatusIcon color={statusColor} size={18} />
           </View>
-          <Text style={styles.equipmentDetails}>
+          <Text style={[styles.equipmentDetails, { color: colors.textSecondary }]}>
             {item.year} {item.make} {item.model}
           </Text>
           <View style={styles.cardFooter}>
-            <Text style={styles.hoursText}>{formatHours(item.currentHours)}</Text>
-            <Text style={styles.typeText}>{item.type.charAt(0).toUpperCase() + item.type.slice(1)}</Text>
+            <Text style={[styles.hoursText, { color: colors.primary }]}>{formatHours(item.currentHours)}</Text>
+            <Text style={[styles.typeText, { color: colors.textSecondary }]}>{item.type.charAt(0).toUpperCase() + item.type.slice(1)}</Text>
           </View>
         </View>
         
-        <ChevronRight color={Colors.textSecondary} size={20} />
+        <ChevronRight color={colors.textSecondary} size={20} />
       </TouchableOpacity>
     );
   };
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.searchContainer}>
-        <Search color={Colors.textSecondary} size={20} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.searchContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Search color={colors.textSecondary} size={20} />
         <TextInput
-          style={styles.searchInput}
+          style={[styles.searchInput, { color: colors.text }]}
           placeholder="Search equipment..."
-          placeholderTextColor={Colors.textSecondary}
+          placeholderTextColor={colors.textSecondary}
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
@@ -262,11 +263,11 @@ export default function EquipmentScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Tractor color={Colors.textSecondary} size={64} />
-            <Text style={styles.emptyTitle}>
+            <Tractor color={colors.textSecondary} size={64} />
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>
               {searchQuery ? 'No Results' : 'No Equipment'}
             </Text>
-            <Text style={styles.emptySubtitle}>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
               {searchQuery 
                 ? 'Try a different search term' 
                 : 'Add your first piece of equipment to get started'}
@@ -276,11 +277,11 @@ export default function EquipmentScreen() {
       />
 
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: colors.primary, shadowColor: colors.primary }]}
         onPress={() => setShowAddMenu(true)}
         activeOpacity={0.8}
       >
-        <Plus color={Colors.textOnPrimary} size={28} />
+        <Plus color={colors.textOnPrimary} size={28} />
       </TouchableOpacity>
 
       <Modal
@@ -294,11 +295,11 @@ export default function EquipmentScreen() {
           activeOpacity={1}
           onPress={() => setShowAddMenu(false)}
         >
-          <View style={styles.menuContainer}>
+          <View style={[styles.menuContainer, { backgroundColor: colors.surface }]}>
             <View style={styles.menuHeader}>
-              <Text style={styles.menuTitle}>Add Equipment</Text>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Add Equipment</Text>
               <TouchableOpacity onPress={() => setShowAddMenu(false)}>
-                <X color={Colors.textSecondary} size={24} />
+                <X color={colors.textSecondary} size={24} />
               </TouchableOpacity>
             </View>
 
@@ -309,31 +310,31 @@ export default function EquipmentScreen() {
                 router.push('/equipment/add' as any);
               }}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: Colors.primary + '15' }]}>
-                <Plus color={Colors.primary} size={22} />
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.primary + '15' }]}>
+                <Plus color={colors.primary} size={22} />
               </View>
               <View style={styles.menuItemContent}>
-                <Text style={styles.menuItemTitle}>Add Manually</Text>
-                <Text style={styles.menuItemDescription}>Enter equipment details by hand</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Add Manually</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Enter equipment details by hand</Text>
               </View>
-              <ChevronRight color={Colors.textSecondary} size={20} />
+              <ChevronRight color={colors.textSecondary} size={20} />
             </TouchableOpacity>
 
-            <View style={styles.menuDivider} />
-            <Text style={styles.menuSectionTitle}>Bulk Import</Text>
+            <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
+            <Text style={[styles.menuSectionTitle, { color: colors.textSecondary }]}>Bulk Import</Text>
 
             <TouchableOpacity
               style={styles.menuItem}
               onPress={handleDownloadTemplate}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: Colors.accent + '15' }]}>
-                <Download color={Colors.accent} size={22} />
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.accent + '15' }]}>
+                <Download color={colors.accent} size={22} />
               </View>
               <View style={styles.menuItemContent}>
-                <Text style={styles.menuItemTitle}>Download Template</Text>
-                <Text style={styles.menuItemDescription}>Get CSV template with examples</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Download Template</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Get CSV template with examples</Text>
               </View>
-              <ChevronRight color={Colors.textSecondary} size={20} />
+              <ChevronRight color={colors.textSecondary} size={20} />
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -343,28 +344,28 @@ export default function EquipmentScreen() {
                 router.push('/equipment/import' as any);
               }}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: Colors.success + '15' }]}>
-                <Upload color={Colors.success} size={22} />
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.success + '15' }]}>
+                <Upload color={colors.success} size={22} />
               </View>
               <View style={styles.menuItemContent}>
-                <Text style={styles.menuItemTitle}>Import from CSV</Text>
-                <Text style={styles.menuItemDescription}>Upload completed spreadsheet</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Import from CSV</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Upload completed spreadsheet</Text>
               </View>
-              <ChevronRight color={Colors.textSecondary} size={20} />
+              <ChevronRight color={colors.textSecondary} size={20} />
             </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.menuItem}
               onPress={handleExportEquipment}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: Colors.warning + '15' }]}>
-                <Share2 color={Colors.warning} size={22} />
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.warning + '15' }]}>
+                <Share2 color={colors.warning} size={22} />
               </View>
               <View style={styles.menuItemContent}>
-                <Text style={styles.menuItemTitle}>Export Equipment</Text>
-                <Text style={styles.menuItemDescription}>Download current equipment as CSV</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Export Equipment</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Download current equipment as CSV</Text>
               </View>
-              <ChevronRight color={Colors.textSecondary} size={20} />
+              <ChevronRight color={colors.textSecondary} size={20} />
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -376,30 +377,25 @@ export default function EquipmentScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.background,
   },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
     margin: 16,
     paddingHorizontal: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
   },
   searchInput: {
     flex: 1,
     paddingVertical: 14,
     paddingHorizontal: 12,
     fontSize: 16,
-    color: Colors.text,
   },
   listContent: {
     paddingHorizontal: 16,
@@ -408,11 +404,9 @@ const styles = StyleSheet.create({
   equipmentCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
     padding: 16,
     borderRadius: 16,
     marginBottom: 12,
-    shadowColor: Colors.cardShadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 8,
@@ -445,13 +439,11 @@ const styles = StyleSheet.create({
   equipmentName: {
     fontSize: 17,
     fontWeight: '600' as const,
-    color: Colors.text,
     flex: 1,
     marginRight: 8,
   },
   equipmentDetails: {
     fontSize: 14,
-    color: Colors.textSecondary,
     marginBottom: 8,
   },
   cardFooter: {
@@ -461,12 +453,10 @@ const styles = StyleSheet.create({
   },
   hoursText: {
     fontSize: 13,
-    color: Colors.primary,
     fontWeight: '500' as const,
   },
   typeText: {
     fontSize: 13,
-    color: Colors.textSecondary,
   },
   emptyState: {
     alignItems: 'center',
@@ -476,12 +466,10 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '600' as const,
-    color: Colors.text,
     marginTop: 20,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,
@@ -493,10 +481,8 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -508,7 +494,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   menuContainer: {
-    backgroundColor: Colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
@@ -523,7 +508,6 @@ const styles = StyleSheet.create({
   menuTitle: {
     fontSize: 20,
     fontWeight: '700' as const,
-    color: Colors.text,
   },
   menuItem: {
     flexDirection: 'row',
@@ -544,22 +528,18 @@ const styles = StyleSheet.create({
   menuItemTitle: {
     fontSize: 16,
     fontWeight: '600' as const,
-    color: Colors.text,
   },
   menuItemDescription: {
     fontSize: 13,
-    color: Colors.textSecondary,
     marginTop: 2,
   },
   menuDivider: {
     height: 1,
-    backgroundColor: Colors.border,
     marginVertical: 16,
   },
   menuSectionTitle: {
     fontSize: 13,
     fontWeight: '600' as const,
-    color: Colors.textSecondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
     marginBottom: 8,

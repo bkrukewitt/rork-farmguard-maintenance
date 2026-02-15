@@ -28,14 +28,15 @@ import {
   FileSpreadsheet,
   X,
 } from 'lucide-react-native';
-import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { Consumable, CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
 import { generateCSVTemplate, exportConsumablesToCSV, exportConsumablesToHTML } from '@/utils/csvHelpers';
 
 export default function InventoryScreen() {
   const router = useRouter();
   const { consumables, equipment, isLoading, getLowStockConsumables } = useFarmData();
+  const { colors } = useTheme();
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<ConsumableCategory | 'all' | 'low-stock'>('all');
@@ -168,7 +169,7 @@ export default function InventoryScreen() {
     
     return (
       <TouchableOpacity
-        style={styles.itemCard}
+        style={[styles.itemCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
         onPress={() => router.push(`/inventory/${item.id}` as any)}
         activeOpacity={0.7}
       >
@@ -176,37 +177,38 @@ export default function InventoryScreen() {
           {item.imageUrl ? (
             <Image source={{ uri: item.imageUrl }} style={styles.itemThumbnail} />
           ) : (
-            <View style={[styles.categoryBadge, isLowStock && styles.categoryBadgeLow]}>
+            <View style={[styles.categoryBadge, { backgroundColor: colors.primaryLight + '15' }, isLowStock && { backgroundColor: colors.danger + '15' }]}>
               {isLowStock ? (
-                <AlertTriangle color={Colors.danger} size={14} />
+                <AlertTriangle color={colors.danger} size={14} />
               ) : (
-                <Package color={Colors.primary} size={14} />
+                <Package color={colors.primary} size={14} />
               )}
             </View>
           )}
           <View style={styles.itemInfo}>
-            <Text style={styles.itemName}>{item.name}</Text>
-            <Text style={styles.partNumber}>#{item.partNumber}</Text>
+            <Text style={[styles.itemName, { color: colors.text }]}>{item.name}</Text>
+            <Text style={[styles.partNumber, { color: colors.textSecondary }]}>#{item.partNumber}</Text>
           </View>
-          <ChevronRight color={Colors.textSecondary} size={20} />
+          <ChevronRight color={colors.textSecondary} size={20} />
         </View>
         
-        <View style={styles.itemDetails}>
+        <View style={[styles.itemDetails, { backgroundColor: colors.surfaceAlt }]}>
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>Category</Text>
-            <Text style={styles.detailValue}>{getCategoryLabel(item.category)}</Text>
+            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Category</Text>
+            <Text style={[styles.detailValue, { color: colors.text }]}>{getCategoryLabel(item.category)}</Text>
           </View>
           {item.supplier && (
             <View style={styles.detailRow}>
-              <Text style={styles.detailLabel}>Supplier</Text>
-              <Text style={styles.detailValue}>{item.supplier}</Text>
+              <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Supplier</Text>
+              <Text style={[styles.detailValue, { color: colors.text }]}>{item.supplier}</Text>
             </View>
           )}
           <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>In Stock</Text>
+            <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>In Stock</Text>
             <Text style={[
               styles.stockValue,
-              isLowStock && styles.stockValueLow,
+              { color: colors.success },
+              isLowStock && { color: colors.danger },
             ]}>
               {item.quantity} {isLowStock && `(Low: ≤${item.lowStockThreshold})`}
             </Text>
@@ -218,13 +220,13 @@ export default function InventoryScreen() {
 
   const renderEmptyState = () => (
     <View style={styles.emptyState}>
-      <Package color={Colors.textSecondary} size={64} />
-      <Text style={styles.emptyTitle}>
+      <Package color={colors.textSecondary} size={64} />
+      <Text style={[styles.emptyTitle, { color: colors.text }]}>
         {searchQuery || selectedCategory !== 'all' 
           ? 'No parts found' 
           : 'No parts in inventory'}
       </Text>
-      <Text style={styles.emptySubtitle}>
+      <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
         {searchQuery || selectedCategory !== 'all'
           ? 'Try adjusting your search or filter'
           : 'Add consumables and parts to track your inventory'}
@@ -234,21 +236,21 @@ export default function InventoryScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.searchContainer}>
-        <View style={styles.searchInputWrapper}>
-          <Search color={Colors.textSecondary} size={20} />
+        <View style={[styles.searchInputWrapper, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          <Search color={colors.textSecondary} size={20} />
           <TextInput
-            style={styles.searchInput}
+            style={[styles.searchInput, { color: colors.text }]}
             placeholder="Search by name or part number..."
-            placeholderTextColor={Colors.textSecondary}
+            placeholderTextColor={colors.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
@@ -270,20 +272,22 @@ export default function InventoryScreen() {
             <TouchableOpacity
               style={[
                 styles.filterChip,
-                selectedCategory === item.value && styles.filterChipActive,
-                item.value === 'low-stock' && lowStockItems.length > 0 && styles.filterChipWarning,
+                { backgroundColor: colors.surface, borderColor: colors.border },
+                selectedCategory === item.value && { backgroundColor: colors.primary, borderColor: colors.primary },
+                item.value === 'low-stock' && lowStockItems.length > 0 && { borderColor: colors.warning },
               ]}
               onPress={() => setSelectedCategory(item.value)}
             >
               {item.value === 'low-stock' && lowStockItems.length > 0 && (
                 <AlertTriangle 
-                  color={selectedCategory === item.value ? Colors.textOnPrimary : Colors.warning} 
+                  color={selectedCategory === item.value ? colors.textOnPrimary : colors.warning} 
                   size={14} 
                 />
               )}
               <Text style={[
                 styles.filterChipText,
-                selectedCategory === item.value && styles.filterChipTextActive,
+                { color: colors.textSecondary },
+                selectedCategory === item.value && { color: colors.textOnPrimary },
               ]}>
                 {item.label}
               </Text>
@@ -292,25 +296,25 @@ export default function InventoryScreen() {
         />
       </View>
 
-      <View style={styles.statsRow}>
+      <View style={[styles.statsRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.statItem}>
-          <Text style={styles.statValue}>{consumables.length}</Text>
-          <Text style={styles.statLabel}>Total Parts</Text>
+          <Text style={[styles.statValue, { color: colors.text }]}>{consumables.length}</Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Total Parts</Text>
         </View>
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, lowStockItems.length > 0 && styles.statValueWarning]}>
+          <Text style={[styles.statValue, { color: colors.text }, lowStockItems.length > 0 && { color: colors.warning }]}>
             {lowStockItems.length}
           </Text>
-          <Text style={styles.statLabel}>Low Stock</Text>
+          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Low Stock</Text>
         </View>
         {lowStockItems.length > 0 && (
           <TouchableOpacity
-            style={styles.exportButton}
+            style={[styles.exportButton, { backgroundColor: colors.warning }]}
             onPress={handleExportInventory}
             activeOpacity={0.7}
           >
-            <Share2 color={Colors.textOnPrimary} size={16} />
-            <Text style={styles.exportButtonText}>Export</Text>
+            <Share2 color={colors.textOnPrimary} size={16} />
+            <Text style={[styles.exportButtonText, { color: colors.textOnPrimary }]}>Export</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -325,11 +329,11 @@ export default function InventoryScreen() {
       />
 
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: colors.accent }]}
         onPress={() => setShowAddMenu(true)}
         activeOpacity={0.8}
       >
-        <Plus color={Colors.textOnPrimary} size={28} />
+        <Plus color={colors.textOnPrimary} size={28} />
       </TouchableOpacity>
 
       <Modal
@@ -343,11 +347,11 @@ export default function InventoryScreen() {
           activeOpacity={1}
           onPress={() => setShowAddMenu(false)}
         >
-          <View style={styles.menuContainer}>
-            <View style={styles.menuHeader}>
-              <Text style={styles.menuTitle}>Add Parts</Text>
+          <View style={[styles.menuContainer, { backgroundColor: colors.surface }]}>
+            <View style={[styles.menuHeader, { borderBottomColor: colors.border }]}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Add Parts</Text>
               <TouchableOpacity onPress={() => setShowAddMenu(false)}>
-                <X color={Colors.textSecondary} size={24} />
+                <X color={colors.textSecondary} size={24} />
               </TouchableOpacity>
             </View>
 
@@ -358,12 +362,12 @@ export default function InventoryScreen() {
                 router.push('/inventory/add' as any);
               }}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: Colors.primary + '15' }]}>
-                <Plus color={Colors.primary} size={22} />
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.primary + '15' }]}>
+                <Plus color={colors.primary} size={22} />
               </View>
               <View style={styles.menuTextContainer}>
-                <Text style={styles.menuItemTitle}>Add Single Part</Text>
-                <Text style={styles.menuItemDescription}>Manually add one part to inventory</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Add Single Part</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Manually add one part to inventory</Text>
               </View>
             </TouchableOpacity>
 
@@ -371,28 +375,28 @@ export default function InventoryScreen() {
               style={styles.menuItem}
               onPress={handleImportCSV}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: Colors.accent + '15' }]}>
-                <Upload color={Colors.accent} size={22} />
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.accent + '15' }]}>
+                <Upload color={colors.accent} size={22} />
               </View>
               <View style={styles.menuTextContainer}>
-                <Text style={styles.menuItemTitle}>Import from Spreadsheet</Text>
-                <Text style={styles.menuItemDescription}>Bulk import parts from a CSV file</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Import from Spreadsheet</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Bulk import parts from a CSV file</Text>
               </View>
             </TouchableOpacity>
 
-            <View style={styles.menuDivider} />
-            <Text style={styles.menuSectionTitle}>Templates & Export</Text>
+            <View style={[styles.menuDivider, { backgroundColor: colors.border }]} />
+            <Text style={[styles.menuSectionTitle, { color: colors.textSecondary }]}>Templates & Export</Text>
 
             <TouchableOpacity
               style={styles.menuItem}
               onPress={handleDownloadTemplate}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: Colors.success + '15' }]}>
-                <FileSpreadsheet color={Colors.success} size={22} />
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.success + '15' }]}>
+                <FileSpreadsheet color={colors.success} size={22} />
               </View>
               <View style={styles.menuTextContainer}>
-                <Text style={styles.menuItemTitle}>Download Template</Text>
-                <Text style={styles.menuItemDescription}>Get a CSV template with example data</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Download Template</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Get a CSV template with example data</Text>
               </View>
             </TouchableOpacity>
 
@@ -400,12 +404,12 @@ export default function InventoryScreen() {
               style={styles.menuItem}
               onPress={handleExportInventory}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: Colors.warning + '15' }]}>
-                <Download color={Colors.warning} size={22} />
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.warning + '15' }]}>
+                <Download color={colors.warning} size={22} />
               </View>
               <View style={styles.menuTextContainer}>
-                <Text style={styles.menuItemTitle}>Export Inventory</Text>
-                <Text style={styles.menuItemDescription}>Download all parts as CSV</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Export Inventory</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Download all parts as CSV</Text>
               </View>
             </TouchableOpacity>
           </View>
@@ -418,13 +422,11 @@ export default function InventoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.background,
   },
   searchContainer: {
     padding: 16,
@@ -433,18 +435,15 @@ const styles = StyleSheet.create({
   searchInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
     borderRadius: 12,
     paddingHorizontal: 14,
     gap: 10,
     borderWidth: 1,
-    borderColor: Colors.border,
   },
   searchInput: {
     flex: 1,
     paddingVertical: 14,
     fontSize: 16,
-    color: Colors.text,
   },
   filterContainer: {
     paddingBottom: 8,
@@ -458,64 +457,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 14,
     paddingVertical: 8,
-    backgroundColor: Colors.surface,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: Colors.border,
     gap: 6,
     marginRight: 8,
   },
-  filterChipActive: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
-  },
-  filterChipWarning: {
-    borderColor: Colors.warning,
-  },
   filterChipText: {
     fontSize: 14,
-    color: Colors.textSecondary,
     fontWeight: '500' as const,
-  },
-  filterChipTextActive: {
-    color: Colors.textOnPrimary,
   },
   statsRow: {
     flexDirection: 'row',
-    backgroundColor: Colors.surface,
     marginHorizontal: 16,
     marginBottom: 12,
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
   },
   statItem: {
     flex: 1,
     alignItems: 'center',
   },
-  statDivider: {
-    width: 1,
-    backgroundColor: Colors.border,
-    marginHorizontal: 8,
-  },
   statValue: {
     fontSize: 20,
     fontWeight: '700' as const,
-    color: Colors.text,
-  },
-  statValueWarning: {
-    color: Colors.warning,
   },
   statLabel: {
     fontSize: 12,
-    color: Colors.textSecondary,
     marginTop: 4,
   },
   exportButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.warning,
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
@@ -524,7 +497,6 @@ const styles = StyleSheet.create({
   exportButtonText: {
     fontSize: 13,
     fontWeight: '600' as const,
-    color: Colors.textOnPrimary,
   },
   listContent: {
     padding: 16,
@@ -532,12 +504,10 @@ const styles = StyleSheet.create({
     paddingBottom: 100,
   },
   itemCard: {
-    backgroundColor: Colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 1,
-    borderColor: Colors.border,
   },
   itemHeader: {
     flexDirection: 'row',
@@ -548,12 +518,8 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 10,
-    backgroundColor: Colors.primaryLight + '15',
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  categoryBadgeLow: {
-    backgroundColor: Colors.danger + '15',
   },
   itemThumbnail: {
     width: 36,
@@ -567,15 +533,12 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: 16,
     fontWeight: '600' as const,
-    color: Colors.text,
   },
   partNumber: {
     fontSize: 13,
-    color: Colors.textSecondary,
     marginTop: 2,
   },
   itemDetails: {
-    backgroundColor: Colors.surfaceAlt,
     borderRadius: 8,
     padding: 12,
     gap: 8,
@@ -586,20 +549,14 @@ const styles = StyleSheet.create({
   },
   detailLabel: {
     fontSize: 13,
-    color: Colors.textSecondary,
   },
   detailValue: {
     fontSize: 13,
-    color: Colors.text,
     fontWeight: '500' as const,
   },
   stockValue: {
     fontSize: 13,
-    color: Colors.success,
     fontWeight: '600' as const,
-  },
-  stockValueLow: {
-    color: Colors.danger,
   },
   emptyState: {
     alignItems: 'center',
@@ -608,17 +565,14 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 18,
     fontWeight: '600' as const,
-    color: Colors.text,
     marginTop: 16,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: Colors.textSecondary,
     marginTop: 8,
     textAlign: 'center',
     paddingHorizontal: 32,
   },
-
   fab: {
     position: 'absolute',
     right: 20,
@@ -626,7 +580,6 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: Colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -641,7 +594,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   menuContainer: {
-    backgroundColor: Colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingBottom: 40,
@@ -652,12 +604,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
   },
   menuTitle: {
     fontSize: 20,
     fontWeight: '700' as const,
-    color: Colors.text,
   },
   menuItem: {
     flexDirection: 'row',
@@ -679,23 +629,19 @@ const styles = StyleSheet.create({
   menuItemTitle: {
     fontSize: 16,
     fontWeight: '600' as const,
-    color: Colors.text,
   },
   menuItemDescription: {
     fontSize: 13,
-    color: Colors.textSecondary,
     marginTop: 2,
   },
   menuDivider: {
     height: 1,
-    backgroundColor: Colors.border,
     marginVertical: 12,
     marginHorizontal: 20,
   },
   menuSectionTitle: {
     fontSize: 12,
     fontWeight: '600' as const,
-    color: Colors.textSecondary,
     textTransform: 'uppercase' as const,
     letterSpacing: 0.5,
     paddingHorizontal: 20,

@@ -18,13 +18,14 @@ import {
   ChevronRight,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { getMaintenanceStatus, formatHours, formatDate } from '@/utils/helpers';
 
 export default function DashboardScreen() {
   const router = useRouter();
   const { equipment, maintenanceLogs, intervals, isLoading } = useFarmData();
+  const { colors } = useTheme();
 
   const stats = useMemo(() => {
     let dueCount = 0;
@@ -85,98 +86,98 @@ export default function DashboardScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
       <LinearGradient
-        colors={[Colors.primary, Colors.primaryLight]}
+        colors={[colors.primary, colors.primaryLight]}
         style={styles.header}
       >
-        <Text style={styles.headerTitle}>FarmGuard</Text>
-        <Text style={styles.headerSubtitle}>Equipment Maintenance</Text>
+        <Text style={[styles.headerTitle, { color: colors.textOnPrimary }]}>FarmGuard</Text>
+        <Text style={[styles.headerSubtitle, { color: colors.textOnPrimary }]}>Equipment Maintenance</Text>
       </LinearGradient>
 
       <View style={styles.content}>
         <View style={styles.statsRow}>
           <TouchableOpacity
-            style={[styles.statCard, { backgroundColor: Colors.statusOk + '15' }]}
+            style={[styles.statCard, { backgroundColor: colors.statusOk + '15' }]}
             onPress={() => router.push('/equipment' as any)}
           >
-            <CheckCircle color={Colors.statusOk} size={28} />
-            <Text style={[styles.statNumber, { color: Colors.statusOk }]}>{stats.okCount}</Text>
-            <Text style={styles.statLabel}>Good</Text>
+            <CheckCircle color={colors.statusOk} size={28} />
+            <Text style={[styles.statNumber, { color: colors.statusOk }]}>{stats.okCount}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Good</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.statCard, { backgroundColor: Colors.statusDue + '15' }]}
+            style={[styles.statCard, { backgroundColor: colors.statusDue + '15' }]}
             onPress={() => router.push('/equipment' as any)}
           >
-            <Clock color={Colors.statusDue} size={28} />
-            <Text style={[styles.statNumber, { color: Colors.statusDue }]}>{stats.dueCount}</Text>
-            <Text style={styles.statLabel}>Due Soon</Text>
+            <Clock color={colors.statusDue} size={28} />
+            <Text style={[styles.statNumber, { color: colors.statusDue }]}>{stats.dueCount}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Due Soon</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.statCard, { backgroundColor: Colors.statusOverdue + '15' }]}
+            style={[styles.statCard, { backgroundColor: colors.statusOverdue + '15' }]}
             onPress={() => router.push('/equipment' as any)}
           >
-            <AlertTriangle color={Colors.statusOverdue} size={28} />
-            <Text style={[styles.statNumber, { color: Colors.statusOverdue }]}>{stats.overdueCount}</Text>
-            <Text style={styles.statLabel}>Overdue</Text>
+            <AlertTriangle color={colors.statusOverdue} size={28} />
+            <Text style={[styles.statNumber, { color: colors.statusOverdue }]}>{stats.overdueCount}</Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Overdue</Text>
           </TouchableOpacity>
         </View>
 
         <View style={styles.quickActions}>
           <TouchableOpacity
-            style={styles.actionButton}
+            style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
             onPress={() => router.push('/equipment?showAddMenu=true' as any)}
           >
-            <View style={styles.actionIconContainer}>
-              <Plus color={Colors.textOnPrimary} size={20} />
+            <View style={[styles.actionIconContainer, { backgroundColor: colors.primary }]}>
+              <Plus color={colors.textOnPrimary} size={20} />
             </View>
-            <Text style={styles.actionText}>Add Equipment</Text>
+            <Text style={[styles.actionText, { color: colors.text }]}>Add Equipment</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.actionButton}
+            style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
             onPress={() => router.push('/maintenance/add' as any)}
           >
-            <View style={[styles.actionIconContainer, { backgroundColor: Colors.accent }]}>
-              <Wrench color={Colors.textOnPrimary} size={20} />
+            <View style={[styles.actionIconContainer, { backgroundColor: colors.accent }]}>
+              <Wrench color={colors.textOnPrimary} size={20} />
             </View>
-            <Text style={styles.actionText}>Log Service</Text>
+            <Text style={[styles.actionText, { color: colors.text }]}>Log Service</Text>
           </TouchableOpacity>
         </View>
 
         {upcomingMaintenance.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Attention Required</Text>
+            <Text style={[styles.sectionTitle, { color: colors.text }]}>Attention Required</Text>
             {upcomingMaintenance.map((item, index) => (
               <TouchableOpacity
                 key={`${item.equipment.id}-${item.interval.id}-${index}`}
-                style={styles.alertCard}
+                style={[styles.alertCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
                 onPress={() => router.push(`/equipment/${item.equipment.id}` as any)}
               >
                 <View style={[
                   styles.alertIndicator,
-                  { backgroundColor: item.status === 'overdue' ? Colors.statusOverdue : Colors.statusDue }
+                  { backgroundColor: item.status === 'overdue' ? colors.statusOverdue : colors.statusDue }
                 ]} />
                 <View style={styles.alertContent}>
-                  <Text style={styles.alertTitle}>{item.interval.name}</Text>
-                  <Text style={styles.alertSubtitle}>{item.equipment.name}</Text>
+                  <Text style={[styles.alertTitle, { color: colors.text }]}>{item.interval.name}</Text>
+                  <Text style={[styles.alertSubtitle, { color: colors.textSecondary }]}>{item.equipment.name}</Text>
                   {item.interval.intervalHours && (
-                    <Text style={styles.alertMeta}>
+                    <Text style={[styles.alertMeta, { color: colors.textSecondary }]}>
                       Current: {formatHours(item.equipment.currentHours)} • 
                       Due at: {formatHours((item.interval.lastPerformedHours ?? 0) + item.interval.intervalHours)}
                     </Text>
                   )}
                 </View>
-                <ChevronRight color={Colors.textSecondary} size={20} />
+                <ChevronRight color={colors.textSecondary} size={20} />
               </TouchableOpacity>
             ))}
           </View>
@@ -185,9 +186,9 @@ export default function DashboardScreen() {
         {recentLogs.length > 0 && (
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Recent Services</Text>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Services</Text>
               <TouchableOpacity onPress={() => router.push('/maintenance' as any)}>
-                <Text style={styles.seeAllText}>See All</Text>
+                <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
               </TouchableOpacity>
             </View>
             {recentLogs.map((log) => {
@@ -195,18 +196,18 @@ export default function DashboardScreen() {
               return (
                 <TouchableOpacity
                   key={log.id}
-                  style={styles.logCard}
+                  style={[styles.logCard, { backgroundColor: colors.surface }]}
                   onPress={() => router.push(`/maintenance/${log.id}` as any)}
                   activeOpacity={0.7}
                 >
-                  <View style={styles.logIcon}>
-                    <Wrench color={Colors.primary} size={18} />
+                  <View style={[styles.logIcon, { backgroundColor: colors.primary + '15' }]}>
+                    <Wrench color={colors.primary} size={18} />
                   </View>
                   <View style={styles.logContent}>
-                    <Text style={styles.logTitle}>{log.description}</Text>
-                    <Text style={styles.logSubtitle}>{eq?.name ?? 'Unknown'}</Text>
+                    <Text style={[styles.logTitle, { color: colors.text }]}>{log.description}</Text>
+                    <Text style={[styles.logSubtitle, { color: colors.textSecondary }]}>{eq?.name ?? 'Unknown'}</Text>
                   </View>
-                  <Text style={styles.logDate}>{formatDate(log.date)}</Text>
+                  <Text style={[styles.logDate, { color: colors.textSecondary }]}>{formatDate(log.date)}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -215,9 +216,9 @@ export default function DashboardScreen() {
 
         {equipment.length === 0 && (
           <View style={styles.emptyState}>
-            <Tractor color={Colors.textSecondary} size={64} />
-            <Text style={styles.emptyTitle}>No Equipment Yet</Text>
-            <Text style={styles.emptySubtitle}>
+            <Tractor color={colors.textSecondary} size={64} />
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Equipment Yet</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
               Add your first piece of equipment to start tracking maintenance
             </Text>
           </View>
@@ -230,13 +231,11 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.background,
   },
   header: {
     paddingTop: 20,
@@ -248,11 +247,9 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 28,
     fontWeight: '700' as const,
-    color: Colors.textOnPrimary,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: Colors.textOnPrimary,
     opacity: 0.8,
     marginTop: 4,
   },
@@ -278,7 +275,6 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 12,
-    color: Colors.textSecondary,
     marginTop: 2,
   },
   quickActions: {
@@ -290,12 +286,10 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
     paddingVertical: 14,
     paddingHorizontal: 12,
     borderRadius: 12,
     gap: 10,
-    shadowColor: Colors.cardShadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 8,
@@ -306,14 +300,12 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 10,
-    backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   actionText: {
     fontSize: 13,
     fontWeight: '600' as const,
-    color: Colors.text,
     flexShrink: 1,
     flexWrap: 'wrap',
   },
@@ -329,22 +321,18 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600' as const,
-    color: Colors.text,
     marginBottom: 12,
   },
   seeAllText: {
     fontSize: 14,
-    color: Colors.primary,
     fontWeight: '500' as const,
   },
   alertCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
     padding: 14,
     borderRadius: 12,
     marginBottom: 10,
-    shadowColor: Colors.cardShadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 8,
@@ -362,22 +350,18 @@ const styles = StyleSheet.create({
   alertTitle: {
     fontSize: 15,
     fontWeight: '600' as const,
-    color: Colors.text,
   },
   alertSubtitle: {
     fontSize: 13,
-    color: Colors.textSecondary,
     marginTop: 2,
   },
   alertMeta: {
     fontSize: 12,
-    color: Colors.textSecondary,
     marginTop: 4,
   },
   logCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
     padding: 14,
     borderRadius: 12,
     marginBottom: 10,
@@ -386,7 +370,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 8,
-    backgroundColor: Colors.primary + '15',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
@@ -397,16 +380,13 @@ const styles = StyleSheet.create({
   logTitle: {
     fontSize: 14,
     fontWeight: '500' as const,
-    color: Colors.text,
   },
   logSubtitle: {
     fontSize: 12,
-    color: Colors.textSecondary,
     marginTop: 2,
   },
   logDate: {
     fontSize: 12,
-    color: Colors.textSecondary,
   },
   emptyState: {
     alignItems: 'center',
@@ -416,12 +396,10 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '600' as const,
-    color: Colors.text,
     marginTop: 20,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,

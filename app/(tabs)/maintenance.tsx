@@ -22,8 +22,8 @@ import {
   Search,
   FileText,
 } from 'lucide-react-native';
-import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { MaintenanceLog } from '@/types/equipment';
 import { formatDate, formatHours } from '@/utils/helpers';
 
@@ -32,6 +32,7 @@ type FilterType = 'all' | 'routine' | 'repair' | 'inspection';
 export default function MaintenanceScreen() {
   const router = useRouter();
   const { maintenanceLogs, equipment, isLoading } = useFarmData();
+  const { colors } = useTheme();
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [showAddMenu, setShowAddMenu] = useState(false);
 
@@ -76,11 +77,11 @@ export default function MaintenanceScreen() {
   const getTypeColor = (type: string) => {
     switch (type) {
       case 'repair':
-        return Colors.statusOverdue;
+        return colors.statusOverdue;
       case 'inspection':
-        return Colors.accent;
+        return colors.accent;
       default:
-        return Colors.primary;
+        return colors.primary;
     }
   };
 
@@ -91,7 +92,7 @@ export default function MaintenanceScreen() {
 
     return (
       <TouchableOpacity
-        style={styles.logCard}
+        style={[styles.logCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
         onPress={() => router.push(`/maintenance/${item.id}` as any)}
         activeOpacity={0.7}
       >
@@ -100,15 +101,15 @@ export default function MaintenanceScreen() {
         </View>
         
         <View style={styles.logContent}>
-          <Text style={styles.logDescription} numberOfLines={2}>{item.description}</Text>
-          <Text style={styles.logEquipment}>{eq?.name ?? 'Unknown Equipment'}</Text>
+          <Text style={[styles.logDescription, { color: colors.text }]} numberOfLines={2}>{item.description}</Text>
+          <Text style={[styles.logEquipment, { color: colors.textSecondary }]}>{eq?.name ?? 'Unknown Equipment'}</Text>
           <View style={styles.logMeta}>
-            <Text style={styles.logMetaText}>{formatHours(item.hoursAtService)}</Text>
+            <Text style={[styles.logMetaText, { color: colors.primary }]}>{formatHours(item.hoursAtService)}</Text>
           </View>
         </View>
         
         <View style={styles.logRight}>
-          <Text style={styles.logDate}>{formatDate(item.date)}</Text>
+          <Text style={[styles.logDate, { color: colors.textSecondary }]}>{formatDate(item.date)}</Text>
           <View style={[styles.typeBadge, { backgroundColor: typeColor + '20' }]}>
             <Text style={[styles.typeBadgeText, { color: typeColor }]}>
               {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
@@ -121,52 +122,52 @@ export default function MaintenanceScreen() {
 
   const renderSectionHeader = (title: string) => (
     <View style={styles.sectionHeader}>
-      <Calendar color={Colors.textSecondary} size={16} />
-      <Text style={styles.sectionTitle}>{title}</Text>
+      <Calendar color={colors.textSecondary} size={16} />
+      <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>{title}</Text>
     </View>
   );
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.filterContainer}>
-        <Filter color={Colors.textSecondary} size={18} />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={[styles.filterContainer, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
+        <Filter color={colors.textSecondary} size={18} />
         <TouchableOpacity
-          style={[styles.filterButton, filterType === 'all' && styles.filterButtonActive]}
+          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === 'all' && { backgroundColor: colors.primary }]}
           onPress={() => setFilterType('all')}
         >
-          <Text style={[styles.filterText, filterType === 'all' && styles.filterTextActive]}>
+          <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === 'all' && { color: colors.textOnPrimary }]}>
             All
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, filterType === 'routine' && styles.filterButtonActive]}
+          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === 'routine' && { backgroundColor: colors.primary }]}
           onPress={() => setFilterType('routine')}
         >
-          <Text style={[styles.filterText, filterType === 'routine' && styles.filterTextActive]}>
+          <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === 'routine' && { color: colors.textOnPrimary }]}>
             Routine
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, filterType === 'repair' && styles.filterButtonActive]}
+          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === 'repair' && { backgroundColor: colors.primary }]}
           onPress={() => setFilterType('repair')}
         >
-          <Text style={[styles.filterText, filterType === 'repair' && styles.filterTextActive]}>
+          <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === 'repair' && { color: colors.textOnPrimary }]}>
             Repairs
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, filterType === 'inspection' && styles.filterButtonActive]}
+          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === 'inspection' && { backgroundColor: colors.primary }]}
           onPress={() => setFilterType('inspection')}
         >
-          <Text style={[styles.filterText, filterType === 'inspection' && styles.filterTextActive]}>
+          <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === 'inspection' && { color: colors.textOnPrimary }]}>
             Inspections
           </Text>
         </TouchableOpacity>
@@ -189,9 +190,9 @@ export default function MaintenanceScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <Wrench color={Colors.textSecondary} size={64} />
-            <Text style={styles.emptyTitle}>No Maintenance Logs</Text>
-            <Text style={styles.emptySubtitle}>
+            <Wrench color={colors.textSecondary} size={64} />
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Maintenance Logs</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
               Start logging your equipment maintenance to track history
             </Text>
           </View>
@@ -199,11 +200,11 @@ export default function MaintenanceScreen() {
       />
 
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: colors.accent, shadowColor: colors.accent }]}
         onPress={() => setShowAddMenu(true)}
         activeOpacity={0.8}
       >
-        <Plus color={Colors.textOnPrimary} size={28} />
+        <Plus color={colors.textOnPrimary} size={28} />
       </TouchableOpacity>
 
       <Modal
@@ -216,48 +217,48 @@ export default function MaintenanceScreen() {
           style={styles.modalOverlay} 
           onPress={() => setShowAddMenu(false)}
         >
-          <Pressable style={styles.menuContainer} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.menuHeader}>
-              <Text style={styles.menuTitle}>Add New</Text>
+          <Pressable style={[styles.menuContainer, { backgroundColor: colors.surface }]} onPress={(e) => e.stopPropagation()}>
+            <View style={[styles.menuHeader, { borderBottomColor: colors.borderLight }]}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Add New</Text>
               <TouchableOpacity onPress={() => setShowAddMenu(false)}>
-                <X color={Colors.textSecondary} size={24} />
+                <X color={colors.textSecondary} size={24} />
               </TouchableOpacity>
             </View>
 
             <TouchableOpacity
-              style={styles.menuItem}
+              style={[styles.menuItem, { borderBottomColor: colors.borderLight }]}
               onPress={() => {
                 setShowAddMenu(false);
                 router.push('/maintenance/add' as any);
               }}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: Colors.primary + '15' }]}>
-                <Wrench color={Colors.primary} size={22} />
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.primary + '15' }]}>
+                <Wrench color={colors.primary} size={22} />
               </View>
               <View style={styles.menuItemContent}>
-                <Text style={styles.menuItemTitle}>Log Maintenance</Text>
-                <Text style={styles.menuItemSubtitle}>Record service, repair, or inspection</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Log Maintenance</Text>
+                <Text style={[styles.menuItemSubtitle, { color: colors.textSecondary }]}>Record service, repair, or inspection</Text>
               </View>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.menuItem}
+              style={[styles.menuItem, { borderBottomColor: colors.borderLight }]}
               onPress={() => {
                 setShowAddMenu(false);
                 router.push('/routines/service' as any);
               }}
             >
-              <View style={[styles.menuIconContainer, { backgroundColor: Colors.accent + '15' }]}>
-                <ClipboardList color={Colors.accent} size={22} />
+              <View style={[styles.menuIconContainer, { backgroundColor: colors.accent + '15' }]}>
+                <ClipboardList color={colors.accent} size={22} />
               </View>
               <View style={styles.menuItemContent}>
-                <Text style={styles.menuItemTitle}>Service Routines</Text>
-                <Text style={styles.menuItemSubtitle}>Manage reusable service checklists</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Service Routines</Text>
+                <Text style={[styles.menuItemSubtitle, { color: colors.textSecondary }]}>Manage reusable service checklists</Text>
               </View>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.menuItem}
+              style={[styles.menuItem, { borderBottomColor: colors.borderLight }]}
               onPress={() => {
                 setShowAddMenu(false);
                 router.push('/routines/inspection' as any);
@@ -267,8 +268,8 @@ export default function MaintenanceScreen() {
                 <Search color="#8B5CF6" size={22} />
               </View>
               <View style={styles.menuItemContent}>
-                <Text style={styles.menuItemTitle}>Inspection Routines</Text>
-                <Text style={styles.menuItemSubtitle}>Manage inspection checklists</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Inspection Routines</Text>
+                <Text style={[styles.menuItemSubtitle, { color: colors.textSecondary }]}>Manage inspection checklists</Text>
               </View>
             </TouchableOpacity>
 
@@ -283,8 +284,8 @@ export default function MaintenanceScreen() {
                 <FileText color="#F59E0B" size={22} />
               </View>
               <View style={styles.menuItemContent}>
-                <Text style={styles.menuItemTitle}>Work Orders</Text>
-                <Text style={styles.menuItemSubtitle}>Plan and assign future tasks</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Work Orders</Text>
+                <Text style={[styles.menuItemSubtitle, { color: colors.textSecondary }]}>Plan and assign future tasks</Text>
               </View>
             </TouchableOpacity>
           </Pressable>
@@ -297,13 +298,11 @@ export default function MaintenanceScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.background,
   },
   filterContainer: {
     flexDirection: 'row',
@@ -311,26 +310,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 8,
-    backgroundColor: Colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
   },
   filterButton: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: Colors.surfaceAlt,
-  },
-  filterButtonActive: {
-    backgroundColor: Colors.primary,
   },
   filterText: {
     fontSize: 13,
     fontWeight: '500' as const,
-    color: Colors.textSecondary,
-  },
-  filterTextActive: {
-    color: Colors.textOnPrimary,
   },
   listContent: {
     paddingHorizontal: 16,
@@ -346,17 +335,14 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 14,
     fontWeight: '600' as const,
-    color: Colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   logCard: {
     flexDirection: 'row',
-    backgroundColor: Colors.surface,
     padding: 14,
     borderRadius: 14,
     marginBottom: 10,
-    shadowColor: Colors.cardShadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 6,
@@ -376,12 +362,10 @@ const styles = StyleSheet.create({
   logDescription: {
     fontSize: 15,
     fontWeight: '500' as const,
-    color: Colors.text,
     marginBottom: 4,
   },
   logEquipment: {
     fontSize: 13,
-    color: Colors.textSecondary,
     marginBottom: 6,
   },
   logMeta: {
@@ -391,12 +375,6 @@ const styles = StyleSheet.create({
   },
   logMetaText: {
     fontSize: 12,
-    color: Colors.primary,
-    fontWeight: '500' as const,
-  },
-  logCost: {
-    fontSize: 12,
-    color: Colors.accent,
     fontWeight: '500' as const,
   },
   logRight: {
@@ -406,7 +384,6 @@ const styles = StyleSheet.create({
   },
   logDate: {
     fontSize: 12,
-    color: Colors.textSecondary,
   },
   typeBadge: {
     paddingHorizontal: 10,
@@ -426,12 +403,10 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '600' as const,
-    color: Colors.text,
     marginTop: 20,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,
@@ -443,10 +418,8 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: Colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.accent,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -458,7 +431,6 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   menuContainer: {
-    backgroundColor: Colors.surface,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 8,
@@ -471,20 +443,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
     marginBottom: 8,
   },
   menuTitle: {
     fontSize: 18,
     fontWeight: '600' as const,
-    color: Colors.text,
   },
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
   },
   menuIconContainer: {
     width: 48,
@@ -500,11 +469,9 @@ const styles = StyleSheet.create({
   menuItemTitle: {
     fontSize: 16,
     fontWeight: '600' as const,
-    color: Colors.text,
     marginBottom: 2,
   },
   menuItemSubtitle: {
     fontSize: 13,
-    color: Colors.textSecondary,
   },
 });
