@@ -18,6 +18,7 @@ const STORAGE_KEYS = {
   FARM_ID: 'farmguard_farm_id',
   DEVICE_ID: 'farmguard_device_id',
   IS_FARM_CREATOR: 'farmguard_is_farm_creator',
+  DISPLAY_NAME: 'farmguard_display_name',
 };
 
 export interface FarmMember {
@@ -25,6 +26,7 @@ export interface FarmMember {
   farm_id: string;
   device_id: string;
   role: 'admin' | 'member';
+  display_name: string | null;
   joined_at: string;
   last_active_at: string;
 }
@@ -160,10 +162,14 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const [deviceId, setDeviceId] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState<string | null>(null);
 
   useEffect(() => {
     getFarmId().then(setFarmId);
     getDeviceId().then(setDeviceId);
+    AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME).then(name => {
+      if (name) setDisplayName(name);
+    });
   }, []);
 
   const memberRegistrationQuery = useQuery({
@@ -190,9 +196,12 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       }
 
       if (existing) {
+        const storedName = await AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME);
+        const updatePayload: Record<string, string> = { last_active_at: new Date().toISOString() };
+        if (storedName) updatePayload.display_name = storedName;
         const { error: updateError } = await supabase
           .from('farm_members')
-          .update({ last_active_at: new Date().toISOString() })
+          .update(updatePayload)
           .eq('farm_id', farmId)
           .eq('device_id', deviceId);
         if (updateError) {
@@ -212,12 +221,14 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
       const role = (isCreator || count === 0 || count === null) ? 'admin' : 'member';
 
+      const storedDisplayName = await AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME);
       const { data: newMember, error } = await supabase
         .from('farm_members')
         .insert({
           farm_id: farmId,
           device_id: deviceId,
           role,
+          display_name: storedDisplayName || null,
           joined_at: new Date().toISOString(),
           last_active_at: new Date().toISOString(),
         })
@@ -1222,11 +1233,13 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     setFarmId(newFarmId);
 
     await supabase.from('farms').upsert({ id: newFarmId });
+    const storedName = await AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME);
     await supabase.from('farm_members').upsert(
       {
         farm_id: newFarmId,
         device_id: deviceId,
         role: 'member' as const,
+        display_name: storedName || null,
         joined_at: new Date().toISOString(),
         last_active_at: new Date().toISOString(),
       },
@@ -1319,6 +1332,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
             farm_id: trimmed,
             device_id: member.device_id,
             role: member.role,
+            display_name: member.display_name || null,
             joined_at: member.joined_at,
             last_active_at: member.last_active_at,
           });
@@ -1338,6 +1352,33 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
       console.log(`[Supabase] Farm ID updated successfully to ${trimmed}`);
       return trimmed;
+    },
+  });
+
+  const updateDisplayNameMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const trimmed = name.trim();
+      await AsyncStorage.setItem(STORAGE_KEYS.DISPLAY_NAME, trimmed);
+      setDisplayName(trimmed);
+
+      if (farmId && deviceId) {
+        const { error } = await supabase
+          .from('farm_members')
+          .update({ display_name: trimmed })
+          .eq('farm_id', farmId)
+          .eq('device_id', deviceId);
+
+        if (error) {
+          console.error('[Supabase] Error updating display name:', JSON.stringify(error));
+          throw new Error('Failed to update display name on server.');
+        }
+        console.log(`[Supabase] Display name updated to: ${trimmed}`);
+      }
+      return trimmed;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['farmMembers', farmId] });
+      queryClient.invalidateQueries({ queryKey: ['memberRegistration', farmId, deviceId] });
     },
   });
 
@@ -1386,6 +1427,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     removeMember: removeMemberMutation.mutateAsync,
     updateFarmId: updateFarmIdMutation.mutateAsync,
     isUpdatingFarmId: updateFarmIdMutation.isPending,
+    displayName,
+    updateDisplayName: updateDisplayNameMutation.mutateAsync,
+    isUpdatingDisplayName: updateDisplayNameMutation.isPending,
     checkForDuplicatesOnJoin,
     applyDuplicateResolutions,
     equipment,

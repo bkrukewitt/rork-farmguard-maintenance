@@ -45,6 +45,7 @@ import * as XLSX from 'xlsx';
 import { useFarmData, DuplicateItem, FarmMember } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Equipment, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
+import { User } from 'lucide-react-native';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -68,6 +69,9 @@ export default function SettingsScreen() {
     removeMember,
     updateFarmId,
     isUpdatingFarmId,
+    displayName,
+    updateDisplayName,
+    isUpdatingDisplayName,
     checkForDuplicatesOnJoin,
     applyDuplicateResolutions,
   } = useFarmData();
@@ -87,6 +91,8 @@ export default function SettingsScreen() {
   const [showEditFarmIdModal, setShowEditFarmIdModal] = useState(false);
   const [newFarmId, setNewFarmId] = useState('');
   const [farmIdError, setFarmIdError] = useState('');
+  const [showDisplayNameModal, setShowDisplayNameModal] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState('');
 
   const handleClearData = () => {
     Alert.alert(
@@ -407,6 +413,22 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleSaveDisplayName = async () => {
+    const trimmed = editDisplayName.trim();
+    if (!trimmed) {
+      Alert.alert('Error', 'Please enter a name.');
+      return;
+    }
+    try {
+      await updateDisplayName(trimmed);
+      setShowDisplayNameModal(false);
+      Alert.alert('Success', 'Your display name has been updated.');
+    } catch (error) {
+      console.error('Error updating display name:', error);
+      Alert.alert('Error', 'Failed to update display name. Please try again.');
+    }
+  };
+
   const handleRemoveMember = (targetDeviceId: string) => {
     Alert.alert(
       'Remove Device',
@@ -559,26 +581,55 @@ export default function SettingsScreen() {
             </View>
           )}
 
+          <TouchableOpacity
+            style={[styles.displayNameRow, { backgroundColor: colors.background }]}
+            onPress={() => {
+              setEditDisplayName(displayName || '');
+              setShowDisplayNameModal(true);
+            }}
+          >
+            <View style={[styles.displayNameIcon, { backgroundColor: colors.secondary + '15' }]}>
+              <User color={colors.secondary} size={18} />
+            </View>
+            <View style={styles.displayNameInfo}>
+              <Text style={[styles.displayNameLabel, { color: colors.textSecondary }]}>Your Name</Text>
+              <Text style={[styles.displayNameValue, { color: displayName ? colors.text : colors.textSecondary }]}>
+                {displayName || 'Tap to set your name'}
+              </Text>
+            </View>
+            <Pencil color={colors.textSecondary} size={16} />
+          </TouchableOpacity>
+
           {farmMembers.length > 0 && (
             <View style={styles.membersList}>
-              <Text style={[styles.membersListTitle, { color: colors.text }]}>Connected Devices</Text>
+              <Text style={[styles.membersListTitle, { color: colors.text }]}>Farm Members</Text>
               {farmMembers.map((member: FarmMember) => (
                 <View key={member.device_id} style={[styles.memberRow, { backgroundColor: colors.background }]}>
                   <View style={styles.memberInfo}>
-                    <Text style={[styles.memberDeviceId, { color: colors.text }]} numberOfLines={1}>
-                      {member.device_id === deviceId ? 'This Device' : `Device ${member.device_id.slice(0, 8)}...`}
-                    </Text>
-                    <View style={styles.memberBadges}>
-                      {member.role === 'admin' && (
-                        <View style={[styles.roleBadge, { backgroundColor: colors.primary + '20' }]}>
-                          <Text style={[styles.roleBadgeText, { color: colors.primary }]}>Admin</Text>
-                        </View>
-                      )}
-                      {member.device_id === deviceId && (
-                        <View style={[styles.roleBadge, { backgroundColor: colors.statusOk + '20' }]}>
-                          <Text style={[styles.roleBadgeText, { color: colors.statusOk }]}>You</Text>
-                        </View>
-                      )}
+                    <View style={[styles.memberAvatar, { backgroundColor: member.device_id === deviceId ? colors.primary + '20' : colors.secondary + '20' }]}>
+                      <Text style={[styles.memberAvatarText, { color: member.device_id === deviceId ? colors.primary : colors.secondary }]}>
+                        {(member.display_name || '?').charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.memberDetails}>
+                      <Text style={[styles.memberDeviceId, { color: colors.text }]} numberOfLines={1}>
+                        {member.display_name || (member.device_id === deviceId ? 'You (no name set)' : `Device ${member.device_id.slice(0, 8)}`)}
+                      </Text>
+                      <View style={styles.memberBadges}>
+                        {member.role === 'admin' && (
+                          <View style={[styles.roleBadge, { backgroundColor: colors.primary + '20' }]}>
+                            <Text style={[styles.roleBadgeText, { color: colors.primary }]}>Admin</Text>
+                          </View>
+                        )}
+                        {member.device_id === deviceId && (
+                          <View style={[styles.roleBadge, { backgroundColor: colors.statusOk + '20' }]}>
+                            <Text style={[styles.roleBadgeText, { color: colors.statusOk }]}>You</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.memberJoinDate, { color: colors.textSecondary }]}>
+                        Joined {new Date(member.joined_at).toLocaleDateString()}
+                      </Text>
                     </View>
                   </View>
                   {isAdmin && member.device_id !== deviceId && member.role !== 'admin' && (
@@ -985,6 +1036,56 @@ export default function SettingsScreen() {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.joinButtonText}>Save Farm ID</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showDisplayNameModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDisplayNameModal(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Set Your Name</Text>
+              <TouchableOpacity onPress={() => setShowDisplayNameModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              This name will be visible to other members of your farm so they can identify you.
+            </Text>
+            
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Enter your name"
+                placeholderTextColor={colors.textSecondary}
+                value={editDisplayName}
+                onChangeText={setEditDisplayName}
+                autoCapitalize="words"
+                autoCorrect={false}
+                maxLength={50}
+              />
+            </View>
+            
+            <TouchableOpacity 
+              style={[styles.joinButton, { backgroundColor: colors.primary, opacity: isUpdatingDisplayName ? 0.7 : 1 }]}
+              onPress={handleSaveDisplayName}
+              disabled={isUpdatingDisplayName}
+            >
+              {isUpdatingDisplayName ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.joinButtonText}>Save Name</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -1426,6 +1527,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600' as const,
   },
+  displayNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  displayNameIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  displayNameInfo: {
+    flex: 1,
+  },
+  displayNameLabel: {
+    fontSize: 11,
+    fontWeight: '500' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  displayNameValue: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    marginTop: 2,
+  },
   membersList: {
     marginTop: 14,
     gap: 6,
@@ -1447,11 +1578,29 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+  },
+  memberAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  memberAvatarText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  memberDetails: {
+    flex: 1,
   },
   memberDeviceId: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500' as const,
+  },
+  memberJoinDate: {
+    fontSize: 11,
+    marginTop: 2,
   },
   memberBadges: {
     flexDirection: 'row',
