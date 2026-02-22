@@ -359,6 +359,29 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const workOrders = useMemo(() => workOrdersQuery.data ?? [], [workOrdersQuery.data]);
   const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
 
+  const mergeArraysSmart = useCallback(<T extends { id: string }>(local: T[], remoteArr: T[]): T[] => {
+    const map = new Map<string, T>();
+    local.forEach(item => map.set(item.id, item));
+    remoteArr.forEach(item => {
+      const existing = map.get(item.id);
+      if (!existing) {
+        map.set(item.id, item);
+      } else {
+        const localUpdated = (existing as Record<string, unknown>).updatedAt as string | undefined;
+        const remoteUpdated = (item as Record<string, unknown>).updatedAt as string | undefined;
+        if (localUpdated && remoteUpdated && remoteUpdated > localUpdated) {
+          map.set(item.id, item);
+        }
+        const localCreated = (existing as Record<string, unknown>).createdAt as string | undefined;
+        const remoteCreated = (item as Record<string, unknown>).createdAt as string | undefined;
+        if (!localUpdated && !remoteUpdated && localCreated && remoteCreated && remoteCreated > localCreated) {
+          map.set(item.id, item);
+        }
+      }
+    });
+    return Array.from(map.values());
+  }, []);
+
   useEffect(() => {
     if (remoteDataQuery.data && farmId) {
       const remote = remoteDataQuery.data;
@@ -375,25 +398,15 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
       if (hasRemoteData) {
         console.log('Remote data found, merging with local...');
-        const mergeArrays = <T extends { id: string }>(local: T[], remoteArr: T[]): T[] => {
-          const map = new Map<string, T>();
-          local.forEach(item => map.set(item.id, item));
-          remoteArr.forEach(item => {
-            if (!map.has(item.id)) {
-              map.set(item.id, item);
-            }
-          });
-          return Array.from(map.values());
-        };
 
-        const mergedEquipment = mergeArrays(equipment, remote.equipment);
-        const mergedLogs = mergeArrays(maintenanceLogs, remote.maintenanceLogs);
-        const mergedConsumables = mergeArrays(consumables, remote.consumables);
-        const mergedIntervals = mergeArrays(intervals, remote.intervals);
-        const mergedServiceRoutines = mergeArrays(serviceRoutines, remote.serviceRoutines);
-        const mergedInspectionRoutines = mergeArrays(inspectionRoutines, remote.inspectionRoutines);
-        const mergedWorkOrders = mergeArrays(workOrders, remote.workOrders);
-        const mergedEmployees = mergeArrays(employees, remote.employees);
+        const mergedEquipment = mergeArraysSmart(equipment, remote.equipment);
+        const mergedLogs = mergeArraysSmart(maintenanceLogs, remote.maintenanceLogs);
+        const mergedConsumables = mergeArraysSmart(consumables, remote.consumables);
+        const mergedIntervals = mergeArraysSmart(intervals, remote.intervals);
+        const mergedServiceRoutines = mergeArraysSmart(serviceRoutines, remote.serviceRoutines);
+        const mergedInspectionRoutines = mergeArraysSmart(inspectionRoutines, remote.inspectionRoutines);
+        const mergedWorkOrders = mergeArraysSmart(workOrders, remote.workOrders);
+        const mergedEmployees = mergeArraysSmart(employees, remote.employees);
 
         Promise.all([
           saveData(STORAGE_KEYS.EQUIPMENT, mergedEquipment),
@@ -424,36 +437,92 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
     setIsSyncing(true);
     try {
+      console.log('[Sync] Starting bidirectional sync for farm:', farmId);
       await supabase.from('farms').upsert({ id: farmId });
+
+      const remoteData = await fetchRemoteData(farmId);
+      console.log('[Sync] Remote data fetched:', remoteData ? 'found' : 'none');
+
+      const currentEquipment = await loadData<Equipment>(STORAGE_KEYS.EQUIPMENT);
+      const currentLogs = await loadData<MaintenanceLog>(STORAGE_KEYS.MAINTENANCE_LOGS);
+      const currentIntervals = await loadData<MaintenanceInterval>(STORAGE_KEYS.INTERVALS);
+      const currentConsumables = await loadData<Consumable>(STORAGE_KEYS.CONSUMABLES);
+      const currentServiceRoutines = await loadData<ServiceRoutine>(STORAGE_KEYS.SERVICE_ROUTINES);
+      const currentInspectionRoutines = await loadData<InspectionRoutine>(STORAGE_KEYS.INSPECTION_ROUTINES);
+      const currentWorkOrders = await loadData<WorkOrder>(STORAGE_KEYS.WORK_ORDERS);
+      const currentEmployees = await loadData<Employee>(STORAGE_KEYS.EMPLOYEES);
+
+      let mergedEquipment = currentEquipment;
+      let mergedLogs = currentLogs;
+      let mergedIntervals = currentIntervals;
+      let mergedConsumables = currentConsumables;
+      let mergedServiceRoutines = currentServiceRoutines;
+      let mergedInspectionRoutines = currentInspectionRoutines;
+      let mergedWorkOrders = currentWorkOrders;
+      let mergedEmployees = currentEmployees;
+
+      if (remoteData) {
+        mergedEquipment = mergeArraysSmart(currentEquipment, remoteData.equipment);
+        mergedLogs = mergeArraysSmart(currentLogs, remoteData.maintenanceLogs);
+        mergedIntervals = mergeArraysSmart(currentIntervals, remoteData.intervals);
+        mergedConsumables = mergeArraysSmart(currentConsumables, remoteData.consumables);
+        mergedServiceRoutines = mergeArraysSmart(currentServiceRoutines, remoteData.serviceRoutines);
+        mergedInspectionRoutines = mergeArraysSmart(currentInspectionRoutines, remoteData.inspectionRoutines);
+        mergedWorkOrders = mergeArraysSmart(currentWorkOrders, remoteData.workOrders);
+        mergedEmployees = mergeArraysSmart(currentEmployees, remoteData.employees);
+
+        console.log('[Sync] Merged counts - Equipment:', mergedEquipment.length, 'Logs:', mergedLogs.length, 'Consumables:', mergedConsumables.length);
+
+        await Promise.all([
+          saveData(STORAGE_KEYS.EQUIPMENT, mergedEquipment),
+          saveData(STORAGE_KEYS.MAINTENANCE_LOGS, mergedLogs),
+          saveData(STORAGE_KEYS.INTERVALS, mergedIntervals),
+          saveData(STORAGE_KEYS.CONSUMABLES, mergedConsumables),
+          saveData(STORAGE_KEYS.SERVICE_ROUTINES, mergedServiceRoutines),
+          saveData(STORAGE_KEYS.INSPECTION_ROUTINES, mergedInspectionRoutines),
+          saveData(STORAGE_KEYS.WORK_ORDERS, mergedWorkOrders),
+          saveData(STORAGE_KEYS.EMPLOYEES, mergedEmployees),
+        ]);
+      }
 
       const { error } = await supabase
         .from('farm_data')
         .upsert({
           farm_id: farmId,
           data: {
-            equipment,
-            maintenanceLogs,
-            intervals,
-            consumables,
-            serviceRoutines,
-            inspectionRoutines,
-            workOrders,
-            employees,
+            equipment: mergedEquipment,
+            maintenanceLogs: mergedLogs,
+            intervals: mergedIntervals,
+            consumables: mergedConsumables,
+            serviceRoutines: mergedServiceRoutines,
+            inspectionRoutines: mergedInspectionRoutines,
+            workOrders: mergedWorkOrders,
+            employees: mergedEmployees,
           },
           updated_at: new Date().toISOString(),
         });
 
       if (error) throw error;
 
+      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+      queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      queryClient.invalidateQueries({ queryKey: ['intervals'] });
+      queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
+      queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
+      queryClient.invalidateQueries({ queryKey: ['workOrders'] });
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['remoteData'] });
+
       setLastSyncTime(new Date().toISOString());
-      console.log('Data synced to Supabase successfully');
+      console.log('[Sync] Bidirectional sync completed successfully');
     } catch (error) {
-      console.error('Failed to sync data to Supabase:', error);
+      console.error('[Sync] Failed to sync data to Supabase:', error);
       throw error;
     } finally {
       setIsSyncing(false);
     }
-  }, [farmId, equipment, maintenanceLogs, intervals, consumables, serviceRoutines, inspectionRoutines, workOrders, employees]);
+  }, [farmId, mergeArraysSmart, queryClient]);
 
   const addEquipmentMutation = useMutation({
     mutationFn: async (newEquipment: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>) => {
