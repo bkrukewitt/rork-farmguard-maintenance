@@ -41,7 +41,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
-import { useFarmData, DuplicateItem } from '@/contexts/FarmDataContext';
+import { useFarmData, DuplicateItem, FarmMember } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Equipment, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
 
@@ -56,11 +56,15 @@ export default function SettingsScreen() {
     inspectionRoutines, 
     getLowStockConsumables,
     farmId,
+    deviceId,
     setFarmId,
     isSyncing,
     lastSyncTime,
     syncToServer,
     memberCount,
+    isAdmin,
+    farmMembers,
+    removeMember,
     checkForDuplicatesOnJoin,
     applyDuplicateResolutions,
   } = useFarmData();
@@ -343,6 +347,29 @@ export default function SettingsScreen() {
     }
   };
 
+  const handleRemoveMember = (targetDeviceId: string) => {
+    Alert.alert(
+      'Remove Device',
+      'Are you sure you want to remove this device from the farm? They will need to rejoin.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeMember(targetDeviceId);
+              Alert.alert('Success', 'Device has been removed from the farm.');
+            } catch (error) {
+              console.error('Error removing member:', error);
+              Alert.alert('Error', 'Failed to remove device. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleExportLowStockParts = async () => {
     try {
       setIsExporting(true);
@@ -452,6 +479,48 @@ export default function SettingsScreen() {
               <Text style={[styles.memberCountText, { color: colors.primary }]}>
                 {memberCount} {memberCount === 1 ? 'device' : 'devices'} connected
               </Text>
+            </View>
+          )}
+
+          {isAdmin && (
+            <View style={[styles.adminIndicator, { backgroundColor: colors.statusOk + '15' }]}>
+              <Shield color={colors.statusOk} size={14} />
+              <Text style={[styles.adminIndicatorText, { color: colors.statusOk }]}>You are the farm admin</Text>
+            </View>
+          )}
+
+          {farmMembers.length > 0 && (
+            <View style={styles.membersList}>
+              <Text style={[styles.membersListTitle, { color: colors.text }]}>Connected Devices</Text>
+              {farmMembers.map((member: FarmMember) => (
+                <View key={member.device_id} style={[styles.memberRow, { backgroundColor: colors.background }]}>
+                  <View style={styles.memberInfo}>
+                    <Text style={[styles.memberDeviceId, { color: colors.text }]} numberOfLines={1}>
+                      {member.device_id === deviceId ? 'This Device' : `Device ${member.device_id.slice(0, 8)}...`}
+                    </Text>
+                    <View style={styles.memberBadges}>
+                      {member.role === 'admin' && (
+                        <View style={[styles.roleBadge, { backgroundColor: colors.primary + '20' }]}>
+                          <Text style={[styles.roleBadgeText, { color: colors.primary }]}>Admin</Text>
+                        </View>
+                      )}
+                      {member.device_id === deviceId && (
+                        <View style={[styles.roleBadge, { backgroundColor: colors.statusOk + '20' }]}>
+                          <Text style={[styles.roleBadgeText, { color: colors.statusOk }]}>You</Text>
+                        </View>
+                      )}
+                    </View>
+                  </View>
+                  {isAdmin && member.device_id !== deviceId && member.role !== 'admin' && (
+                    <TouchableOpacity
+                      onPress={() => handleRemoveMember(member.device_id)}
+                      style={[styles.removeMemberBtn, { backgroundColor: colors.statusOverdue + '15' }]}
+                    >
+                      <X color={colors.statusOverdue} size={16} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
             </View>
           )}
           
@@ -1205,5 +1274,68 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600' as const,
+  },
+  adminIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginTop: 8,
+    alignSelf: 'flex-start',
+  },
+  adminIndicatorText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+  },
+  membersList: {
+    marginTop: 14,
+    gap: 6,
+  },
+  membersListTitle: {
+    fontSize: 13,
+    fontWeight: '600' as const,
+    marginBottom: 4,
+  },
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  memberInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  memberDeviceId: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+  },
+  memberBadges: {
+    flexDirection: 'row',
+    gap: 4,
+  },
+  roleBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  roleBadgeText: {
+    fontSize: 10,
+    fontWeight: '700' as const,
+    textTransform: 'uppercase',
+  },
+  removeMemberBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 8,
   },
 });

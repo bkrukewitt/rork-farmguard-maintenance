@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useEffect, useState } from 'react';
 import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine, WorkOrder, Employee } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
-import { trpc } from '@/lib/trpc';
+import { supabase } from '@/lib/supabase';
 
 const STORAGE_KEYS = {
   EQUIPMENT: 'farmguard_equipment',
@@ -17,7 +17,28 @@ const STORAGE_KEYS = {
   EMPLOYEES: 'farmguard_employees',
   FARM_ID: 'farmguard_farm_id',
   DEVICE_ID: 'farmguard_device_id',
+  IS_FARM_CREATOR: 'farmguard_is_farm_creator',
 };
+
+export interface FarmMember {
+  id: number;
+  farm_id: string;
+  device_id: string;
+  role: 'admin' | 'member';
+  joined_at: string;
+  last_active_at: string;
+}
+
+interface FarmDataPayload {
+  equipment: Equipment[];
+  maintenanceLogs: MaintenanceLog[];
+  intervals: MaintenanceInterval[];
+  consumables: Consumable[];
+  serviceRoutines: ServiceRoutine[];
+  inspectionRoutines: InspectionRoutine[];
+  workOrders: WorkOrder[];
+  employees: Employee[];
+}
 
 export interface DuplicateItem {
   type: 'equipment' | 'consumable' | 'serviceRoutine' | 'inspectionRoutine';
@@ -31,6 +52,17 @@ export interface DuplicateResolutionResult {
   hasLocalData: boolean;
   hasRemoteData: boolean;
 }
+
+const DEFAULT_PAYLOAD: FarmDataPayload = {
+  equipment: [],
+  maintenanceLogs: [],
+  intervals: [],
+  consumables: [],
+  serviceRoutines: [],
+  inspectionRoutines: [],
+  workOrders: [],
+  employees: [],
+};
 
 async function loadData<T>(key: string): Promise<T[]> {
   try {
@@ -66,6 +98,7 @@ async function getFarmId(): Promise<string> {
     if (!farmId) {
       farmId = generateId();
       await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, farmId);
+      await AsyncStorage.setItem(STORAGE_KEYS.IS_FARM_CREATOR, 'true');
       console.log(`Generated new farm ID: ${farmId}`);
     }
     return farmId;
@@ -90,51 +123,140 @@ async function getDeviceId(): Promise<string> {
   }
 }
 
+async function fetchRemoteData(farmId: string): Promise<FarmDataPayload | null> {
+  try {
+    const { data, error } = await supabase
+      .from('farm_data')
+      .select('data')
+      .eq('farm_id', farmId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching remote farm data:', error);
+      return null;
+    }
+    if (!data?.data) return null;
+
+    const rd = data.data as Record<string, unknown>;
+    return {
+      equipment: (rd.equipment as Equipment[]) || [],
+      maintenanceLogs: (rd.maintenanceLogs as MaintenanceLog[]) || [],
+      intervals: (rd.intervals as MaintenanceInterval[]) || [],
+      consumables: (rd.consumables as Consumable[]) || [],
+      serviceRoutines: (rd.serviceRoutines as ServiceRoutine[]) || [],
+      inspectionRoutines: (rd.inspectionRoutines as InspectionRoutine[]) || [],
+      workOrders: (rd.workOrders as WorkOrder[]) || [],
+      employees: (rd.employees as Employee[]) || [],
+    };
+  } catch (error) {
+    console.error('Error fetching remote farm data:', error);
+    return null;
+  }
+}
+
 export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const queryClient = useQueryClient();
   const [farmId, setFarmId] = useState<string>('');
   const [deviceId, setDeviceId] = useState<string>('');
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
-  
 
   useEffect(() => {
     getFarmId().then(setFarmId);
     getDeviceId().then(setDeviceId);
   }, []);
 
-  const memberCountQuery = trpc.farm.getMemberCount.useQuery(
-    { farmId },
-    {
-      enabled: !!farmId,
-      staleTime: 1000 * 60 * 5,
-    }
-  );
+  const memberRegistrationQuery = useQuery({
+    queryKey: ['memberRegistration', farmId, deviceId],
+    queryFn: async () => {
+      if (!farmId || !deviceId) return null;
+      console.log(`[Supabase] Registering device ${deviceId} for farm ${farmId}`);
 
-  const joinFarmMutation = trpc.farm.joinFarm.useMutation({
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['farm', 'getMemberCount'] });
+      await supabase.from('farms').upsert({ id: farmId });
+
+      const { data: existing } = await supabase
+        .from('farm_members')
+        .select('*')
+        .eq('farm_id', farmId)
+        .eq('device_id', deviceId)
+        .maybeSingle();
+
+      if (existing) {
+        await supabase
+          .from('farm_members')
+          .update({ last_active_at: new Date().toISOString() })
+          .eq('farm_id', farmId)
+          .eq('device_id', deviceId);
+        console.log(`[Supabase] Existing member updated, role: ${existing.role}`);
+        return existing as FarmMember;
+      }
+
+      const isCreatorStr = await AsyncStorage.getItem(STORAGE_KEYS.IS_FARM_CREATOR);
+      const isCreator = isCreatorStr === 'true';
+
+      const { count } = await supabase
+        .from('farm_members')
+        .select('*', { count: 'exact', head: true })
+        .eq('farm_id', farmId);
+
+      const role = (isCreator || count === 0 || count === null) ? 'admin' : 'member';
+
+      const { data: newMember, error } = await supabase
+        .from('farm_members')
+        .insert({
+          farm_id: farmId,
+          device_id: deviceId,
+          role,
+          joined_at: new Date().toISOString(),
+          last_active_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase] Error registering member:', error);
+        throw error;
+      }
+
+      console.log(`[Supabase] New member registered, role: ${role}`);
+      return newMember as FarmMember;
     },
+    enabled: !!farmId && !!deviceId,
+    staleTime: 1000 * 60 * 5,
+    retry: 2,
   });
 
-  const remoteDataQuery = trpc.farm.getData.useQuery(
-    { farmId },
-    {
-      enabled: !!farmId,
-      staleTime: 1000 * 60 * 2,
-      refetchOnMount: true,
-      refetchOnReconnect: true,
-    }
-  );
+  const isAdmin = memberRegistrationQuery.data?.role === 'admin';
 
-  const syncDataMutation = trpc.farm.syncData.useMutation({
-    onSuccess: (result) => {
-      setLastSyncTime(result.timestamp);
-      console.log('Data synced to server successfully');
+  const farmMembersQuery = useQuery({
+    queryKey: ['farmMembers', farmId],
+    queryFn: async () => {
+      if (!farmId) return [];
+      const { data, error } = await supabase
+        .from('farm_members')
+        .select('*')
+        .eq('farm_id', farmId)
+        .order('joined_at', { ascending: true });
+
+      if (error) {
+        console.error('[Supabase] Error fetching farm members:', error);
+        return [];
+      }
+      return (data || []) as FarmMember[];
     },
-    onError: (error) => {
-      console.error('Failed to sync data to server:', error);
-    },
+    enabled: !!farmId,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  const farmMembers = useMemo(() => farmMembersQuery.data ?? [], [farmMembersQuery.data]);
+
+  const remoteDataQuery = useQuery({
+    queryKey: ['remoteData', farmId],
+    queryFn: () => fetchRemoteData(farmId),
+    enabled: !!farmId,
+    staleTime: 1000 * 60 * 2,
+    refetchOnMount: true,
+    refetchOnReconnect: true,
   });
 
   const equipmentQuery = useQuery({
@@ -229,25 +351,23 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   useEffect(() => {
     if (remoteDataQuery.data && farmId) {
       const remote = remoteDataQuery.data;
-      const remoteWorkOrders = (remote as Record<string, unknown[]>).workOrders as WorkOrder[] ?? [];
-      const remoteEmployees = (remote as Record<string, unknown[]>).employees as Employee[] ?? [];
 
-      const hasRemoteData = 
+      const hasRemoteData =
         remote.equipment.length > 0 ||
         remote.maintenanceLogs.length > 0 ||
         remote.consumables.length > 0 ||
         remote.intervals.length > 0 ||
         remote.serviceRoutines.length > 0 ||
         remote.inspectionRoutines.length > 0 ||
-        remoteWorkOrders.length > 0 ||
-        remoteEmployees.length > 0;
+        remote.workOrders.length > 0 ||
+        remote.employees.length > 0;
 
       if (hasRemoteData) {
         console.log('Remote data found, merging with local...');
-        const mergeArrays = <T extends { id: string }>(local: T[], remote: T[]): T[] => {
+        const mergeArrays = <T extends { id: string }>(local: T[], remoteArr: T[]): T[] => {
           const map = new Map<string, T>();
           local.forEach(item => map.set(item.id, item));
-          remote.forEach(item => {
+          remoteArr.forEach(item => {
             if (!map.has(item.id)) {
               map.set(item.id, item);
             }
@@ -261,8 +381,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         const mergedIntervals = mergeArrays(intervals, remote.intervals);
         const mergedServiceRoutines = mergeArrays(serviceRoutines, remote.serviceRoutines);
         const mergedInspectionRoutines = mergeArrays(inspectionRoutines, remote.inspectionRoutines);
-        const mergedWorkOrders = mergeArrays(workOrders, remoteWorkOrders);
-        const mergedEmployees = mergeArrays(employees, remoteEmployees);
+        const mergedWorkOrders = mergeArrays(workOrders, remote.workOrders);
+        const mergedEmployees = mergeArrays(employees, remote.employees);
 
         Promise.all([
           saveData(STORAGE_KEYS.EQUIPMENT, mergedEquipment),
@@ -290,26 +410,39 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const syncToServer = useCallback(async () => {
     if (!farmId) return;
-    
+
     setIsSyncing(true);
     try {
-      await syncDataMutation.mutateAsync({
-        farmId,
-        data: {
-          equipment,
-          maintenanceLogs,
-          intervals,
-          consumables,
-          serviceRoutines,
-          inspectionRoutines,
-          workOrders,
-          employees,
-        },
-      });
+      await supabase.from('farms').upsert({ id: farmId });
+
+      const { error } = await supabase
+        .from('farm_data')
+        .upsert({
+          farm_id: farmId,
+          data: {
+            equipment,
+            maintenanceLogs,
+            intervals,
+            consumables,
+            serviceRoutines,
+            inspectionRoutines,
+            workOrders,
+            employees,
+          },
+          updated_at: new Date().toISOString(),
+        });
+
+      if (error) throw error;
+
+      setLastSyncTime(new Date().toISOString());
+      console.log('Data synced to Supabase successfully');
+    } catch (error) {
+      console.error('Failed to sync data to Supabase:', error);
+      throw error;
     } finally {
       setIsSyncing(false);
     }
-  }, [farmId, equipment, maintenanceLogs, intervals, consumables, serviceRoutines, inspectionRoutines, workOrders, employees, syncDataMutation]);
+  }, [farmId, equipment, maintenanceLogs, intervals, consumables, serviceRoutines, inspectionRoutines, workOrders, employees]);
 
   const addEquipmentMutation = useMutation({
     mutationFn: async (newEquipment: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -810,38 +943,21 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const setFarmIdAndSync = useCallback(async (newFarmId: string) => {
     await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
     setFarmId(newFarmId);
-    queryClient.invalidateQueries({ queryKey: ['farm', 'getData'] });
+    queryClient.invalidateQueries({ queryKey: ['remoteData'] });
+    queryClient.invalidateQueries({ queryKey: ['farmMembers'] });
+    queryClient.invalidateQueries({ queryKey: ['memberRegistration'] });
   }, [queryClient]);
 
   const checkForDuplicatesOnJoin = useCallback(async (newFarmId: string): Promise<DuplicateResolutionResult> => {
-    const hasLocalData = equipment.length > 0 || consumables.length > 0 || 
+    const hasLocalData = equipment.length > 0 || consumables.length > 0 ||
                          serviceRoutines.length > 0 || inspectionRoutines.length > 0;
-    
-    const defaultData = { equipment: [] as Equipment[], maintenanceLogs: [] as MaintenanceLog[], intervals: [] as MaintenanceInterval[], consumables: [] as Consumable[], serviceRoutines: [] as ServiceRoutine[], inspectionRoutines: [] as InspectionRoutine[], workOrders: [] as WorkOrder[], employees: [] as Employee[] };
-    
-    let remoteData = defaultData;
+
+    let remoteData: FarmDataPayload = { ...DEFAULT_PAYLOAD };
+
     try {
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_RORK_API_BASE_URL}/api/trpc/farm.getData?input=${encodeURIComponent(JSON.stringify({ json: { farmId: newFarmId } }))}`
-      );
-      if (!response.ok) {
-        console.error('Failed to fetch remote farm data, status:', response.status);
-        throw new Error(`Server returned ${response.status}`);
-      }
-      const json = await response.json();
-      console.log('Remote farm data response:', JSON.stringify(json).slice(0, 500));
-      const resultData = json?.result?.data?.json || json?.result?.data || null;
-      if (resultData) {
-        remoteData = {
-          equipment: resultData.equipment || [],
-          maintenanceLogs: resultData.maintenanceLogs || [],
-          intervals: resultData.intervals || [],
-          consumables: resultData.consumables || [],
-          serviceRoutines: resultData.serviceRoutines || [],
-          inspectionRoutines: resultData.inspectionRoutines || [],
-          workOrders: resultData.workOrders || [],
-          employees: resultData.employees || [],
-        };
+      const result = await fetchRemoteData(newFarmId);
+      if (result) {
+        remoteData = result;
       }
     } catch (fetchError) {
       console.error('Error fetching remote farm data:', fetchError);
@@ -854,7 +970,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     const duplicates: DuplicateItem[] = [];
 
     equipment.forEach(localItem => {
-      const remoteMatch = remoteData.equipment.find((r: Equipment) => 
+      const remoteMatch = remoteData.equipment.find((r: Equipment) =>
         (r.serialNumber && localItem.serialNumber && r.serialNumber.toLowerCase() === localItem.serialNumber.toLowerCase()) ||
         (r.name.toLowerCase() === localItem.name.toLowerCase() && r.make.toLowerCase() === localItem.make.toLowerCase() && r.model.toLowerCase() === localItem.model.toLowerCase())
       );
@@ -864,7 +980,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     });
 
     consumables.forEach(localItem => {
-      const remoteMatch = remoteData.consumables.find((r: Consumable) => 
+      const remoteMatch = remoteData.consumables.find((r: Consumable) =>
         (r.partNumber && localItem.partNumber && r.partNumber.toLowerCase() === localItem.partNumber.toLowerCase()) ||
         r.name.toLowerCase() === localItem.name.toLowerCase()
       );
@@ -874,7 +990,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     });
 
     serviceRoutines.forEach(localItem => {
-      const remoteMatch = remoteData.serviceRoutines.find((r: ServiceRoutine) => 
+      const remoteMatch = remoteData.serviceRoutines.find((r: ServiceRoutine) =>
         r.name.toLowerCase() === localItem.name.toLowerCase()
       );
       if (remoteMatch) {
@@ -883,7 +999,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     });
 
     inspectionRoutines.forEach(localItem => {
-      const remoteMatch = remoteData.inspectionRoutines.find((r: InspectionRoutine) => 
+      const remoteMatch = remoteData.inspectionRoutines.find((r: InspectionRoutine) =>
         r.name.toLowerCase() === localItem.name.toLowerCase()
       );
       if (remoteMatch) {
@@ -892,37 +1008,21 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     });
 
     return { duplicates, hasLocalData, hasRemoteData };
-  }, [equipment, consumables, serviceRoutines, inspectionRoutines, queryClient]);
+  }, [equipment, consumables, serviceRoutines, inspectionRoutines]);
 
   const applyDuplicateResolutions = useCallback(async (
     newFarmId: string,
     resolutions: DuplicateItem[]
   ) => {
-    let applyRemoteData = { equipment: [] as Equipment[], maintenanceLogs: [] as MaintenanceLog[], intervals: [] as MaintenanceInterval[], consumables: [] as Consumable[], serviceRoutines: [] as ServiceRoutine[], inspectionRoutines: [] as InspectionRoutine[], workOrders: [] as WorkOrder[], employees: [] as Employee[] };
+    let remoteData: FarmDataPayload = { ...DEFAULT_PAYLOAD };
     try {
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_RORK_API_BASE_URL}/api/trpc/farm.getData?input=${encodeURIComponent(JSON.stringify({ json: { farmId: newFarmId } }))}`
-      );
-      if (response.ok) {
-        const json = await response.json();
-        const resultData = json?.result?.data?.json || json?.result?.data || null;
-        if (resultData) {
-          applyRemoteData = {
-            equipment: resultData.equipment || [],
-            maintenanceLogs: resultData.maintenanceLogs || [],
-            intervals: resultData.intervals || [],
-            consumables: resultData.consumables || [],
-            serviceRoutines: resultData.serviceRoutines || [],
-            inspectionRoutines: resultData.inspectionRoutines || [],
-            workOrders: resultData.workOrders || [],
-            employees: resultData.employees || [],
-          };
-        }
+      const result = await fetchRemoteData(newFarmId);
+      if (result) {
+        remoteData = result;
       }
     } catch (fetchError) {
       console.error('Error fetching remote farm data for apply:', fetchError);
     }
-    const remoteData = applyRemoteData;
 
     let mergedEquipment = [...equipment];
     let mergedConsumables = [...consumables];
@@ -1014,15 +1114,13 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       }
     });
 
-    const remoteWO = (remoteData as Record<string, unknown[]>).workOrders as WorkOrder[] ?? [];
-    remoteWO.forEach((remoteItem: WorkOrder) => {
+    remoteData.workOrders.forEach((remoteItem: WorkOrder) => {
       if (!mergedWorkOrders.find(w => w.id === remoteItem.id)) {
         mergedWorkOrders.push(remoteItem);
       }
     });
 
-    const remoteEmp = (remoteData as Record<string, unknown[]>).employees as Employee[] ?? [];
-    remoteEmp.forEach((remoteItem: Employee) => {
+    remoteData.employees.forEach((remoteItem: Employee) => {
       if (!mergedEmployees.find(e => e.id === remoteItem.id)) {
         mergedEmployees.push(remoteItem);
       }
@@ -1040,11 +1138,20 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     ]);
 
     await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
+    await AsyncStorage.setItem(STORAGE_KEYS.IS_FARM_CREATOR, 'false');
     setFarmId(newFarmId);
 
-    if (deviceId) {
-      await joinFarmMutation.mutateAsync({ farmId: newFarmId, deviceId });
-    }
+    await supabase.from('farms').upsert({ id: newFarmId });
+    await supabase.from('farm_members').upsert(
+      {
+        farm_id: newFarmId,
+        device_id: deviceId,
+        role: 'member' as const,
+        joined_at: new Date().toISOString(),
+        last_active_at: new Date().toISOString(),
+      },
+      { onConflict: 'farm_id,device_id' }
+    );
 
     queryClient.invalidateQueries({ queryKey: ['equipment'] });
     queryClient.invalidateQueries({ queryKey: ['consumables'] });
@@ -1054,11 +1161,28 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     queryClient.invalidateQueries({ queryKey: ['intervals'] });
     queryClient.invalidateQueries({ queryKey: ['workOrders'] });
     queryClient.invalidateQueries({ queryKey: ['employees'] });
-    queryClient.invalidateQueries({ queryKey: ['farm', 'getData'] });
-    queryClient.invalidateQueries({ queryKey: ['farm', 'getMemberCount'] });
+    queryClient.invalidateQueries({ queryKey: ['remoteData'] });
+    queryClient.invalidateQueries({ queryKey: ['farmMembers'] });
+    queryClient.invalidateQueries({ queryKey: ['memberRegistration'] });
 
     console.log('Data merged and saved after duplicate resolution');
-  }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, workOrders, employees, deviceId, queryClient, joinFarmMutation]);
+  }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, workOrders, employees, deviceId, queryClient]);
+
+  const removeMemberMutation = useMutation({
+    mutationFn: async (targetDeviceId: string) => {
+      const { error } = await supabase
+        .from('farm_members')
+        .delete()
+        .eq('farm_id', farmId)
+        .eq('device_id', targetDeviceId);
+
+      if (error) throw error;
+      console.log(`[Supabase] Removed member ${targetDeviceId} from farm ${farmId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['farmMembers', farmId] });
+    },
+  });
 
   const isLoading =
     equipmentQuery.isLoading ||
@@ -1078,11 +1202,15 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   return {
     farmId,
+    deviceId,
     setFarmId: setFarmIdAndSync,
     isSyncing,
     lastSyncTime,
     syncToServer,
-    memberCount: memberCountQuery.data?.count ?? 0,
+    memberCount: farmMembers.length,
+    isAdmin,
+    farmMembers,
+    removeMember: removeMemberMutation.mutateAsync,
     checkForDuplicatesOnJoin,
     applyDuplicateResolutions,
     equipment,
