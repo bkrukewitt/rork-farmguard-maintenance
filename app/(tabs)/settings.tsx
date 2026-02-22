@@ -34,6 +34,7 @@ import {
   RefreshCw,
   Users,
   Copy,
+  Pencil,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -44,6 +45,7 @@ import * as XLSX from 'xlsx';
 import { useFarmData, DuplicateItem, FarmMember } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Equipment, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
+import { User } from 'lucide-react-native';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -65,6 +67,11 @@ export default function SettingsScreen() {
     isAdmin,
     farmMembers,
     removeMember,
+    updateFarmId,
+    isUpdatingFarmId,
+    displayName,
+    updateDisplayName,
+    isUpdatingDisplayName,
     checkForDuplicatesOnJoin,
     applyDuplicateResolutions,
   } = useFarmData();
@@ -81,6 +88,11 @@ export default function SettingsScreen() {
   const [duplicates, setDuplicates] = useState<DuplicateItem[]>([]);
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
   const [pendingJoinFarmId, setPendingJoinFarmId] = useState('');
+  const [showEditFarmIdModal, setShowEditFarmIdModal] = useState(false);
+  const [newFarmId, setNewFarmId] = useState('');
+  const [farmIdError, setFarmIdError] = useState('');
+  const [showDisplayNameModal, setShowDisplayNameModal] = useState(false);
+  const [editDisplayName, setEditDisplayName] = useState('');
 
   const handleClearData = () => {
     Alert.alert(
@@ -241,6 +253,60 @@ export default function SettingsScreen() {
     );
   };
 
+  const validateFarmId = (value: string): string => {
+    if (!value.trim()) return 'Farm ID cannot be empty.';
+    if (/\s/.test(value)) return 'Farm ID cannot contain spaces.';
+    if (value.trim() === farmId) return 'This is already your current Farm ID.';
+    return '';
+  };
+
+  const handleEditFarmId = () => {
+    setNewFarmId(farmId);
+    setFarmIdError('');
+    setShowEditFarmIdModal(true);
+  };
+
+  const handleNewFarmIdChange = (text: string) => {
+    const noSpaces = text.replace(/\s/g, '');
+    setNewFarmId(noSpaces);
+    if (/\s/.test(text)) {
+      setFarmIdError('Spaces are not allowed in Farm IDs.');
+    } else {
+      setFarmIdError('');
+    }
+  };
+
+  const handleSaveFarmId = async () => {
+    const error = validateFarmId(newFarmId);
+    if (error) {
+      setFarmIdError(error);
+      return;
+    }
+
+    Alert.alert(
+      'Change Farm ID',
+      `Are you sure you want to change the Farm ID to "${newFarmId.trim()}"? All connected devices will need to use the new ID.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Change',
+          onPress: async () => {
+            try {
+              await updateFarmId(newFarmId.trim());
+              setShowEditFarmIdModal(false);
+              setNewFarmId('');
+              setFarmIdError('');
+              Alert.alert('Success', 'Farm ID has been updated. Share the new ID with your team members.');
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : 'Failed to update Farm ID. Please try again.';
+              setFarmIdError(message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleCopyFarmId = async () => {
     if (farmId) {
       await Clipboard.setStringAsync(farmId);
@@ -344,6 +410,22 @@ export default function SettingsScreen() {
     } catch (error) {
       console.error('Sync error:', error);
       Alert.alert('Error', 'Failed to sync data. Please try again.');
+    }
+  };
+
+  const handleSaveDisplayName = async () => {
+    const trimmed = editDisplayName.trim();
+    if (!trimmed) {
+      Alert.alert('Error', 'Please enter a name.');
+      return;
+    }
+    try {
+      await updateDisplayName(trimmed);
+      setShowDisplayNameModal(false);
+      Alert.alert('Success', 'Your display name has been updated.');
+    } catch (error) {
+      console.error('Error updating display name:', error);
+      Alert.alert('Error', 'Failed to update display name. Please try again.');
     }
   };
 
@@ -465,12 +547,22 @@ export default function SettingsScreen() {
                 {farmId || 'Loading...'}
               </Text>
             </View>
-            <TouchableOpacity 
-              style={[styles.copyButton, { backgroundColor: colors.primary + '15' }]}
-              onPress={handleCopyFarmId}
-            >
-              <Copy color={colors.primary} size={18} />
-            </TouchableOpacity>
+            <View style={styles.farmIdActions}>
+              {isAdmin && (
+                <TouchableOpacity 
+                  style={[styles.copyButton, { backgroundColor: colors.accent + '15' }]}
+                  onPress={handleEditFarmId}
+                >
+                  <Pencil color={colors.accent} size={18} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity 
+                style={[styles.copyButton, { backgroundColor: colors.primary + '15' }]}
+                onPress={handleCopyFarmId}
+              >
+                <Copy color={colors.primary} size={18} />
+              </TouchableOpacity>
+            </View>
           </View>
           
           {memberCount > 0 && (
@@ -489,26 +581,55 @@ export default function SettingsScreen() {
             </View>
           )}
 
+          <TouchableOpacity
+            style={[styles.displayNameRow, { backgroundColor: colors.background }]}
+            onPress={() => {
+              setEditDisplayName(displayName || '');
+              setShowDisplayNameModal(true);
+            }}
+          >
+            <View style={[styles.displayNameIcon, { backgroundColor: colors.secondary + '15' }]}>
+              <User color={colors.secondary} size={18} />
+            </View>
+            <View style={styles.displayNameInfo}>
+              <Text style={[styles.displayNameLabel, { color: colors.textSecondary }]}>Your Name</Text>
+              <Text style={[styles.displayNameValue, { color: displayName ? colors.text : colors.textSecondary }]}>
+                {displayName || 'Tap to set your name'}
+              </Text>
+            </View>
+            <Pencil color={colors.textSecondary} size={16} />
+          </TouchableOpacity>
+
           {farmMembers.length > 0 && (
             <View style={styles.membersList}>
-              <Text style={[styles.membersListTitle, { color: colors.text }]}>Connected Devices</Text>
+              <Text style={[styles.membersListTitle, { color: colors.text }]}>Farm Members</Text>
               {farmMembers.map((member: FarmMember) => (
                 <View key={member.device_id} style={[styles.memberRow, { backgroundColor: colors.background }]}>
                   <View style={styles.memberInfo}>
-                    <Text style={[styles.memberDeviceId, { color: colors.text }]} numberOfLines={1}>
-                      {member.device_id === deviceId ? 'This Device' : `Device ${member.device_id.slice(0, 8)}...`}
-                    </Text>
-                    <View style={styles.memberBadges}>
-                      {member.role === 'admin' && (
-                        <View style={[styles.roleBadge, { backgroundColor: colors.primary + '20' }]}>
-                          <Text style={[styles.roleBadgeText, { color: colors.primary }]}>Admin</Text>
-                        </View>
-                      )}
-                      {member.device_id === deviceId && (
-                        <View style={[styles.roleBadge, { backgroundColor: colors.statusOk + '20' }]}>
-                          <Text style={[styles.roleBadgeText, { color: colors.statusOk }]}>You</Text>
-                        </View>
-                      )}
+                    <View style={[styles.memberAvatar, { backgroundColor: member.device_id === deviceId ? colors.primary + '20' : colors.secondary + '20' }]}>
+                      <Text style={[styles.memberAvatarText, { color: member.device_id === deviceId ? colors.primary : colors.secondary }]}>
+                        {(member.display_name || '?').charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View style={styles.memberDetails}>
+                      <Text style={[styles.memberDeviceId, { color: colors.text }]} numberOfLines={1}>
+                        {member.display_name || (member.device_id === deviceId ? 'You (no name set)' : `Device ${member.device_id.slice(0, 8)}`)}
+                      </Text>
+                      <View style={styles.memberBadges}>
+                        {member.role === 'admin' && (
+                          <View style={[styles.roleBadge, { backgroundColor: colors.primary + '20' }]}>
+                            <Text style={[styles.roleBadgeText, { color: colors.primary }]}>Admin</Text>
+                          </View>
+                        )}
+                        {member.device_id === deviceId && (
+                          <View style={[styles.roleBadge, { backgroundColor: colors.statusOk + '20' }]}>
+                            <Text style={[styles.roleBadgeText, { color: colors.statusOk }]}>You</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[styles.memberJoinDate, { color: colors.textSecondary }]}>
+                        Joined {new Date(member.joined_at).toLocaleDateString()}
+                      </Text>
                     </View>
                   </View>
                   {isAdmin && member.device_id !== deviceId && member.role !== 'admin' && (
@@ -864,6 +985,114 @@ export default function SettingsScreen() {
       </Modal>
 
       <Modal
+        visible={showEditFarmIdModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowEditFarmIdModal(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Farm ID</Text>
+              <TouchableOpacity onPress={() => setShowEditFarmIdModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              Choose a new Farm ID for your team. Spaces are not allowed. All connected devices will need the new ID to stay synced.
+            </Text>
+            
+            <View style={[
+              styles.joinInput, 
+              { backgroundColor: colors.background, borderColor: farmIdError ? colors.statusOverdue : colors.border }
+            ]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Enter new Farm ID"
+                placeholderTextColor={colors.textSecondary}
+                value={newFarmId}
+                onChangeText={handleNewFarmIdChange}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            {farmIdError ? (
+              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>
+                {farmIdError}
+              </Text>
+            ) : null}
+            
+            <TouchableOpacity 
+              style={[styles.joinButton, { backgroundColor: colors.primary, opacity: isUpdatingFarmId ? 0.7 : 1 }]}
+              onPress={handleSaveFarmId}
+              disabled={isUpdatingFarmId}
+            >
+              {isUpdatingFarmId ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.joinButtonText}>Save Farm ID</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showDisplayNameModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowDisplayNameModal(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Set Your Name</Text>
+              <TouchableOpacity onPress={() => setShowDisplayNameModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              This name will be visible to other members of your farm so they can identify you.
+            </Text>
+            
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Enter your name"
+                placeholderTextColor={colors.textSecondary}
+                value={editDisplayName}
+                onChangeText={setEditDisplayName}
+                autoCapitalize="words"
+                autoCorrect={false}
+                maxLength={50}
+              />
+            </View>
+            
+            <TouchableOpacity 
+              style={[styles.joinButton, { backgroundColor: colors.primary, opacity: isUpdatingDisplayName ? 0.7 : 1 }]}
+              onPress={handleSaveDisplayName}
+              disabled={isUpdatingDisplayName}
+            >
+              {isUpdatingDisplayName ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.joinButtonText}>Save Name</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
         visible={showDuplicateModal}
         animationType="slide"
         transparent={true}
@@ -1140,6 +1369,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
+  farmIdActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  farmIdErrorText: {
+    fontSize: 13,
+    marginTop: -8,
+    marginBottom: 12,
+  },
   copyButton: {
     width: 36,
     height: 36,
@@ -1289,6 +1527,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600' as const,
   },
+  displayNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 12,
+  },
+  displayNameIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  displayNameInfo: {
+    flex: 1,
+  },
+  displayNameLabel: {
+    fontSize: 11,
+    fontWeight: '500' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.3,
+  },
+  displayNameValue: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    marginTop: 2,
+  },
   membersList: {
     marginTop: 14,
     gap: 6,
@@ -1310,11 +1578,29 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+  },
+  memberAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  memberAvatarText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  memberDetails: {
+    flex: 1,
   },
   memberDeviceId: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '500' as const,
+  },
+  memberJoinDate: {
+    fontSize: 11,
+    marginTop: 2,
   },
   memberBadges: {
     flexDirection: 'row',

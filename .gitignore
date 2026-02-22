@@ -44,3 +44,5 @@ core
 
 .env
 rork-eslint.config.js
+node_modules
+.expo
