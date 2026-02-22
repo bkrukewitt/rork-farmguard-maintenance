@@ -21,8 +21,7 @@
         "NSPhotoLibraryAddUsageDescription": "Allows FarmGuard Maintenance to save maintenance photos to your photo library, such as saving a photo of equipment or a completed repair for your personal records.",
         "NSCameraUsageDescription": "FarmGuard Maintenance uses the camera to take photos of equipment and maintenance work, which are attached to maintenance records (for example, photographing a tractor, combine, damaged part, or completed repair while servicing equipment)."
       },
-      "usesIcloudStorage": true,
-      "buildNumber": "1"
+      "usesIcloudStorage": true
     },
     "android": {
       "adaptiveIcon": {
@@ -34,9 +33,15 @@
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.INTERNET"
+        "android.permission.INTERNET",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.RECORD_AUDIO"
       ],
-      "versionCode": 11
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -75,3 +80,4 @@
     }
   }
 }
+
