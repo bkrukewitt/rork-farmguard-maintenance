@@ -633,6 +633,7 @@ export default function AddMaintenanceScreen() {
             const hasCompatible = compatibleParts.length > 0;
             const hasOther = otherParts.length > 0;
             const hasSearchResults = partsToFilter.length > 0;
+            const isEquipmentSelected = !!selectedEquipmentId;
 
             const renderConsumableItem = (item: Consumable) => {
               const selected = selectedConsumables.find(c => c.consumableId === item.id);
@@ -717,42 +718,48 @@ export default function AddMaintenanceScreen() {
                   <Text style={styles.noEquipmentText}>
                     No parts found matching "{consumableSearch}"
                   </Text>
-                ) : (
+                ) : isEquipmentSelected ? (
                   <>
-                    {hasCompatible && (
-                      <>
-                        <View style={styles.consumablesSectionHeader}>
-                          <Text style={styles.consumablesSectionLabel}>
-                            Compatible with {selectedEquipment?.name}
-                          </Text>
-                        </View>
-                        {compatibleParts.map(renderConsumableItem)}
-                      </>
+                    <View style={styles.consumablesSectionHeader}>
+                      <Text style={styles.consumablesSectionLabel}>
+                        Parts for {selectedEquipment?.name ?? 'Selected Equipment'}
+                      </Text>
+                    </View>
+                    {hasCompatible ? (
+                      compatibleParts.map(renderConsumableItem)
+                    ) : (
+                      <View style={styles.noCompatiblePartsContainer}>
+                        <Text style={styles.noCompatiblePartsText}>
+                          No parts linked to this equipment yet
+                        </Text>
+                      </View>
                     )}
 
-                    {hasCompatible && hasOther && (
+                    {hasOther && (
                       <TouchableOpacity
                         style={styles.showAllPartsButton}
                         onPress={() => setShowAllConsumables(!showAllConsumables)}
                       >
                         <Text style={styles.showAllPartsText}>
                           {showAllConsumables
-                            ? 'Hide Other Parts'
-                            : `Show All Parts (+${otherParts.length})`}
+                            ? 'Hide All Parts'
+                            : `Show All Parts (${otherParts.length})`}
                         </Text>
                       </TouchableOpacity>
                     )}
 
-                    {(!hasCompatible || showAllConsumables) && hasOther && (
+                    {showAllConsumables && hasOther && (
                       <>
-                        {hasCompatible && showAllConsumables && (
-                          <View style={styles.consumablesSectionHeader}>
-                            <Text style={styles.consumablesSectionLabel}>All Other Parts</Text>
-                          </View>
-                        )}
+                        <View style={styles.consumablesSectionHeader}>
+                          <Text style={styles.consumablesSectionLabel}>All Other Parts</Text>
+                        </View>
                         {otherParts.map(renderConsumableItem)}
                       </>
                     )}
+                  </>
+                ) : (
+                  <>
+                    {partsToFilter.map(renderConsumableItem)}
                   </>
                 )}
               </View>
@@ -1564,5 +1571,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.textOnPrimary,
+  },
+  noCompatiblePartsContainer: {
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+  },
+  noCompatiblePartsText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });
