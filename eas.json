@@ -21,8 +21,10 @@
         "disabled": false
       },
       "env": {
-        "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
-      }
+        "NPM_CONFIG_LEGACY_PEER_DEPS": "true",
+        "npm_config_package_manager": "npm"
+      },
+      "packageManager": "npm"
     }
   },
   "submit": {
@@ -33,3 +35,4 @@
     }
   }
 }
+
