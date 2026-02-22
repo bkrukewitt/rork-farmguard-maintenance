@@ -333,7 +333,7 @@ export default function InventoryScreen() {
         onPress={() => setShowAddMenu(true)}
         activeOpacity={0.8}
       >
-        <Plus color={colors.textOnPrimary} size={28} />
+        <Plus color={colors.textOnAccent} size={28} />
       </TouchableOpacity>
 
       <Modal

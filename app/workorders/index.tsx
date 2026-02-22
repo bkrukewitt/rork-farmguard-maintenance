@@ -18,8 +18,8 @@ import {
   Filter,
   ChevronRight,
 } from 'lucide-react-native';
-import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { WorkOrder, WORK_ORDER_PRIORITIES, WORK_ORDER_STATUSES } from '@/types/equipment';
 import { formatDate } from '@/utils/helpers';
 
@@ -28,6 +28,7 @@ type FilterStatus = 'all' | 'pending' | 'in_progress' | 'completed';
 export default function WorkOrdersScreen() {
   const router = useRouter();
   const { workOrders, equipment, employees, isLoading } = useFarmData();
+  const { colors } = useTheme();
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
 
   const sortedWorkOrders = useMemo(() => {
@@ -84,7 +85,7 @@ export default function WorkOrdersScreen() {
 
     return (
       <TouchableOpacity
-        style={styles.workOrderCard}
+        style={[styles.workOrderCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
         onPress={() => router.push(`/workorders/${item.id}` as any)}
         activeOpacity={0.7}
       >
@@ -92,7 +93,7 @@ export default function WorkOrdersScreen() {
         
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
-            <Text style={styles.workOrderTitle} numberOfLines={1}>{item.title}</Text>
+            <Text style={[styles.workOrderTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
             <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
               <StatusIcon color={statusColor} size={12} />
               <Text style={[styles.statusText, { color: statusColor }]}>
@@ -102,50 +103,50 @@ export default function WorkOrdersScreen() {
           </View>
           
           {item.description && (
-            <Text style={styles.description} numberOfLines={2}>{item.description}</Text>
+            <Text style={[styles.description, { color: colors.textSecondary }]} numberOfLines={2}>{item.description}</Text>
           )}
           
           <View style={styles.cardMeta}>
             {eq && (
               <View style={styles.metaItem}>
-                <Text style={styles.metaLabel}>Equipment:</Text>
-                <Text style={styles.metaValue}>{eq.name}</Text>
+                <Text style={[styles.metaLabel, { color: colors.textSecondary }]}>Equipment:</Text>
+                <Text style={[styles.metaValue, { color: colors.text }]}>{eq.name}</Text>
               </View>
             )}
             
             {item.dueDate && (
               <View style={styles.metaItem}>
-                <Calendar color={Colors.textSecondary} size={12} />
-                <Text style={styles.metaValue}>{formatDate(item.dueDate)}</Text>
+                <Calendar color={colors.textSecondary} size={12} />
+                <Text style={[styles.metaValue, { color: colors.text }]}>{formatDate(item.dueDate)}</Text>
               </View>
             )}
           </View>
           
           {assignedEmployees && assignedEmployees.length > 0 && (
-            <View style={styles.assignedRow}>
-              <Text style={styles.assignedLabel}>Assigned:</Text>
-              <Text style={styles.assignedNames} numberOfLines={1}>
+            <View style={[styles.assignedRow, { borderTopColor: colors.borderLight }]}>
+              <Text style={[styles.assignedLabel, { color: colors.textSecondary }]}>Assigned:</Text>
+              <Text style={[styles.assignedNames, { color: colors.primary }]} numberOfLines={1}>
                 {assignedEmployees.join(', ')}
               </Text>
             </View>
           )}
         </View>
         
-        <ChevronRight color={Colors.textSecondary} size={20} />
+        <ChevronRight color={colors.textSecondary} size={20} />
       </TouchableOpacity>
     );
   };
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={Colors.primary} />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ title: 'Work Orders' }} />
       
       <View style={styles.statsRow}>
@@ -173,31 +174,31 @@ export default function WorkOrdersScreen() {
         )}
       </View>
 
-      <View style={styles.filterContainer}>
-        <Filter color={Colors.textSecondary} size={18} />
+      <View style={[styles.filterContainer, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
+        <Filter color={colors.textSecondary} size={18} />
         <TouchableOpacity
-          style={[styles.filterButton, filterStatus === 'all' && styles.filterButtonActive]}
+          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterStatus === 'all' && { backgroundColor: colors.primary }]}
           onPress={() => setFilterStatus('all')}
         >
-          <Text style={[styles.filterText, filterStatus === 'all' && styles.filterTextActive]}>All</Text>
+          <Text style={[styles.filterText, { color: colors.textSecondary }, filterStatus === 'all' && { color: colors.textOnPrimary }]}>All</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, filterStatus === 'pending' && styles.filterButtonActive]}
+          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterStatus === 'pending' && { backgroundColor: colors.primary }]}
           onPress={() => setFilterStatus('pending')}
         >
-          <Text style={[styles.filterText, filterStatus === 'pending' && styles.filterTextActive]}>Pending</Text>
+          <Text style={[styles.filterText, { color: colors.textSecondary }, filterStatus === 'pending' && { color: colors.textOnPrimary }]}>Pending</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, filterStatus === 'in_progress' && styles.filterButtonActive]}
+          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterStatus === 'in_progress' && { backgroundColor: colors.primary }]}
           onPress={() => setFilterStatus('in_progress')}
         >
-          <Text style={[styles.filterText, filterStatus === 'in_progress' && styles.filterTextActive]}>Active</Text>
+          <Text style={[styles.filterText, { color: colors.textSecondary }, filterStatus === 'in_progress' && { color: colors.textOnPrimary }]}>Active</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, filterStatus === 'completed' && styles.filterButtonActive]}
+          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterStatus === 'completed' && { backgroundColor: colors.primary }]}
           onPress={() => setFilterStatus('completed')}
         >
-          <Text style={[styles.filterText, filterStatus === 'completed' && styles.filterTextActive]}>Done</Text>
+          <Text style={[styles.filterText, { color: colors.textSecondary }, filterStatus === 'completed' && { color: colors.textOnPrimary }]}>Done</Text>
         </TouchableOpacity>
       </View>
 
@@ -209,9 +210,9 @@ export default function WorkOrdersScreen() {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <ClipboardList color={Colors.textSecondary} size={64} />
-            <Text style={styles.emptyTitle}>No Work Orders</Text>
-            <Text style={styles.emptySubtitle}>
+            <ClipboardList color={colors.textSecondary} size={64} />
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Work Orders</Text>
+            <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
               Create work orders to plan and track future repairs and maintenance tasks
             </Text>
           </View>
@@ -219,11 +220,11 @@ export default function WorkOrdersScreen() {
       />
 
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { backgroundColor: colors.accent, shadowColor: colors.accent }]}
         onPress={() => router.push('/workorders/add' as any)}
         activeOpacity={0.8}
       >
-        <Plus color={Colors.textOnPrimary} size={28} />
+        <Plus color={colors.textOnAccent} size={28} />
       </TouchableOpacity>
     </View>
   );
@@ -232,13 +233,11 @@ export default function WorkOrdersScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.background,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.background,
   },
   statsRow: {
     flexDirection: 'row',
@@ -259,7 +258,7 @@ const styles = StyleSheet.create({
   },
   statLabel: {
     fontSize: 10,
-    color: Colors.textSecondary,
+    color: '#7F8C8D',
     fontWeight: '500' as const,
   },
   filterContainer: {
@@ -268,26 +267,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 8,
-    backgroundColor: Colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderLight,
   },
   filterButton: {
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 20,
-    backgroundColor: Colors.surfaceAlt,
-  },
-  filterButtonActive: {
-    backgroundColor: Colors.primary,
   },
   filterText: {
     fontSize: 13,
     fontWeight: '500' as const,
-    color: Colors.textSecondary,
-  },
-  filterTextActive: {
-    color: Colors.textOnPrimary,
   },
   listContent: {
     paddingHorizontal: 16,
@@ -297,11 +286,9 @@ const styles = StyleSheet.create({
   workOrderCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
     borderRadius: 14,
     marginBottom: 10,
     overflow: 'hidden',
-    shadowColor: Colors.cardShadow,
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 1,
     shadowRadius: 6,
@@ -324,7 +311,6 @@ const styles = StyleSheet.create({
   workOrderTitle: {
     fontSize: 15,
     fontWeight: '600' as const,
-    color: Colors.text,
     flex: 1,
     marginRight: 8,
   },
@@ -342,7 +328,6 @@ const styles = StyleSheet.create({
   },
   description: {
     fontSize: 13,
-    color: Colors.textSecondary,
     marginBottom: 8,
     lineHeight: 18,
   },
@@ -358,11 +343,9 @@ const styles = StyleSheet.create({
   },
   metaLabel: {
     fontSize: 12,
-    color: Colors.textSecondary,
   },
   metaValue: {
     fontSize: 12,
-    color: Colors.text,
     fontWeight: '500' as const,
   },
   assignedRow: {
@@ -371,16 +354,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
     paddingTop: 8,
     borderTopWidth: 1,
-    borderTopColor: Colors.borderLight,
   },
   assignedLabel: {
     fontSize: 12,
-    color: Colors.textSecondary,
     marginRight: 4,
   },
   assignedNames: {
     fontSize: 12,
-    color: Colors.primary,
     fontWeight: '500' as const,
     flex: 1,
   },
@@ -392,12 +372,10 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 20,
     fontWeight: '600' as const,
-    color: Colors.text,
     marginTop: 20,
   },
   emptySubtitle: {
     fontSize: 14,
-    color: Colors.textSecondary,
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,
@@ -409,10 +387,8 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: Colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: Colors.accent,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,

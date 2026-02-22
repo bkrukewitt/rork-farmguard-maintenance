@@ -817,14 +817,36 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     const hasLocalData = equipment.length > 0 || consumables.length > 0 || 
                          serviceRoutines.length > 0 || inspectionRoutines.length > 0;
     
-    const remoteData = await queryClient.fetchQuery({
-      queryKey: ['farm', 'getData', { farmId: newFarmId }],
-      queryFn: async () => {
-        const response = await fetch(`${process.env.EXPO_PUBLIC_RORK_API_BASE_URL}/trpc/farm.getData?input=${encodeURIComponent(JSON.stringify({ farmId: newFarmId }))}`);
-        const json = await response.json();
-        return json.result?.data || { equipment: [], maintenanceLogs: [], intervals: [], consumables: [], serviceRoutines: [], inspectionRoutines: [], workOrders: [], employees: [] };
-      },
-    });
+    const defaultData = { equipment: [] as Equipment[], maintenanceLogs: [] as MaintenanceLog[], intervals: [] as MaintenanceInterval[], consumables: [] as Consumable[], serviceRoutines: [] as ServiceRoutine[], inspectionRoutines: [] as InspectionRoutine[], workOrders: [] as WorkOrder[], employees: [] as Employee[] };
+    
+    let remoteData = defaultData;
+    try {
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_RORK_API_BASE_URL}/api/trpc/farm.getData?input=${encodeURIComponent(JSON.stringify({ json: { farmId: newFarmId } }))}`
+      );
+      if (!response.ok) {
+        console.error('Failed to fetch remote farm data, status:', response.status);
+        throw new Error(`Server returned ${response.status}`);
+      }
+      const json = await response.json();
+      console.log('Remote farm data response:', JSON.stringify(json).slice(0, 500));
+      const resultData = json?.result?.data?.json || json?.result?.data || null;
+      if (resultData) {
+        remoteData = {
+          equipment: resultData.equipment || [],
+          maintenanceLogs: resultData.maintenanceLogs || [],
+          intervals: resultData.intervals || [],
+          consumables: resultData.consumables || [],
+          serviceRoutines: resultData.serviceRoutines || [],
+          inspectionRoutines: resultData.inspectionRoutines || [],
+          workOrders: resultData.workOrders || [],
+          employees: resultData.employees || [],
+        };
+      }
+    } catch (fetchError) {
+      console.error('Error fetching remote farm data:', fetchError);
+      throw fetchError;
+    }
 
     const hasRemoteData = remoteData.equipment.length > 0 || remoteData.consumables.length > 0 ||
                           remoteData.serviceRoutines.length > 0 || remoteData.inspectionRoutines.length > 0;
@@ -876,14 +898,31 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     newFarmId: string,
     resolutions: DuplicateItem[]
   ) => {
-    const remoteData = await queryClient.fetchQuery({
-      queryKey: ['farm', 'getData', { farmId: newFarmId }],
-      queryFn: async () => {
-        const response = await fetch(`${process.env.EXPO_PUBLIC_RORK_API_BASE_URL}/trpc/farm.getData?input=${encodeURIComponent(JSON.stringify({ farmId: newFarmId }))}`);
+    let applyRemoteData = { equipment: [] as Equipment[], maintenanceLogs: [] as MaintenanceLog[], intervals: [] as MaintenanceInterval[], consumables: [] as Consumable[], serviceRoutines: [] as ServiceRoutine[], inspectionRoutines: [] as InspectionRoutine[], workOrders: [] as WorkOrder[], employees: [] as Employee[] };
+    try {
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_RORK_API_BASE_URL}/api/trpc/farm.getData?input=${encodeURIComponent(JSON.stringify({ json: { farmId: newFarmId } }))}`
+      );
+      if (response.ok) {
         const json = await response.json();
-        return json.result?.data || { equipment: [], maintenanceLogs: [], intervals: [], consumables: [], serviceRoutines: [], inspectionRoutines: [], workOrders: [], employees: [] };
-      },
-    });
+        const resultData = json?.result?.data?.json || json?.result?.data || null;
+        if (resultData) {
+          applyRemoteData = {
+            equipment: resultData.equipment || [],
+            maintenanceLogs: resultData.maintenanceLogs || [],
+            intervals: resultData.intervals || [],
+            consumables: resultData.consumables || [],
+            serviceRoutines: resultData.serviceRoutines || [],
+            inspectionRoutines: resultData.inspectionRoutines || [],
+            workOrders: resultData.workOrders || [],
+            employees: resultData.employees || [],
+          };
+        }
+      }
+    } catch (fetchError) {
+      console.error('Error fetching remote farm data for apply:', fetchError);
+    }
+    const remoteData = applyRemoteData;
 
     let mergedEquipment = [...equipment];
     let mergedConsumables = [...consumables];

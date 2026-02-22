@@ -3,6 +3,14 @@ import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useCallback } from 'react';
 
+function getContrastColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? '#1A1A1A' : '#FFFFFF';
+}
+
 const STORAGE_KEY = 'farmguard_theme';
 
 export type ColorScheme = {
@@ -199,7 +207,8 @@ export const [ThemeProvider, useTheme] = createContextHook(() => {
     text: '#2C3E50',
     textSecondary: '#7F8C8D',
     textLight: '#BDC3C7',
-    textOnPrimary: '#FFFFFF',
+    textOnPrimary: getContrastColor(currentScheme.primary),
+    textOnAccent: getContrastColor(currentScheme.accent),
     border: '#D5CFC5',
     borderLight: '#E8E3DB',
     statusDue: '#F39C12',

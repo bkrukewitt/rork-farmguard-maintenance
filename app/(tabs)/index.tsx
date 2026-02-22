@@ -148,7 +148,7 @@ export default function DashboardScreen() {
             onPress={() => router.push('/maintenance/add' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: colors.accent }]}>
-              <Wrench color={colors.textOnPrimary} size={20} />
+              <Wrench color={colors.textOnAccent} size={20} />
             </View>
             <Text style={[styles.actionText, { color: colors.text }]}>Log Service</Text>
           </TouchableOpacity>
