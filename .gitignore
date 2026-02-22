@@ -38,10 +38,9 @@ yarn-error.*
 *.tsbuildinfo
 .vercel
 
+# Rork
 .rork
+core
 
 .env
 rork-eslint.config.js
-core
-node_modules
-.expo
