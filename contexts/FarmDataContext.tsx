@@ -1248,6 +1248,99 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     console.log('Data merged and saved after duplicate resolution');
   }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, workOrders, employees, deviceId, queryClient]);
 
+  const updateFarmIdMutation = useMutation({
+    mutationFn: async (newFarmId: string) => {
+      if (!isAdmin) {
+        throw new Error('Only the farm admin can change the Farm ID.');
+      }
+      if (!newFarmId || newFarmId.trim().length === 0) {
+        throw new Error('Farm ID cannot be empty.');
+      }
+      if (/\s/.test(newFarmId)) {
+        throw new Error('Farm ID cannot contain spaces.');
+      }
+      const trimmed = newFarmId.trim();
+      if (trimmed === farmId) {
+        throw new Error('New Farm ID is the same as the current one.');
+      }
+
+      const { data: existing, error: checkError } = await supabase
+        .from('farms')
+        .select('id')
+        .eq('id', trimmed)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('[Supabase] Error checking farm ID availability:', JSON.stringify(checkError));
+        throw new Error('Failed to check Farm ID availability. Please try again.');
+      }
+      if (existing) {
+        throw new Error('This Farm ID is already taken. Please choose a different one.');
+      }
+
+      console.log(`[Supabase] Updating farm ID from ${farmId} to ${trimmed}`);
+
+      const { error: insertError } = await supabase
+        .from('farms')
+        .insert({ id: trimmed });
+      if (insertError) {
+        console.error('[Supabase] Error creating new farm:', JSON.stringify(insertError));
+        throw new Error('Failed to create new Farm ID. Please try again.');
+      }
+
+      const { data: farmData } = await supabase
+        .from('farm_data')
+        .select('*')
+        .eq('farm_id', farmId)
+        .maybeSingle();
+
+      if (farmData) {
+        const { error: dataError } = await supabase
+          .from('farm_data')
+          .upsert({
+            farm_id: trimmed,
+            data: farmData.data,
+            updated_at: new Date().toISOString(),
+          });
+        if (dataError) {
+          console.error('[Supabase] Error migrating farm data:', JSON.stringify(dataError));
+          throw new Error('Failed to migrate farm data. Please try again.');
+        }
+      }
+
+      const { data: members } = await supabase
+        .from('farm_members')
+        .select('*')
+        .eq('farm_id', farmId);
+
+      if (members && members.length > 0) {
+        for (const member of members) {
+          await supabase.from('farm_members').insert({
+            farm_id: trimmed,
+            device_id: member.device_id,
+            role: member.role,
+            joined_at: member.joined_at,
+            last_active_at: member.last_active_at,
+          });
+        }
+      }
+
+      await supabase.from('farm_members').delete().eq('farm_id', farmId);
+      await supabase.from('farm_data').delete().eq('farm_id', farmId);
+      await supabase.from('farms').delete().eq('id', farmId);
+
+      await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, trimmed);
+      setFarmId(trimmed);
+
+      queryClient.invalidateQueries({ queryKey: ['remoteData'] });
+      queryClient.invalidateQueries({ queryKey: ['farmMembers'] });
+      queryClient.invalidateQueries({ queryKey: ['memberRegistration'] });
+
+      console.log(`[Supabase] Farm ID updated successfully to ${trimmed}`);
+      return trimmed;
+    },
+  });
+
   const removeMemberMutation = useMutation({
     mutationFn: async (targetDeviceId: string) => {
       const { error } = await supabase
@@ -1291,6 +1384,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     isAdmin,
     farmMembers,
     removeMember: removeMemberMutation.mutateAsync,
+    updateFarmId: updateFarmIdMutation.mutateAsync,
+    isUpdatingFarmId: updateFarmIdMutation.isPending,
     checkForDuplicatesOnJoin,
     applyDuplicateResolutions,
     equipment,

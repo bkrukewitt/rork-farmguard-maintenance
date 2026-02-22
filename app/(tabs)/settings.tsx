@@ -34,6 +34,7 @@ import {
   RefreshCw,
   Users,
   Copy,
+  Pencil,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -65,6 +66,8 @@ export default function SettingsScreen() {
     isAdmin,
     farmMembers,
     removeMember,
+    updateFarmId,
+    isUpdatingFarmId,
     checkForDuplicatesOnJoin,
     applyDuplicateResolutions,
   } = useFarmData();
@@ -81,6 +84,9 @@ export default function SettingsScreen() {
   const [duplicates, setDuplicates] = useState<DuplicateItem[]>([]);
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
   const [pendingJoinFarmId, setPendingJoinFarmId] = useState('');
+  const [showEditFarmIdModal, setShowEditFarmIdModal] = useState(false);
+  const [newFarmId, setNewFarmId] = useState('');
+  const [farmIdError, setFarmIdError] = useState('');
 
   const handleClearData = () => {
     Alert.alert(
@@ -234,6 +240,60 @@ export default function SettingsScreen() {
               Alert.alert('Error', 'Failed to restore data. Please ensure the file is a valid FarmGuard backup.');
             } finally {
               setIsRestoring(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const validateFarmId = (value: string): string => {
+    if (!value.trim()) return 'Farm ID cannot be empty.';
+    if (/\s/.test(value)) return 'Farm ID cannot contain spaces.';
+    if (value.trim() === farmId) return 'This is already your current Farm ID.';
+    return '';
+  };
+
+  const handleEditFarmId = () => {
+    setNewFarmId(farmId);
+    setFarmIdError('');
+    setShowEditFarmIdModal(true);
+  };
+
+  const handleNewFarmIdChange = (text: string) => {
+    const noSpaces = text.replace(/\s/g, '');
+    setNewFarmId(noSpaces);
+    if (/\s/.test(text)) {
+      setFarmIdError('Spaces are not allowed in Farm IDs.');
+    } else {
+      setFarmIdError('');
+    }
+  };
+
+  const handleSaveFarmId = async () => {
+    const error = validateFarmId(newFarmId);
+    if (error) {
+      setFarmIdError(error);
+      return;
+    }
+
+    Alert.alert(
+      'Change Farm ID',
+      `Are you sure you want to change the Farm ID to "${newFarmId.trim()}"? All connected devices will need to use the new ID.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Change',
+          onPress: async () => {
+            try {
+              await updateFarmId(newFarmId.trim());
+              setShowEditFarmIdModal(false);
+              setNewFarmId('');
+              setFarmIdError('');
+              Alert.alert('Success', 'Farm ID has been updated. Share the new ID with your team members.');
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : 'Failed to update Farm ID. Please try again.';
+              setFarmIdError(message);
             }
           },
         },
@@ -465,12 +525,22 @@ export default function SettingsScreen() {
                 {farmId || 'Loading...'}
               </Text>
             </View>
-            <TouchableOpacity 
-              style={[styles.copyButton, { backgroundColor: colors.primary + '15' }]}
-              onPress={handleCopyFarmId}
-            >
-              <Copy color={colors.primary} size={18} />
-            </TouchableOpacity>
+            <View style={styles.farmIdActions}>
+              {isAdmin && (
+                <TouchableOpacity 
+                  style={[styles.copyButton, { backgroundColor: colors.accent + '15' }]}
+                  onPress={handleEditFarmId}
+                >
+                  <Pencil color={colors.accent} size={18} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity 
+                style={[styles.copyButton, { backgroundColor: colors.primary + '15' }]}
+                onPress={handleCopyFarmId}
+              >
+                <Copy color={colors.primary} size={18} />
+              </TouchableOpacity>
+            </View>
           </View>
           
           {memberCount > 0 && (
@@ -864,6 +934,64 @@ export default function SettingsScreen() {
       </Modal>
 
       <Modal
+        visible={showEditFarmIdModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowEditFarmIdModal(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Farm ID</Text>
+              <TouchableOpacity onPress={() => setShowEditFarmIdModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              Choose a new Farm ID for your team. Spaces are not allowed. All connected devices will need the new ID to stay synced.
+            </Text>
+            
+            <View style={[
+              styles.joinInput, 
+              { backgroundColor: colors.background, borderColor: farmIdError ? colors.statusOverdue : colors.border }
+            ]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Enter new Farm ID"
+                placeholderTextColor={colors.textSecondary}
+                value={newFarmId}
+                onChangeText={handleNewFarmIdChange}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            {farmIdError ? (
+              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>
+                {farmIdError}
+              </Text>
+            ) : null}
+            
+            <TouchableOpacity 
+              style={[styles.joinButton, { backgroundColor: colors.primary, opacity: isUpdatingFarmId ? 0.7 : 1 }]}
+              onPress={handleSaveFarmId}
+              disabled={isUpdatingFarmId}
+            >
+              {isUpdatingFarmId ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.joinButtonText}>Save Farm ID</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
         visible={showDuplicateModal}
         animationType="slide"
         transparent={true}
@@ -1139,6 +1267,15 @@ const styles = StyleSheet.create({
   syncId: {
     fontSize: 12,
     marginTop: 2,
+  },
+  farmIdActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  farmIdErrorText: {
+    fontSize: 13,
+    marginTop: -8,
+    marginBottom: 12,
   },
   copyButton: {
     width: 36,
