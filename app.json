@@ -2,7 +2,7 @@
   "expo": {
     "name": "FarmGuard Maintenance",
     "slug": "farmguard-maintenance",
-    "version": "2.1.1",
+    "version": "2.1.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "rork-app",
@@ -40,7 +40,8 @@
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.INTERNET",
         "android.permission.RECORD_AUDIO"
-      ]
+      ],
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -79,3 +80,4 @@
     }
   }
 }
+

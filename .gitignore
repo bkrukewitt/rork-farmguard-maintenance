@@ -46,3 +46,4 @@ core
 rork-eslint.config.js
 node_modules
 .expo
+bun.lock
