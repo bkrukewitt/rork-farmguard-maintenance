@@ -172,21 +172,32 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       if (!farmId || !deviceId) return null;
       console.log(`[Supabase] Registering device ${deviceId} for farm ${farmId}`);
 
-      await supabase.from('farms').upsert({ id: farmId });
+      const { error: farmError } = await supabase.from('farms').upsert({ id: farmId }, { onConflict: 'id' });
+      if (farmError) {
+        console.error('[Supabase] Error upserting farm:', JSON.stringify(farmError));
+        throw new Error(`Failed to register farm: ${farmError.message}`);
+      }
 
-      const { data: existing } = await supabase
+      const { data: existing, error: existingError } = await supabase
         .from('farm_members')
         .select('*')
         .eq('farm_id', farmId)
         .eq('device_id', deviceId)
         .maybeSingle();
 
+      if (existingError) {
+        console.error('[Supabase] Error checking existing member:', JSON.stringify(existingError));
+      }
+
       if (existing) {
-        await supabase
+        const { error: updateError } = await supabase
           .from('farm_members')
           .update({ last_active_at: new Date().toISOString() })
           .eq('farm_id', farmId)
           .eq('device_id', deviceId);
+        if (updateError) {
+          console.error('[Supabase] Error updating member:', JSON.stringify(updateError));
+        }
         console.log(`[Supabase] Existing member updated, role: ${existing.role}`);
         return existing as FarmMember;
       }
@@ -214,8 +225,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         .single();
 
       if (error) {
-        console.error('[Supabase] Error registering member:', error);
-        throw error;
+        console.error('[Supabase] Error registering member:', JSON.stringify(error));
+        throw new Error(`Failed to register member: ${error.message || error.code || JSON.stringify(error)}`);
       }
 
       console.log(`[Supabase] New member registered, role: ${role}`);
