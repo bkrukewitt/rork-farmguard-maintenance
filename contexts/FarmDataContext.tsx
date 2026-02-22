@@ -284,80 +284,96 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const equipmentQuery = useQuery({
     queryKey: ['equipment'],
     queryFn: () => loadData<Equipment>(STORAGE_KEYS.EQUIPMENT),
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 120000,
+    gcTime: 300000,
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 120000,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: false,
   });
 
   const maintenanceLogsQuery = useQuery({
     queryKey: ['maintenanceLogs'],
     queryFn: () => loadData<MaintenanceLog>(STORAGE_KEYS.MAINTENANCE_LOGS),
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 120000,
+    gcTime: 300000,
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 120000,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: false,
   });
 
   const intervalsQuery = useQuery({
     queryKey: ['intervals'],
     queryFn: () => loadData<MaintenanceInterval>(STORAGE_KEYS.INTERVALS),
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 120000,
+    gcTime: 300000,
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 120000,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: false,
   });
 
   const consumablesQuery = useQuery({
     queryKey: ['consumables'],
     queryFn: () => loadData<Consumable>(STORAGE_KEYS.CONSUMABLES),
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 120000,
+    gcTime: 300000,
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 120000,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: false,
   });
 
   const serviceRoutinesQuery = useQuery({
     queryKey: ['serviceRoutines'],
     queryFn: () => loadData<ServiceRoutine>(STORAGE_KEYS.SERVICE_ROUTINES),
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 120000,
+    gcTime: 300000,
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 120000,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: false,
   });
 
   const inspectionRoutinesQuery = useQuery({
     queryKey: ['inspectionRoutines'],
     queryFn: () => loadData<InspectionRoutine>(STORAGE_KEYS.INSPECTION_ROUTINES),
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 120000,
+    gcTime: 300000,
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 120000,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: false,
   });
 
   const workOrdersQuery = useQuery({
     queryKey: ['workOrders'],
     queryFn: () => loadData<WorkOrder>(STORAGE_KEYS.WORK_ORDERS),
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 120000,
+    gcTime: 300000,
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 120000,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: false,
   });
 
   const employeesQuery = useQuery({
     queryKey: ['employees'],
     queryFn: () => loadData<Employee>(STORAGE_KEYS.EMPLOYEES),
-    staleTime: Infinity,
-    gcTime: Infinity,
+    staleTime: 120000,
+    gcTime: 300000,
     refetchOnMount: true,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
+    refetchInterval: 120000,
+    refetchIntervalInBackground: false,
     refetchOnReconnect: false,
   });
 
@@ -1477,5 +1493,23 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     updateEmployee: updateEmployeeMutation.mutateAsync,
     deleteEmployee: deleteEmployeeMutation.mutateAsync,
     getEmployeeById,
+    manualSync: async () => {
+      console.log("[Manual Sync] Triggering manual sync...");
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ["equipment"] }),
+        queryClient.refetchQueries({ queryKey: ["maintenanceLogs"] }),
+        queryClient.refetchQueries({ queryKey: ["consumables"] }),
+        queryClient.refetchQueries({ queryKey: ["intervals"] }),
+        queryClient.refetchQueries({ queryKey: ["serviceRoutines"] }),
+        queryClient.refetchQueries({ queryKey: ["inspectionRoutines"] }),
+        queryClient.refetchQueries({ queryKey: ["workOrders"] }),
+        queryClient.refetchQueries({ queryKey: ["employees"] }),
+        queryClient.refetchQueries({ queryKey: ["farmMembers"] }),
+        queryClient.refetchQueries({ queryKey: ["remoteData"] }),
+      ]);
+      console.log("[Manual Sync] Manual sync completed");
+    },
   };
 });
+
+
