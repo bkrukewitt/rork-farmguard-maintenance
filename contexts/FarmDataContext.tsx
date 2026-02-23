@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useEffect, useState } from 'react';
+import { useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine, WorkOrder, Employee } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 import { supabase } from '@/lib/supabase';
@@ -163,6 +163,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const skipAutoMergeRef = useRef(false);
+  const initialMergeDoneRef = useRef(false);
 
   useEffect(() => {
     getFarmId().then(setFarmId);
@@ -411,6 +413,17 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   useEffect(() => {
     if (remoteDataQuery.data && farmId) {
+      if (skipAutoMergeRef.current) {
+        console.log('[AutoMerge] Skipping auto-merge (recently mutated or resolved duplicates)');
+        skipAutoMergeRef.current = false;
+        return;
+      }
+
+      if (initialMergeDoneRef.current) {
+        console.log('[AutoMerge] Initial merge already done, skipping background re-merge');
+        return;
+      }
+
       const remote = remoteDataQuery.data;
 
       const hasRemoteData =
@@ -424,7 +437,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         remote.employees.length > 0;
 
       if (hasRemoteData) {
-        console.log('Remote data found, merging with local...');
+        console.log('[AutoMerge] Initial remote data found, merging with local...');
 
         const mergedEquipment = mergeArraysSmart(equipment, remote.equipment);
         const mergedLogs = mergeArraysSmart(maintenanceLogs, remote.maintenanceLogs);
@@ -453,22 +466,23 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
           queryClient.invalidateQueries({ queryKey: ['workOrders'] });
           queryClient.invalidateQueries({ queryKey: ['employees'] });
-          console.log('Data merged and saved locally');
+          initialMergeDoneRef.current = true;
+          console.log('[AutoMerge] Initial merge completed and saved locally');
         });
+      } else {
+        initialMergeDoneRef.current = true;
       }
     }
   }, [remoteDataQuery.data, farmId]);
 
-  const syncToServer = useCallback(async () => {
+  const syncToServer = useCallback(async (options?: { skipMerge?: boolean }) => {
     if (!farmId) return;
 
+    const shouldSkipMerge = options?.skipMerge ?? false;
     setIsSyncing(true);
     try {
-      console.log('[Sync] Starting bidirectional sync for farm:', farmId);
+      console.log(`[Sync] Starting sync for farm: ${farmId}, skipMerge: ${shouldSkipMerge}`);
       await supabase.from('farms').upsert({ id: farmId });
-
-      const remoteData = await fetchRemoteData(farmId);
-      console.log('[Sync] Remote data fetched:', remoteData ? 'found' : 'none');
 
       const currentEquipment = await loadData<Equipment>(STORAGE_KEYS.EQUIPMENT);
       const currentLogs = await loadData<MaintenanceLog>(STORAGE_KEYS.MAINTENANCE_LOGS);
@@ -479,37 +493,44 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       const currentWorkOrders = await loadData<WorkOrder>(STORAGE_KEYS.WORK_ORDERS);
       const currentEmployees = await loadData<Employee>(STORAGE_KEYS.EMPLOYEES);
 
-      let mergedEquipment = currentEquipment;
-      let mergedLogs = currentLogs;
-      let mergedIntervals = currentIntervals;
-      let mergedConsumables = currentConsumables;
-      let mergedServiceRoutines = currentServiceRoutines;
-      let mergedInspectionRoutines = currentInspectionRoutines;
-      let mergedWorkOrders = currentWorkOrders;
-      let mergedEmployees = currentEmployees;
+      let finalEquipment = currentEquipment;
+      let finalLogs = currentLogs;
+      let finalIntervals = currentIntervals;
+      let finalConsumables = currentConsumables;
+      let finalServiceRoutines = currentServiceRoutines;
+      let finalInspectionRoutines = currentInspectionRoutines;
+      let finalWorkOrders = currentWorkOrders;
+      let finalEmployees = currentEmployees;
 
-      if (remoteData) {
-        mergedEquipment = mergeArraysSmart(currentEquipment, remoteData.equipment);
-        mergedLogs = mergeArraysSmart(currentLogs, remoteData.maintenanceLogs);
-        mergedIntervals = mergeArraysSmart(currentIntervals, remoteData.intervals);
-        mergedConsumables = mergeArraysSmart(currentConsumables, remoteData.consumables);
-        mergedServiceRoutines = mergeArraysSmart(currentServiceRoutines, remoteData.serviceRoutines);
-        mergedInspectionRoutines = mergeArraysSmart(currentInspectionRoutines, remoteData.inspectionRoutines);
-        mergedWorkOrders = mergeArraysSmart(currentWorkOrders, remoteData.workOrders);
-        mergedEmployees = mergeArraysSmart(currentEmployees, remoteData.employees);
+      if (!shouldSkipMerge) {
+        const remoteData = await fetchRemoteData(farmId);
+        console.log('[Sync] Remote data fetched:', remoteData ? 'found' : 'none');
 
-        console.log('[Sync] Merged counts - Equipment:', mergedEquipment.length, 'Logs:', mergedLogs.length, 'Consumables:', mergedConsumables.length);
+        if (remoteData) {
+          finalEquipment = mergeArraysSmart(currentEquipment, remoteData.equipment);
+          finalLogs = mergeArraysSmart(currentLogs, remoteData.maintenanceLogs);
+          finalIntervals = mergeArraysSmart(currentIntervals, remoteData.intervals);
+          finalConsumables = mergeArraysSmart(currentConsumables, remoteData.consumables);
+          finalServiceRoutines = mergeArraysSmart(currentServiceRoutines, remoteData.serviceRoutines);
+          finalInspectionRoutines = mergeArraysSmart(currentInspectionRoutines, remoteData.inspectionRoutines);
+          finalWorkOrders = mergeArraysSmart(currentWorkOrders, remoteData.workOrders);
+          finalEmployees = mergeArraysSmart(currentEmployees, remoteData.employees);
 
-        await Promise.all([
-          saveData(STORAGE_KEYS.EQUIPMENT, mergedEquipment),
-          saveData(STORAGE_KEYS.MAINTENANCE_LOGS, mergedLogs),
-          saveData(STORAGE_KEYS.INTERVALS, mergedIntervals),
-          saveData(STORAGE_KEYS.CONSUMABLES, mergedConsumables),
-          saveData(STORAGE_KEYS.SERVICE_ROUTINES, mergedServiceRoutines),
-          saveData(STORAGE_KEYS.INSPECTION_ROUTINES, mergedInspectionRoutines),
-          saveData(STORAGE_KEYS.WORK_ORDERS, mergedWorkOrders),
-          saveData(STORAGE_KEYS.EMPLOYEES, mergedEmployees),
-        ]);
+          console.log('[Sync] Merged counts - Equipment:', finalEquipment.length, 'Logs:', finalLogs.length, 'Consumables:', finalConsumables.length);
+
+          await Promise.all([
+            saveData(STORAGE_KEYS.EQUIPMENT, finalEquipment),
+            saveData(STORAGE_KEYS.MAINTENANCE_LOGS, finalLogs),
+            saveData(STORAGE_KEYS.INTERVALS, finalIntervals),
+            saveData(STORAGE_KEYS.CONSUMABLES, finalConsumables),
+            saveData(STORAGE_KEYS.SERVICE_ROUTINES, finalServiceRoutines),
+            saveData(STORAGE_KEYS.INSPECTION_ROUTINES, finalInspectionRoutines),
+            saveData(STORAGE_KEYS.WORK_ORDERS, finalWorkOrders),
+            saveData(STORAGE_KEYS.EMPLOYEES, finalEmployees),
+          ]);
+        }
+      } else {
+        console.log('[Sync] Skipping merge, pushing local data as source of truth');
       }
 
       const { error } = await supabase
@@ -517,19 +538,21 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         .upsert({
           farm_id: farmId,
           data: {
-            equipment: mergedEquipment,
-            maintenanceLogs: mergedLogs,
-            intervals: mergedIntervals,
-            consumables: mergedConsumables,
-            serviceRoutines: mergedServiceRoutines,
-            inspectionRoutines: mergedInspectionRoutines,
-            workOrders: mergedWorkOrders,
-            employees: mergedEmployees,
+            equipment: finalEquipment,
+            maintenanceLogs: finalLogs,
+            intervals: finalIntervals,
+            consumables: finalConsumables,
+            serviceRoutines: finalServiceRoutines,
+            inspectionRoutines: finalInspectionRoutines,
+            workOrders: finalWorkOrders,
+            employees: finalEmployees,
           },
           updated_at: new Date().toISOString(),
         });
 
       if (error) throw error;
+
+      skipAutoMergeRef.current = true;
 
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
       queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
@@ -542,7 +565,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       queryClient.invalidateQueries({ queryKey: ['remoteData'] });
 
       setLastSyncTime(new Date().toISOString());
-      console.log('[Sync] Bidirectional sync completed successfully');
+      console.log('[Sync] Sync completed successfully');
     } catch (error) {
       console.error('[Sync] Failed to sync data to Supabase:', error);
       throw error;
@@ -566,7 +589,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -582,24 +605,26 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
   const deleteEquipmentMutation = useMutation({
     mutationFn: async (id: string) => {
+      console.log(`[Delete] Deleting equipment: ${id}`);
       const updated = equipment.filter(e => e.id !== id);
       await saveData(STORAGE_KEYS.EQUIPMENT, updated);
       const updatedLogs = maintenanceLogs.filter(l => l.equipmentId !== id);
       await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updatedLogs);
       const updatedIntervals = intervals.filter(i => i.equipmentId !== id);
       await saveData(STORAGE_KEYS.INTERVALS, updatedIntervals);
+      console.log(`[Delete] Equipment deleted. Remaining: ${updated.length}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
       queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
       queryClient.invalidateQueries({ queryKey: ['intervals'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -630,7 +655,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -661,7 +686,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -672,7 +697,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -688,7 +713,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intervals'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -701,7 +726,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['intervals'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -738,7 +763,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -754,7 +779,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -765,7 +790,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -786,7 +811,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -820,7 +845,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['consumables'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -839,7 +864,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -858,7 +883,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -874,7 +899,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -885,7 +910,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -909,7 +934,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -925,7 +950,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -936,7 +961,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -960,7 +985,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrders'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -976,7 +1001,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrders'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -987,7 +1012,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['workOrders'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -1011,7 +1036,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -1027,7 +1052,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -1038,7 +1063,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
-      syncToServer();
+      syncToServer({ skipMerge: true });
     },
   });
 
@@ -1050,6 +1075,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const setFarmIdAndSync = useCallback(async (newFarmId: string) => {
     await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
     setFarmId(newFarmId);
+    initialMergeDoneRef.current = false;
+    skipAutoMergeRef.current = false;
     queryClient.invalidateQueries({ queryKey: ['remoteData'] });
     queryClient.invalidateQueries({ queryKey: ['farmMembers'] });
     queryClient.invalidateQueries({ queryKey: ['memberRegistration'] });
@@ -1246,6 +1273,10 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
     await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
     await AsyncStorage.setItem(STORAGE_KEYS.IS_FARM_CREATOR, 'false');
+
+    skipAutoMergeRef.current = true;
+    initialMergeDoneRef.current = true;
+
     setFarmId(newFarmId);
 
     await supabase.from('farms').upsert({ id: newFarmId });
@@ -1262,6 +1293,23 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       { onConflict: 'farm_id,device_id' }
     );
 
+    await supabase
+      .from('farm_data')
+      .upsert({
+        farm_id: newFarmId,
+        data: {
+          equipment: mergedEquipment,
+          maintenanceLogs: mergedLogs,
+          intervals: mergedIntervals,
+          consumables: mergedConsumables,
+          serviceRoutines: mergedServiceRoutines,
+          inspectionRoutines: mergedInspectionRoutines,
+          workOrders: mergedWorkOrders,
+          employees: mergedEmployees,
+        },
+        updated_at: new Date().toISOString(),
+      });
+
     queryClient.invalidateQueries({ queryKey: ['equipment'] });
     queryClient.invalidateQueries({ queryKey: ['consumables'] });
     queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
@@ -1274,7 +1322,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     queryClient.invalidateQueries({ queryKey: ['farmMembers'] });
     queryClient.invalidateQueries({ queryKey: ['memberRegistration'] });
 
-    console.log('Data merged and saved after duplicate resolution');
+    console.log('[DuplicateResolution] Data merged, saved locally, and pushed to server');
   }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, workOrders, employees, deviceId, queryClient]);
 
   const updateFarmIdMutation = useMutation({
@@ -1361,6 +1409,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
       await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, trimmed);
       setFarmId(trimmed);
+
+      initialMergeDoneRef.current = false;
+      skipAutoMergeRef.current = false;
 
       queryClient.invalidateQueries({ queryKey: ['remoteData'] });
       queryClient.invalidateQueries({ queryKey: ['farmMembers'] });
@@ -1494,7 +1545,10 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     deleteEmployee: deleteEmployeeMutation.mutateAsync,
     getEmployeeById,
     manualSync: async () => {
-      console.log("[Manual Sync] Triggering manual sync...");
+      console.log("[Manual Sync] Triggering manual sync with full merge...");
+      initialMergeDoneRef.current = false;
+      skipAutoMergeRef.current = false;
+      await syncToServer({ skipMerge: false });
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ["equipment"] }),
         queryClient.refetchQueries({ queryKey: ["maintenanceLogs"] }),
@@ -1511,5 +1565,3 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
   };
 });
-
-
