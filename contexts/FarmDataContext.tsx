@@ -1465,6 +1465,120 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
   });
 
+  const deleteFarmFromServerMutation = useMutation({
+    mutationFn: async (targetFarmId: string) => {
+      console.log(`[SuperAdmin] Deleting farm from server: ${targetFarmId}`);
+
+      const { error: membersError } = await supabase
+        .from('farm_members')
+        .delete()
+        .eq('farm_id', targetFarmId);
+      if (membersError) {
+        console.error('[SuperAdmin] Error deleting farm members:', JSON.stringify(membersError));
+        throw new Error(`Failed to delete farm members: ${membersError.message}`);
+      }
+
+      const { error: dataError } = await supabase
+        .from('farm_data')
+        .delete()
+        .eq('farm_id', targetFarmId);
+      if (dataError) {
+        console.error('[SuperAdmin] Error deleting farm data:', JSON.stringify(dataError));
+        throw new Error(`Failed to delete farm data: ${dataError.message}`);
+      }
+
+      const { error: farmError } = await supabase
+        .from('farms')
+        .delete()
+        .eq('id', targetFarmId);
+      if (farmError) {
+        console.error('[SuperAdmin] Error deleting farm:', JSON.stringify(farmError));
+        throw new Error(`Failed to delete farm: ${farmError.message}`);
+      }
+
+      console.log(`[SuperAdmin] Farm ${targetFarmId} fully deleted from server`);
+      return targetFarmId;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['remoteData'] });
+      queryClient.invalidateQueries({ queryKey: ['farmMembers'] });
+      queryClient.invalidateQueries({ queryKey: ['memberRegistration'] });
+    },
+  });
+
+  const forceDeleteEquipmentMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      console.log(`[SuperAdmin] Force deleting ${ids.length} equipment items`);
+      const updatedEquip = equipment.filter(e => !ids.includes(e.id));
+      const updatedLogs = maintenanceLogs.filter(l => !ids.includes(l.equipmentId));
+      const updatedIntervals = intervals.filter(i => !ids.includes(i.equipmentId));
+      await Promise.all([
+        saveData(STORAGE_KEYS.EQUIPMENT, updatedEquip),
+        saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updatedLogs),
+        saveData(STORAGE_KEYS.INTERVALS, updatedIntervals),
+      ]);
+      console.log(`[SuperAdmin] Force deleted. Remaining equipment: ${updatedEquip.length}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['equipment'] });
+      queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+      queryClient.invalidateQueries({ queryKey: ['intervals'] });
+      syncToServer({ skipMerge: true });
+    },
+  });
+
+  const forceDeleteConsumableMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      console.log(`[SuperAdmin] Force deleting ${ids.length} consumables`);
+      const updated = consumables.filter(c => !ids.includes(c.id));
+      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
+      console.log(`[SuperAdmin] Force deleted. Remaining consumables: ${updated.length}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['consumables'] });
+      syncToServer({ skipMerge: true });
+    },
+  });
+
+  const purgeAndResyncMutation = useMutation({
+    mutationFn: async () => {
+      console.log('[SuperAdmin] Purging local data and resyncing from server...');
+      await Promise.all([
+        AsyncStorage.removeItem(STORAGE_KEYS.EQUIPMENT),
+        AsyncStorage.removeItem(STORAGE_KEYS.MAINTENANCE_LOGS),
+        AsyncStorage.removeItem(STORAGE_KEYS.INTERVALS),
+        AsyncStorage.removeItem(STORAGE_KEYS.CONSUMABLES),
+        AsyncStorage.removeItem(STORAGE_KEYS.SERVICE_ROUTINES),
+        AsyncStorage.removeItem(STORAGE_KEYS.INSPECTION_ROUTINES),
+        AsyncStorage.removeItem(STORAGE_KEYS.WORK_ORDERS),
+        AsyncStorage.removeItem(STORAGE_KEYS.EMPLOYEES),
+      ]);
+
+      const remote = await fetchRemoteData(farmId);
+      if (remote) {
+        await Promise.all([
+          saveData(STORAGE_KEYS.EQUIPMENT, remote.equipment),
+          saveData(STORAGE_KEYS.MAINTENANCE_LOGS, remote.maintenanceLogs),
+          saveData(STORAGE_KEYS.INTERVALS, remote.intervals),
+          saveData(STORAGE_KEYS.CONSUMABLES, remote.consumables),
+          saveData(STORAGE_KEYS.SERVICE_ROUTINES, remote.serviceRoutines),
+          saveData(STORAGE_KEYS.INSPECTION_ROUTINES, remote.inspectionRoutines),
+          saveData(STORAGE_KEYS.WORK_ORDERS, remote.workOrders),
+          saveData(STORAGE_KEYS.EMPLOYEES, remote.employees),
+        ]);
+        console.log('[SuperAdmin] Local data replaced with server data');
+      } else {
+        console.log('[SuperAdmin] No remote data found, local data cleared');
+      }
+
+      initialMergeDoneRef.current = true;
+      skipAutoMergeRef.current = true;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries();
+    },
+  });
+
   const isLoading =
     equipmentQuery.isLoading ||
     maintenanceLogsQuery.isLoading ||
@@ -1492,6 +1606,12 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     isAdmin,
     farmMembers,
     removeMember: removeMemberMutation.mutateAsync,
+    deleteFarmFromServer: deleteFarmFromServerMutation.mutateAsync,
+    isDeletingFarm: deleteFarmFromServerMutation.isPending,
+    forceDeleteEquipment: forceDeleteEquipmentMutation.mutateAsync,
+    forceDeleteConsumables: forceDeleteConsumableMutation.mutateAsync,
+    purgeAndResync: purgeAndResyncMutation.mutateAsync,
+    isPurging: purgeAndResyncMutation.isPending,
     updateFarmId: updateFarmIdMutation.mutateAsync,
     isUpdatingFarmId: updateFarmIdMutation.isPending,
     displayName,

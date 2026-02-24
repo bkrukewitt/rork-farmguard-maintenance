@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -35,6 +35,10 @@ import {
   Users,
   Copy,
   Pencil,
+  Lock,
+  ServerCrash,
+  Zap,
+  AlertTriangle,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -74,6 +78,12 @@ export default function SettingsScreen() {
     isUpdatingDisplayName,
     checkForDuplicatesOnJoin,
     applyDuplicateResolutions,
+    deleteFarmFromServer,
+    isDeletingFarm,
+    forceDeleteEquipment,
+    forceDeleteConsumables,
+    purgeAndResync,
+    isPurging,
   } = useFarmData();
   const { colors, colorSchemes, currentSchemeId, setColorScheme, currentScheme } = useTheme();
   const queryClient = useQueryClient();
@@ -93,6 +103,125 @@ export default function SettingsScreen() {
   const [farmIdError, setFarmIdError] = useState('');
   const [showDisplayNameModal, setShowDisplayNameModal] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState('');
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [showSuperAdminPinModal, setShowSuperAdminPinModal] = useState(false);
+  const [superAdminPin, setSuperAdminPin] = useState('');
+  const [superAdminPinError, setSuperAdminPinError] = useState('');
+  const [deleteFarmIdInput, setDeleteFarmIdInput] = useState('');
+  const footerTapCountRef = useRef(0);
+  const footerTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const SUPER_ADMIN_PIN = '9173';
+
+  const handleFooterTap = useCallback(() => {
+    footerTapCountRef.current += 1;
+    if (footerTapTimerRef.current) clearTimeout(footerTapTimerRef.current);
+    if (footerTapCountRef.current >= 5) {
+      footerTapCountRef.current = 0;
+      if (isSuperAdmin) {
+        setIsSuperAdmin(false);
+      } else {
+        setSuperAdminPin('');
+        setSuperAdminPinError('');
+        setShowSuperAdminPinModal(true);
+      }
+    } else {
+      footerTapTimerRef.current = setTimeout(() => {
+        footerTapCountRef.current = 0;
+      }, 2000);
+    }
+  }, [isSuperAdmin]);
+
+  const handleSuperAdminLogin = useCallback(() => {
+    if (superAdminPin === SUPER_ADMIN_PIN) {
+      setIsSuperAdmin(true);
+      setShowSuperAdminPinModal(false);
+      setSuperAdminPin('');
+      setSuperAdminPinError('');
+    } else {
+      setSuperAdminPinError('Incorrect PIN');
+    }
+  }, [superAdminPin]);
+
+  const handleDeleteFarmFromServer = useCallback(() => {
+    const targetId = deleteFarmIdInput.trim();
+    if (!targetId) {
+      Alert.alert('Error', 'Please enter a Farm ID to delete.');
+      return;
+    }
+    Alert.alert(
+      'Delete Farm from Server',
+      `This will permanently delete farm "${targetId}" and ALL its data (members, equipment, logs, etc.) from the server. This CANNOT be undone.\n\nAre you absolutely sure?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Forever',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteFarmFromServer(targetId);
+              setDeleteFarmIdInput('');
+              Alert.alert('Deleted', `Farm "${targetId}" has been permanently removed from the server.`);
+            } catch (error) {
+              console.error('[SuperAdmin] Delete farm error:', error);
+              const msg = error instanceof Error ? error.message : 'Unknown error';
+              Alert.alert('Error', `Failed to delete farm: ${msg}`);
+            }
+          },
+        },
+      ]
+    );
+  }, [deleteFarmIdInput, deleteFarmFromServer]);
+
+  const handleForceDeleteAllEquipment = useCallback(() => {
+    if (equipment.length === 0) {
+      Alert.alert('No Equipment', 'There is no equipment to delete.');
+      return;
+    }
+    Alert.alert(
+      'Force Delete All Equipment',
+      `This will force-delete ALL ${equipment.length} equipment items, their logs, and intervals from local storage AND push to server. Cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await forceDeleteEquipment(equipment.map(e => e.id));
+              Alert.alert('Done', 'All equipment force-deleted and synced.');
+            } catch (error) {
+              console.error('[SuperAdmin] Force delete equipment error:', error);
+              Alert.alert('Error', 'Failed to force delete equipment.');
+            }
+          },
+        },
+      ]
+    );
+  }, [equipment, forceDeleteEquipment]);
+
+  const handlePurgeAndResync = useCallback(() => {
+    Alert.alert(
+      'Purge & Resync',
+      'This will DELETE all local data and replace it with whatever is on the server. If no server data exists, everything will be empty. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Purge & Resync',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await purgeAndResync();
+              Alert.alert('Done', 'Local data purged and resynced from server.');
+            } catch (error) {
+              console.error('[SuperAdmin] Purge error:', error);
+              Alert.alert('Error', 'Failed to purge and resync.');
+            }
+          },
+        },
+      ]
+    );
+  }, [purgeAndResync]);
 
   const handleClearData = () => {
     Alert.alert(
@@ -886,9 +1015,89 @@ export default function SettingsScreen() {
 
       </View>
 
-      <View style={styles.footer}>
+      {isSuperAdmin && (
+        <View style={styles.section}>
+          <View style={[styles.superAdminHeader, { backgroundColor: colors.statusOverdue + '12' }]}>
+            <Lock color={colors.statusOverdue} size={16} />
+            <Text style={[styles.sectionTitle, { color: colors.statusOverdue, marginBottom: 0 }]}>Super Admin</Text>
+          </View>
+
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.statusOverdue + '30' }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Delete Farm from Server</Text>
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Enter Farm ID to delete"
+                placeholderTextColor={colors.textSecondary}
+                value={deleteFarmIdInput}
+                onChangeText={setDeleteFarmIdInput}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.statusOverdue }]}
+              onPress={handleDeleteFarmFromServer}
+              disabled={isDeletingFarm}
+            >
+              {isDeletingFarm ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <ServerCrash color="#fff" size={16} />
+                  <Text style={styles.superAdminButtonText}>Delete Farm from Server</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.statusOverdue + '30' }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Force Actions</Text>
+
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.statusOverdue + 'CC' }]}
+              onPress={handleForceDeleteAllEquipment}
+            >
+              <Zap color="#fff" size={16} />
+              <Text style={styles.superAdminButtonText}>Force Delete All Equipment ({equipment.length})</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.accent }]}
+              onPress={handlePurgeAndResync}
+              disabled={isPurging}
+            >
+              {isPurging ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <AlertTriangle color="#fff" size={16} />
+                  <Text style={styles.superAdminButtonText}>Purge Local & Resync from Server</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Debug Info</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Farm ID: {farmId}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Device ID: {deviceId}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Equipment: {equipment.length}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Logs: {maintenanceLogs.length}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Consumables: {consumables.length}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Intervals: {intervals.length}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Service Routines: {serviceRoutines.length}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Inspection Routines: {inspectionRoutines.length}</Text>
+          </View>
+        </View>
+      )}
+
+      <TouchableOpacity style={styles.footer} onPress={handleFooterTap} activeOpacity={0.7}>
         <Text style={[styles.footerText, { color: colors.primary }]}>FarmGuard Maintenance</Text>
-      </View>
+        {isSuperAdmin && (
+          <Text style={[styles.footerSubtext, { color: colors.statusOverdue }]}>Super Admin Active</Text>
+        )}
+      </TouchableOpacity>
 
       <Modal
         visible={showColorPicker}
@@ -1188,6 +1397,60 @@ export default function SettingsScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={showSuperAdminPinModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSuperAdminPinModal(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Super Admin</Text>
+              <TouchableOpacity onPress={() => setShowSuperAdminPinModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              Enter your admin PIN to unlock advanced controls.
+            </Text>
+            
+            <View style={[
+              styles.joinInput, 
+              { backgroundColor: colors.background, borderColor: superAdminPinError ? colors.statusOverdue : colors.border }
+            ]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Enter PIN"
+                placeholderTextColor={colors.textSecondary}
+                value={superAdminPin}
+                onChangeText={(t) => { setSuperAdminPin(t); setSuperAdminPinError(''); }}
+                keyboardType="number-pad"
+                secureTextEntry
+                maxLength={10}
+              />
+            </View>
+
+            {superAdminPinError ? (
+              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>
+                {superAdminPinError}
+              </Text>
+            ) : null}
+            
+            <TouchableOpacity 
+              style={[styles.joinButton, { backgroundColor: colors.statusOverdue }]}
+              onPress={handleSuperAdminLogin}
+            >
+              <Text style={styles.joinButtonText}>Unlock</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
   );
 }
@@ -1287,6 +1550,45 @@ const styles = StyleSheet.create({
   footerSubtext: {
     fontSize: 12,
     marginTop: 4,
+  },
+  superAdminHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  superAdminCard: {
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    gap: 10,
+  },
+  superAdminLabel: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    textTransform: 'uppercase' as const,
+    letterSpacing: 0.5,
+  },
+  superAdminButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  superAdminButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  debugText: {
+    fontSize: 12,
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
   },
   colorPreview: {
     flexDirection: 'row',
