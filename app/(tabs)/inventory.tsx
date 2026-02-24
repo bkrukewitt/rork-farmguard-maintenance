@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Modal,
   Platform,
   Image,
+  RefreshControl,
 } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -35,7 +36,17 @@ import { generateCSVTemplate, exportConsumablesToCSV, exportConsumablesToHTML } 
 
 export default function InventoryScreen() {
   const router = useRouter();
-  const { consumables, equipment, isLoading, getLowStockConsumables } = useFarmData();
+  const { consumables, equipment, isLoading, getLowStockConsumables, refreshData } = useFarmData();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshData]);
   const { colors } = useTheme();
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -326,6 +337,14 @@ export default function InventoryScreen() {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={renderEmptyState}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
       />
 
       <TouchableOpacity

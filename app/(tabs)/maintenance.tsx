@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Modal,
   Pressable,
+  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -31,7 +32,17 @@ type FilterType = 'all' | 'routine' | 'repair' | 'inspection';
 
 export default function MaintenanceScreen() {
   const router = useRouter();
-  const { maintenanceLogs, equipment, isLoading } = useFarmData();
+  const { maintenanceLogs, equipment, isLoading, refreshData } = useFarmData();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshData]);
   const { colors } = useTheme();
   const [filterType, setFilterType] = useState<FilterType>('all');
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -188,6 +199,14 @@ export default function MaintenanceScreen() {
         )}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Wrench color={colors.textSecondary} size={64} />

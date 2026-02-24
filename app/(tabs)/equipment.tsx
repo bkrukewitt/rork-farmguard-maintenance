@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Alert,
   Modal,
   Platform,
+  RefreshControl,
 } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -60,7 +61,17 @@ const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string
 export default function EquipmentScreen() {
   const router = useRouter();
   const { showAddMenu: showAddMenuParam } = useLocalSearchParams<{ showAddMenu?: string }>();
-  const { equipment, intervals, isLoading } = useFarmData();
+  const { equipment, intervals, isLoading, refreshData } = useFarmData();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshData]);
   const { colors } = useTheme();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(showAddMenuParam === 'true');
@@ -261,6 +272,14 @@ export default function EquipmentScreen() {
         renderItem={renderEquipmentCard}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+            colors={[colors.primary]}
+          />
+        }
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Tractor color={colors.textSecondary} size={64} />

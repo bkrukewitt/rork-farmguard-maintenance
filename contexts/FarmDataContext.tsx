@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useEffect, useState, useRef } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
 import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine, WorkOrder, Employee } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 import { supabase } from '@/lib/supabase';
@@ -165,6 +166,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const skipAutoMergeRef = useRef(false);
   const initialMergeDoneRef = useRef(false);
+  const appStateRef = useRef<AppStateStatus>('active');
 
   useEffect(() => {
     getFarmId().then(setFarmId);
@@ -173,6 +175,22 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       if (name) setDisplayName(name);
     });
   }, []);
+
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('[AppState] App came to foreground, refreshing data...');
+        initialMergeDoneRef.current = false;
+        skipAutoMergeRef.current = false;
+        queryClient.invalidateQueries({ queryKey: ['remoteData'] });
+        queryClient.invalidateQueries({ queryKey: ['farmMembers'] });
+      }
+      appStateRef.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
+  }, [queryClient]);
 
   const memberRegistrationQuery = useQuery({
     queryKey: ['memberRegistration', farmId, deviceId],
@@ -269,7 +287,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       return (data || []) as FarmMember[];
     },
     enabled: !!farmId,
-    staleTime: 1000 * 60 * 5,
+    staleTime: 1000 * 60 * 1,
+    refetchOnMount: true,
   });
 
   const farmMembers = useMemo(() => farmMembersQuery.data ?? [], [farmMembersQuery.data]);
@@ -1682,6 +1701,33 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         queryClient.refetchQueries({ queryKey: ["remoteData"] }),
       ]);
       console.log("[Manual Sync] Manual sync completed");
+    },
+    refreshData: async () => {
+      console.log("[Refresh] Pull-to-refresh triggered...");
+      initialMergeDoneRef.current = false;
+      skipAutoMergeRef.current = false;
+      try {
+        await syncToServer({ skipMerge: false });
+        await Promise.all([
+          queryClient.refetchQueries({ queryKey: ["equipment"] }),
+          queryClient.refetchQueries({ queryKey: ["maintenanceLogs"] }),
+          queryClient.refetchQueries({ queryKey: ["consumables"] }),
+          queryClient.refetchQueries({ queryKey: ["intervals"] }),
+          queryClient.refetchQueries({ queryKey: ["serviceRoutines"] }),
+          queryClient.refetchQueries({ queryKey: ["inspectionRoutines"] }),
+          queryClient.refetchQueries({ queryKey: ["workOrders"] }),
+          queryClient.refetchQueries({ queryKey: ["employees"] }),
+          queryClient.refetchQueries({ queryKey: ["farmMembers"] }),
+          queryClient.refetchQueries({ queryKey: ["remoteData"] }),
+        ]);
+        console.log("[Refresh] Pull-to-refresh completed");
+      } catch (error) {
+        console.error("[Refresh] Pull-to-refresh failed:", error);
+      }
+    },
+    refreshFarmMembers: async () => {
+      console.log("[Refresh] Refreshing farm members...");
+      await queryClient.refetchQueries({ queryKey: ["farmMembers"] });
     },
   };
 });

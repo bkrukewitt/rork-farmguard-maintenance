@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  RefreshControl,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -24,7 +25,17 @@ import { getMaintenanceStatus, formatHours, formatDate } from '@/utils/helpers';
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, intervals, isLoading } = useFarmData();
+  const { equipment, maintenanceLogs, intervals, isLoading, refreshData } = useFarmData();
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await refreshData();
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refreshData]);
   const { colors } = useTheme();
 
   const stats = useMemo(() => {
@@ -93,7 +104,18 @@ export default function DashboardScreen() {
   }
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: colors.background }]} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: colors.background }]}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={colors.primary}
+          colors={[colors.primary]}
+        />
+      }
+    >
       <LinearGradient
         colors={[colors.primary, colors.primaryLight]}
         style={styles.header}
