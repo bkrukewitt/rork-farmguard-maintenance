@@ -10,6 +10,8 @@ import {
   Platform,
   Modal,
   Pressable,
+  KeyboardAvoidingView,
+  Keyboard,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { 
@@ -143,7 +145,17 @@ export default function AddWorkOrderScreen() {
         }}
       />
 
-      <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
+      >
+      <ScrollView
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Details</Text>
           
@@ -297,6 +309,7 @@ export default function AddWorkOrderScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
+      </KeyboardAvoidingView>
 
       <Modal visible={showEquipmentPicker} transparent animationType="slide">
         <Pressable style={styles.modalOverlay} onPress={() => setShowEquipmentPicker(false)}>

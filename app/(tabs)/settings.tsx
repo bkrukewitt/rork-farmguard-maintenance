@@ -13,6 +13,8 @@ import {
   TextInput,
   KeyboardAvoidingView,
   RefreshControl,
+  Keyboard,
+  Pressable,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
@@ -1177,6 +1179,7 @@ export default function SettingsScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowJoinFarmModal(false); }} />
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Join Existing Farm</Text>
@@ -1226,6 +1229,7 @@ export default function SettingsScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowEditFarmIdModal(false); }} />
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Edit Farm ID</Text>
@@ -1284,6 +1288,7 @@ export default function SettingsScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowDisplayNameModal(false); }} />
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Set Your Name</Text>
@@ -1431,6 +1436,7 @@ export default function SettingsScreen() {
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowSuperAdminPinModal(false); }} />
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: colors.text }]}>Super Admin</Text>
@@ -1627,6 +1633,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'flex-end',
+  },
+  modalOverlayDismiss: {
+    flex: 1,
   },
   modalContent: {
     borderTopLeftRadius: 24,

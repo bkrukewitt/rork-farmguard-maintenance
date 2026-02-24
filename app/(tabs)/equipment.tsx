@@ -13,6 +13,7 @@ import {
   Modal,
   Platform,
   RefreshControl,
+  Keyboard,
 } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -272,6 +273,9 @@ export default function EquipmentScreen() {
         renderItem={renderEquipmentCard}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={Keyboard.dismiss}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

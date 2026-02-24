@@ -13,6 +13,7 @@ import {
   Platform,
   Image,
   RefreshControl,
+  Keyboard,
 } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -337,6 +338,9 @@ export default function InventoryScreen() {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={renderEmptyState}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        onScrollBeginDrag={Keyboard.dismiss}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}

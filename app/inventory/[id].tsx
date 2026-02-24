@@ -217,10 +217,11 @@ export default function ConsumableDetailScreen() {
     return (
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
       >
         <Stack.Screen options={{ title: 'Edit Part' }} />
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <View style={styles.section}>
             <Text style={styles.inputLabel}>Part Photo</Text>
             {editImageUrl ? (

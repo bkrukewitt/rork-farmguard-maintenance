@@ -194,12 +194,15 @@ export default function EditEquipmentScreen() {
       <Stack.Screen options={{ title: `Edit ${equipment.name}` }} />
       <KeyboardAvoidingView 
         style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
       >
         <ScrollView 
           style={styles.scrollView}
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <View style={styles.section}>
           <Text style={styles.sectionTitle}>Equipment Photo</Text>
