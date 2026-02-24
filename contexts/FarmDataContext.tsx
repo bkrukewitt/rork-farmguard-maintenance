@@ -16,6 +16,7 @@ const STORAGE_KEYS = {
   INSPECTION_ROUTINES: 'farmguard_inspection_routines',
   WORK_ORDERS: 'farmguard_work_orders',
   EMPLOYEES: 'farmguard_employees',
+  DELETED_IDS: 'farmguard_deleted_ids',
   FARM_ID: 'farmguard_farm_id',
   DEVICE_ID: 'farmguard_device_id',
   IS_FARM_CREATOR: 'farmguard_is_farm_creator',
@@ -41,6 +42,7 @@ interface FarmDataPayload {
   inspectionRoutines: InspectionRoutine[];
   workOrders: WorkOrder[];
   employees: Employee[];
+  deletedIds?: string[];
 }
 
 export interface DuplicateItem {
@@ -65,6 +67,7 @@ const DEFAULT_PAYLOAD: FarmDataPayload = {
   inspectionRoutines: [],
   workOrders: [],
   employees: [],
+  deletedIds: [],
 };
 
 async function loadData<T>(key: string): Promise<T[]> {
@@ -150,6 +153,7 @@ async function fetchRemoteData(farmId: string): Promise<FarmDataPayload | null> 
       inspectionRoutines: (rd.inspectionRoutines as InspectionRoutine[]) || [],
       workOrders: (rd.workOrders as WorkOrder[]) || [],
       employees: (rd.employees as Employee[]) || [],
+      deletedIds: (rd.deletedIds as string[]) || [],
     };
   } catch (error) {
     console.error('Error fetching remote farm data:', error);
@@ -164,6 +168,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const deletedIdsRef = useRef<string[]>([]);
   const skipAutoMergeRef = useRef(false);
   const initialMergeDoneRef = useRef(false);
   const appStateRef = useRef<AppStateStatus>('active');
@@ -173,6 +178,12 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     getDeviceId().then(setDeviceId);
     AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME).then(name => {
       if (name) setDisplayName(name);
+    });
+    loadData<string>(STORAGE_KEYS.DELETED_IDS).then(ids => {
+      if (ids.length > 0) {
+        console.log(`[Init] Loaded ${ids.length} tombstoned IDs`);
+        deletedIdsRef.current = ids;
+      }
     });
   }, []);
 
@@ -191,6 +202,15 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
   }, [queryClient]);
+
+  const addTombstones = useCallback(async (ids: string[]) => {
+    const current = deletedIdsRef.current;
+    const updated = [...new Set([...current, ...ids])];
+    deletedIdsRef.current = updated;
+    await saveData(STORAGE_KEYS.DELETED_IDS, updated);
+    console.log(`[Tombstone] Added ${ids.length} IDs. Total tombstones: ${updated.length}`);
+    return updated;
+  }, []);
 
   const memberRegistrationQuery = useQuery({
     queryKey: ['memberRegistration', farmId, deviceId],
@@ -407,10 +427,15 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const workOrders = useMemo(() => workOrdersQuery.data ?? [], [workOrdersQuery.data]);
   const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
 
-  const mergeArraysSmart = useCallback(<T extends { id: string }>(local: T[], remoteArr: T[]): T[] => {
+  const mergeArraysSmart = useCallback(<T extends { id: string }>(local: T[], remoteArr: T[], tombstoneSet: Set<string>): T[] => {
     const map = new Map<string, T>();
-    local.forEach(item => map.set(item.id, item));
+    local.forEach(item => {
+      if (!tombstoneSet.has(item.id)) {
+        map.set(item.id, item);
+      }
+    });
     remoteArr.forEach(item => {
+      if (tombstoneSet.has(item.id)) return;
       const existing = map.get(item.id);
       if (!existing) {
         map.set(item.id, item);
@@ -430,6 +455,10 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     return Array.from(map.values());
   }, []);
 
+  const mergeDeletedIds = useCallback((localIds: string[], remoteIds: string[]): string[] => {
+    return [...new Set([...localIds, ...remoteIds])];
+  }, []);
+
   useEffect(() => {
     if (remoteDataQuery.data && farmId) {
       if (skipAutoMergeRef.current) {
@@ -444,6 +473,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       }
 
       const remote = remoteDataQuery.data;
+      const remoteDeletedIds = remote.deletedIds ?? [];
+      const combinedDeletedIds = mergeDeletedIds(deletedIdsRef.current, remoteDeletedIds);
+      const tombstoneSet = new Set(combinedDeletedIds);
 
       const hasRemoteData =
         remote.equipment.length > 0 ||
@@ -455,17 +487,19 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         remote.workOrders.length > 0 ||
         remote.employees.length > 0;
 
-      if (hasRemoteData) {
-        console.log('[AutoMerge] Initial remote data found, merging with local...');
+      if (hasRemoteData || remoteDeletedIds.length > 0) {
+        console.log('[AutoMerge] Initial remote data found, merging with local... Tombstones:', combinedDeletedIds.length);
 
-        const mergedEquipment = mergeArraysSmart(equipment, remote.equipment);
-        const mergedLogs = mergeArraysSmart(maintenanceLogs, remote.maintenanceLogs);
-        const mergedConsumables = mergeArraysSmart(consumables, remote.consumables);
-        const mergedIntervals = mergeArraysSmart(intervals, remote.intervals);
-        const mergedServiceRoutines = mergeArraysSmart(serviceRoutines, remote.serviceRoutines);
-        const mergedInspectionRoutines = mergeArraysSmart(inspectionRoutines, remote.inspectionRoutines);
-        const mergedWorkOrders = mergeArraysSmart(workOrders, remote.workOrders);
-        const mergedEmployees = mergeArraysSmart(employees, remote.employees);
+        const mergedEquipment = mergeArraysSmart(equipment, remote.equipment, tombstoneSet);
+        const mergedLogs = mergeArraysSmart(maintenanceLogs, remote.maintenanceLogs, tombstoneSet);
+        const mergedConsumables = mergeArraysSmart(consumables, remote.consumables, tombstoneSet);
+        const mergedIntervals = mergeArraysSmart(intervals, remote.intervals, tombstoneSet);
+        const mergedServiceRoutines = mergeArraysSmart(serviceRoutines, remote.serviceRoutines, tombstoneSet);
+        const mergedInspectionRoutines = mergeArraysSmart(inspectionRoutines, remote.inspectionRoutines, tombstoneSet);
+        const mergedWorkOrders = mergeArraysSmart(workOrders, remote.workOrders, tombstoneSet);
+        const mergedEmployees = mergeArraysSmart(employees, remote.employees, tombstoneSet);
+
+        deletedIdsRef.current = combinedDeletedIds;
 
         Promise.all([
           saveData(STORAGE_KEYS.EQUIPMENT, mergedEquipment),
@@ -476,6 +510,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           saveData(STORAGE_KEYS.INSPECTION_ROUTINES, mergedInspectionRoutines),
           saveData(STORAGE_KEYS.WORK_ORDERS, mergedWorkOrders),
           saveData(STORAGE_KEYS.EMPLOYEES, mergedEmployees),
+          saveData(STORAGE_KEYS.DELETED_IDS, combinedDeletedIds),
         ]).then(() => {
           queryClient.invalidateQueries({ queryKey: ['equipment'] });
           queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
@@ -511,6 +546,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       const currentInspectionRoutines = await loadData<InspectionRoutine>(STORAGE_KEYS.INSPECTION_ROUTINES);
       const currentWorkOrders = await loadData<WorkOrder>(STORAGE_KEYS.WORK_ORDERS);
       const currentEmployees = await loadData<Employee>(STORAGE_KEYS.EMPLOYEES);
+      const currentDeletedIds = await loadData<string>(STORAGE_KEYS.DELETED_IDS);
 
       let finalEquipment = currentEquipment;
       let finalLogs = currentLogs;
@@ -520,22 +556,31 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       let finalInspectionRoutines = currentInspectionRoutines;
       let finalWorkOrders = currentWorkOrders;
       let finalEmployees = currentEmployees;
+      let finalDeletedIds = currentDeletedIds;
 
       if (!shouldSkipMerge) {
         const remoteData = await fetchRemoteData(farmId);
         console.log('[Sync] Remote data fetched:', remoteData ? 'found' : 'none');
 
         if (remoteData) {
-          finalEquipment = mergeArraysSmart(currentEquipment, remoteData.equipment);
-          finalLogs = mergeArraysSmart(currentLogs, remoteData.maintenanceLogs);
-          finalIntervals = mergeArraysSmart(currentIntervals, remoteData.intervals);
-          finalConsumables = mergeArraysSmart(currentConsumables, remoteData.consumables);
-          finalServiceRoutines = mergeArraysSmart(currentServiceRoutines, remoteData.serviceRoutines);
-          finalInspectionRoutines = mergeArraysSmart(currentInspectionRoutines, remoteData.inspectionRoutines);
-          finalWorkOrders = mergeArraysSmart(currentWorkOrders, remoteData.workOrders);
-          finalEmployees = mergeArraysSmart(currentEmployees, remoteData.employees);
+          const remoteDeletedIds = remoteData.deletedIds ?? [];
+          finalDeletedIds = mergeDeletedIds(currentDeletedIds, remoteDeletedIds);
+          const tombstoneSet = new Set(finalDeletedIds);
+
+          console.log(`[Sync] Combined tombstones: ${finalDeletedIds.length} (local: ${currentDeletedIds.length}, remote: ${remoteDeletedIds.length})`);
+
+          finalEquipment = mergeArraysSmart(currentEquipment, remoteData.equipment, tombstoneSet);
+          finalLogs = mergeArraysSmart(currentLogs, remoteData.maintenanceLogs, tombstoneSet);
+          finalIntervals = mergeArraysSmart(currentIntervals, remoteData.intervals, tombstoneSet);
+          finalConsumables = mergeArraysSmart(currentConsumables, remoteData.consumables, tombstoneSet);
+          finalServiceRoutines = mergeArraysSmart(currentServiceRoutines, remoteData.serviceRoutines, tombstoneSet);
+          finalInspectionRoutines = mergeArraysSmart(currentInspectionRoutines, remoteData.inspectionRoutines, tombstoneSet);
+          finalWorkOrders = mergeArraysSmart(currentWorkOrders, remoteData.workOrders, tombstoneSet);
+          finalEmployees = mergeArraysSmart(currentEmployees, remoteData.employees, tombstoneSet);
 
           console.log('[Sync] Merged counts - Equipment:', finalEquipment.length, 'Logs:', finalLogs.length, 'Consumables:', finalConsumables.length);
+
+          deletedIdsRef.current = finalDeletedIds;
 
           await Promise.all([
             saveData(STORAGE_KEYS.EQUIPMENT, finalEquipment),
@@ -546,6 +591,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
             saveData(STORAGE_KEYS.INSPECTION_ROUTINES, finalInspectionRoutines),
             saveData(STORAGE_KEYS.WORK_ORDERS, finalWorkOrders),
             saveData(STORAGE_KEYS.EMPLOYEES, finalEmployees),
+            saveData(STORAGE_KEYS.DELETED_IDS, finalDeletedIds),
           ]);
         }
       } else {
@@ -565,6 +611,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
             inspectionRoutines: finalInspectionRoutines,
             workOrders: finalWorkOrders,
             employees: finalEmployees,
+            deletedIds: finalDeletedIds,
           },
           updated_at: new Date().toISOString(),
         });
@@ -591,7 +638,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     } finally {
       setIsSyncing(false);
     }
-  }, [farmId, mergeArraysSmart, queryClient]);
+  }, [farmId, mergeArraysSmart, mergeDeletedIds, queryClient]);
 
   const addEquipmentMutation = useMutation({
     mutationFn: async (newEquipment: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -631,13 +678,19 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const deleteEquipmentMutation = useMutation({
     mutationFn: async (id: string) => {
       console.log(`[Delete] Deleting equipment: ${id}`);
+      const relatedLogIds = maintenanceLogs.filter(l => l.equipmentId === id).map(l => l.id);
+      const relatedIntervalIds = intervals.filter(i => i.equipmentId === id).map(i => i.id);
+      const allTombstoneIds = [id, ...relatedLogIds, ...relatedIntervalIds];
+
+      await addTombstones(allTombstoneIds);
+
       const updated = equipment.filter(e => e.id !== id);
       await saveData(STORAGE_KEYS.EQUIPMENT, updated);
       const updatedLogs = maintenanceLogs.filter(l => l.equipmentId !== id);
       await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updatedLogs);
       const updatedIntervals = intervals.filter(i => i.equipmentId !== id);
       await saveData(STORAGE_KEYS.INTERVALS, updatedIntervals);
-      console.log(`[Delete] Equipment deleted. Remaining: ${updated.length}`);
+      console.log(`[Delete] Equipment deleted with ${allTombstoneIds.length} tombstones. Remaining: ${updated.length}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['equipment'] });
@@ -711,6 +764,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const deleteMaintenanceLogMutation = useMutation({
     mutationFn: async (id: string) => {
+      await addTombstones([id]);
       const updated = maintenanceLogs.filter(l => l.id !== id);
       await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
     },
@@ -804,6 +858,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const deleteConsumableMutation = useMutation({
     mutationFn: async (id: string) => {
+      await addTombstones([id]);
       const updated = consumables.filter(c => c.id !== id);
       await saveData(STORAGE_KEYS.CONSUMABLES, updated);
     },
@@ -924,6 +979,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const deleteServiceRoutineMutation = useMutation({
     mutationFn: async (id: string) => {
+      await addTombstones([id]);
       const updated = serviceRoutines.filter(r => r.id !== id);
       await saveData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
     },
@@ -975,6 +1031,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const deleteInspectionRoutineMutation = useMutation({
     mutationFn: async (id: string) => {
+      await addTombstones([id]);
       const updated = inspectionRoutines.filter(r => r.id !== id);
       await saveData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
     },
@@ -1026,6 +1083,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const deleteWorkOrderMutation = useMutation({
     mutationFn: async (id: string) => {
+      await addTombstones([id]);
       const updated = workOrders.filter(w => w.id !== id);
       await saveData(STORAGE_KEYS.WORK_ORDERS, updated);
     },
@@ -1077,6 +1135,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const deleteEmployeeMutation = useMutation({
     mutationFn: async (id: string) => {
+      await addTombstones([id]);
       const updated = employees.filter(e => e.id !== id);
       await saveData(STORAGE_KEYS.EMPLOYEES, updated);
     },
@@ -1186,6 +1245,10 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     let mergedWorkOrders = [...workOrders];
     let mergedEmployees = [...employees];
 
+    const remoteDeletedIds = remoteData.deletedIds ?? [];
+    const combinedDeletedIds = mergeDeletedIds(deletedIdsRef.current, remoteDeletedIds);
+    deletedIdsRef.current = combinedDeletedIds;
+
     const equipmentResolutions = resolutions.filter(r => r.type === 'equipment');
     const consumableResolutions = resolutions.filter(r => r.type === 'consumable');
     const serviceResolutions = resolutions.filter(r => r.type === 'serviceRoutine');
@@ -1279,6 +1342,16 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       }
     });
 
+    const tombstoneSet = new Set(combinedDeletedIds);
+    mergedEquipment = mergedEquipment.filter(e => !tombstoneSet.has(e.id));
+    mergedConsumables = mergedConsumables.filter(c => !tombstoneSet.has(c.id));
+    mergedServiceRoutines = mergedServiceRoutines.filter(s => !tombstoneSet.has(s.id));
+    mergedInspectionRoutines = mergedInspectionRoutines.filter(i => !tombstoneSet.has(i.id));
+    mergedLogs = mergedLogs.filter(l => !tombstoneSet.has(l.id));
+    mergedIntervals = mergedIntervals.filter(i => !tombstoneSet.has(i.id));
+    mergedWorkOrders = mergedWorkOrders.filter(w => !tombstoneSet.has(w.id));
+    mergedEmployees = mergedEmployees.filter(e => !tombstoneSet.has(e.id));
+
     await Promise.all([
       saveData(STORAGE_KEYS.EQUIPMENT, mergedEquipment),
       saveData(STORAGE_KEYS.CONSUMABLES, mergedConsumables),
@@ -1288,6 +1361,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       saveData(STORAGE_KEYS.INTERVALS, mergedIntervals),
       saveData(STORAGE_KEYS.WORK_ORDERS, mergedWorkOrders),
       saveData(STORAGE_KEYS.EMPLOYEES, mergedEmployees),
+      saveData(STORAGE_KEYS.DELETED_IDS, combinedDeletedIds),
     ]);
 
     await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
@@ -1325,6 +1399,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           inspectionRoutines: mergedInspectionRoutines,
           workOrders: mergedWorkOrders,
           employees: mergedEmployees,
+          deletedIds: combinedDeletedIds,
         },
         updated_at: new Date().toISOString(),
       });
@@ -1342,7 +1417,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     queryClient.invalidateQueries({ queryKey: ['memberRegistration'] });
 
     console.log('[DuplicateResolution] Data merged, saved locally, and pushed to server');
-  }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, workOrders, employees, deviceId, queryClient]);
+  }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, workOrders, employees, deviceId, queryClient, mergeDeletedIds]);
 
   const updateFarmIdMutation = useMutation({
     mutationFn: async (newFarmId: string) => {
@@ -1528,6 +1603,11 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const forceDeleteEquipmentMutation = useMutation({
     mutationFn: async (ids: string[]) => {
       console.log(`[SuperAdmin] Force deleting ${ids.length} equipment items`);
+      const relatedLogIds = maintenanceLogs.filter(l => ids.includes(l.equipmentId)).map(l => l.id);
+      const relatedIntervalIds = intervals.filter(i => ids.includes(i.equipmentId)).map(i => i.id);
+      const allTombstoneIds = [...ids, ...relatedLogIds, ...relatedIntervalIds];
+      await addTombstones(allTombstoneIds);
+
       const updatedEquip = equipment.filter(e => !ids.includes(e.id));
       const updatedLogs = maintenanceLogs.filter(l => !ids.includes(l.equipmentId));
       const updatedIntervals = intervals.filter(i => !ids.includes(i.equipmentId));
@@ -1549,6 +1629,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const forceDeleteConsumableMutation = useMutation({
     mutationFn: async (ids: string[]) => {
       console.log(`[SuperAdmin] Force deleting ${ids.length} consumables`);
+      await addTombstones(ids);
       const updated = consumables.filter(c => !ids.includes(c.id));
       await saveData(STORAGE_KEYS.CONSUMABLES, updated);
       console.log(`[SuperAdmin] Force deleted. Remaining consumables: ${updated.length}`);
@@ -1571,10 +1652,14 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         AsyncStorage.removeItem(STORAGE_KEYS.INSPECTION_ROUTINES),
         AsyncStorage.removeItem(STORAGE_KEYS.WORK_ORDERS),
         AsyncStorage.removeItem(STORAGE_KEYS.EMPLOYEES),
+        AsyncStorage.removeItem(STORAGE_KEYS.DELETED_IDS),
       ]);
 
       const remote = await fetchRemoteData(farmId);
       if (remote) {
+        const remoteDeletedIds = remote.deletedIds ?? [];
+        deletedIdsRef.current = remoteDeletedIds;
+
         await Promise.all([
           saveData(STORAGE_KEYS.EQUIPMENT, remote.equipment),
           saveData(STORAGE_KEYS.MAINTENANCE_LOGS, remote.maintenanceLogs),
@@ -1584,9 +1669,11 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           saveData(STORAGE_KEYS.INSPECTION_ROUTINES, remote.inspectionRoutines),
           saveData(STORAGE_KEYS.WORK_ORDERS, remote.workOrders),
           saveData(STORAGE_KEYS.EMPLOYEES, remote.employees),
+          saveData(STORAGE_KEYS.DELETED_IDS, remoteDeletedIds),
         ]);
         console.log('[SuperAdmin] Local data replaced with server data');
       } else {
+        deletedIdsRef.current = [];
         console.log('[SuperAdmin] No remote data found, local data cleared');
       }
 
