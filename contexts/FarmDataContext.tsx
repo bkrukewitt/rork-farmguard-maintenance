@@ -138,7 +138,7 @@ async function fetchRemoteData(farmId: string): Promise<FarmDataPayload | null> 
       .maybeSingle();
 
     if (error) {
-      console.error('Error fetching remote farm data:', error);
+      console.error('Error fetching remote farm data:', JSON.stringify(error));
       return null;
     }
     if (!data?.data) return null;
@@ -156,7 +156,7 @@ async function fetchRemoteData(farmId: string): Promise<FarmDataPayload | null> 
       deletedIds: (rd.deletedIds as string[]) || [],
     };
   } catch (error) {
-    console.error('Error fetching remote farm data:', error);
+    console.error('Error fetching remote farm data:', JSON.stringify(error));
     return null;
   }
 }
@@ -301,7 +301,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         .order('joined_at', { ascending: true });
 
       if (error) {
-        console.error('[Supabase] Error fetching farm members:', error);
+        console.error('[Supabase] Error fetching farm members:', JSON.stringify(error));
         return [];
       }
       return (data || []) as FarmMember[];
@@ -633,7 +633,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       setLastSyncTime(new Date().toISOString());
       console.log('[Sync] Sync completed successfully');
     } catch (error) {
-      console.error('[Sync] Failed to sync data to Supabase:', error);
+      console.error('[Sync] Failed to sync data to Supabase:', JSON.stringify(error));
       throw error;
     } finally {
       setIsSyncing(false);
@@ -1172,7 +1172,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         remoteData = result;
       }
     } catch (fetchError) {
-      console.error('Error fetching remote farm data:', fetchError);
+      console.error('Error fetching remote farm data:', JSON.stringify(fetchError));
       throw fetchError;
     }
 
@@ -1233,7 +1233,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         remoteData = result;
       }
     } catch (fetchError) {
-      console.error('Error fetching remote farm data for apply:', fetchError);
+      console.error('Error fetching remote farm data for apply:', JSON.stringify(fetchError));
     }
 
     let mergedEquipment = [...equipment];
@@ -1809,7 +1809,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         ]);
         console.log("[Refresh] Pull-to-refresh completed");
       } catch (error) {
-        console.error("[Refresh] Pull-to-refresh failed:", error);
+        console.error("[Refresh] Pull-to-refresh failed:", JSON.stringify(error));
       }
     },
     refreshFarmMembers: async () => {
