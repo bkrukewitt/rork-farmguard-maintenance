@@ -49,7 +49,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
-import { useFarmData, DuplicateItem, FarmMember } from '@/contexts/FarmDataContext';
+import { useFarmData, DuplicateItem, FarmMember, fetchFarmPasswordForId } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Equipment, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
 import { User } from 'lucide-react-native';
@@ -88,6 +88,9 @@ export default function SettingsScreen() {
     purgeAndResync,
     isPurging,
     refreshData,
+    joinPassword,
+    setFarmPassword,
+    isSettingFarmPassword,
   } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -124,6 +127,14 @@ export default function SettingsScreen() {
   const [deleteFarmIdInput, setDeleteFarmIdInput] = useState('');
   const footerTapCountRef = useRef(0);
   const footerTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [joinStep, setJoinStep] = useState<'farm_id' | 'password'>('farm_id');
+  const [joinPasswordInput, setJoinPasswordInput] = useState('');
+  const [joinPasswordError, setJoinPasswordError] = useState('');
+  const [pendingFarmPassword, setPendingFarmPassword] = useState<string | null>(null);
+  const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
+  const [newJoinPassword, setNewJoinPassword] = useState('');
+  const [newJoinPasswordConfirm, setNewJoinPasswordConfirm] = useState('');
+  const [joinPasswordSetError, setJoinPasswordSetError] = useState('');
 
   const SUPER_ADMIN_PIN = '9173';
 
@@ -457,21 +468,18 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleJoinFarm = async () => {
-    if (!joinFarmId.trim()) {
-      Alert.alert('Error', 'Please enter a Farm ID');
-      return;
-    }
-
+  const proceedWithJoin = useCallback(async (targetFarmId: string) => {
     setIsCheckingDuplicates(true);
     try {
-      const result = await checkForDuplicatesOnJoin(joinFarmId.trim());
-      
+      const result = await checkForDuplicatesOnJoin(targetFarmId);
+
       if (result.duplicates.length > 0) {
         setDuplicates(result.duplicates.map(d => ({ ...d, resolution: 'keep_both' as const })));
-        setPendingJoinFarmId(joinFarmId.trim());
+        setPendingJoinFarmId(targetFarmId);
         setShowJoinFarmModal(false);
         setJoinFarmId('');
+        setJoinStep('farm_id');
+        setJoinPasswordInput('');
         setShowDuplicateModal(true);
       } else if (result.hasLocalData && result.hasRemoteData) {
         Alert.alert(
@@ -482,18 +490,22 @@ export default function SettingsScreen() {
             {
               text: 'Join',
               onPress: async () => {
-                await applyDuplicateResolutions(joinFarmId.trim(), []);
+                await applyDuplicateResolutions(targetFarmId, []);
                 setShowJoinFarmModal(false);
                 setJoinFarmId('');
+                setJoinStep('farm_id');
+                setJoinPasswordInput('');
                 Alert.alert('Success', 'You have joined the farm! Data has been merged.');
               },
             },
           ]
         );
       } else {
-        await applyDuplicateResolutions(joinFarmId.trim(), []);
+        await applyDuplicateResolutions(targetFarmId, []);
         setShowJoinFarmModal(false);
         setJoinFarmId('');
+        setJoinStep('farm_id');
+        setJoinPasswordInput('');
         Alert.alert('Success', 'You have joined the farm! Data will sync automatically.');
       }
     } catch (error) {
@@ -502,6 +514,92 @@ export default function SettingsScreen() {
     } finally {
       setIsCheckingDuplicates(false);
     }
+  }, [checkForDuplicatesOnJoin, applyDuplicateResolutions]);
+
+  const handleJoinFarm = async () => {
+    if (!joinFarmId.trim()) {
+      Alert.alert('Error', 'Please enter a Farm ID');
+      return;
+    }
+
+    if (joinStep === 'farm_id') {
+      setIsCheckingDuplicates(true);
+      try {
+        const password = await fetchFarmPasswordForId(joinFarmId.trim());
+        setPendingFarmPassword(password);
+        if (password) {
+          setJoinStep('password');
+          setJoinPasswordInput('');
+          setJoinPasswordError('');
+        } else {
+          await proceedWithJoin(joinFarmId.trim());
+        }
+      } catch (error) {
+        console.error('Error checking farm password:', error);
+        Alert.alert('Error', 'Could not reach that Farm ID. Please check it and try again.');
+      } finally {
+        setIsCheckingDuplicates(false);
+      }
+    } else {
+      if (!joinPasswordInput.trim()) {
+        setJoinPasswordError('Please enter the farm password.');
+        return;
+      }
+      if (joinPasswordInput.trim() !== pendingFarmPassword) {
+        setJoinPasswordError('Incorrect password. Please try again.');
+        return;
+      }
+      setJoinPasswordError('');
+      await proceedWithJoin(joinFarmId.trim());
+    }
+  };
+
+  const handleSaveJoinPassword = async () => {
+    const trimmed = newJoinPassword.trim();
+    if (!trimmed) {
+      setJoinPasswordSetError('Password cannot be empty.');
+      return;
+    }
+    if (trimmed !== newJoinPasswordConfirm.trim()) {
+      setJoinPasswordSetError('Passwords do not match.');
+      return;
+    }
+    try {
+      await setFarmPassword(trimmed);
+      setShowSetPasswordModal(false);
+      setNewJoinPassword('');
+      setNewJoinPasswordConfirm('');
+      setJoinPasswordSetError('');
+      Alert.alert('Password Set', 'Anyone joining your farm will now need this password.');
+    } catch (error) {
+      console.error('Error setting join password:', error);
+      const msg = error instanceof Error ? error.message : 'Failed to set password.';
+      setJoinPasswordSetError(msg);
+    }
+  };
+
+  const handleRemoveJoinPassword = () => {
+    Alert.alert(
+      'Remove Password',
+      'Are you sure? Anyone with your Farm ID will be able to join without a password.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await setFarmPassword(null);
+              setShowSetPasswordModal(false);
+              Alert.alert('Password Removed', 'Your farm no longer requires a password to join.');
+            } catch (error) {
+              console.error('Error removing join password:', error);
+              Alert.alert('Error', 'Failed to remove password. Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleDuplicateResolution = (index: number, resolution: 'keep_local' | 'keep_remote' | 'keep_both') => {
@@ -733,6 +831,29 @@ export default function SettingsScreen() {
               <Shield color={colors.statusOk} size={14} />
               <Text style={[styles.adminIndicatorText, { color: colors.statusOk }]}>You are the farm admin</Text>
             </View>
+          )}
+
+          {isAdmin && (
+            <TouchableOpacity
+              style={[styles.displayNameRow, { backgroundColor: colors.background }]}
+              onPress={() => {
+                setNewJoinPassword('');
+                setNewJoinPasswordConfirm('');
+                setJoinPasswordSetError('');
+                setShowSetPasswordModal(true);
+              }}
+            >
+              <View style={[styles.displayNameIcon, { backgroundColor: joinPassword ? colors.statusOverdue + '18' : colors.textSecondary + '15' }]}>
+                <Lock color={joinPassword ? colors.statusOverdue : colors.textSecondary} size={18} />
+              </View>
+              <View style={styles.displayNameInfo}>
+                <Text style={[styles.displayNameLabel, { color: colors.textSecondary }]}>Join Password</Text>
+                <Text style={[styles.displayNameValue, { color: joinPassword ? colors.statusOverdue : colors.textSecondary }]}>
+                  {joinPassword ? 'Password protected' : 'No password — anyone can join'}
+                </Text>
+              </View>
+              <ChevronRight color={colors.textSecondary} size={16} />
+            </TouchableOpacity>
           )}
 
           <TouchableOpacity
@@ -1173,36 +1294,75 @@ export default function SettingsScreen() {
         visible={showJoinFarmModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowJoinFarmModal(false)}
+        onRequestClose={() => { setShowJoinFarmModal(false); setJoinStep('farm_id'); setJoinPasswordInput(''); setJoinPasswordError(''); }}
       >
         <KeyboardAvoidingView 
           style={styles.modalOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowJoinFarmModal(false); }} />
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowJoinFarmModal(false); setJoinStep('farm_id'); setJoinPasswordInput(''); setJoinPasswordError(''); }} />
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Join Existing Farm</Text>
-              <TouchableOpacity onPress={() => setShowJoinFarmModal(false)}>
+              <View style={styles.modalTitleRow}>
+                {joinStep === 'password' && (
+                  <TouchableOpacity onPress={() => { setJoinStep('farm_id'); setJoinPasswordInput(''); setJoinPasswordError(''); }} style={styles.backButton}>
+                    <ChevronRight color={colors.textSecondary} size={20} style={{ transform: [{ rotate: '180deg' }] }} />
+                  </TouchableOpacity>
+                )}
+                <Text style={[styles.modalTitle, { color: colors.text }]}>
+                  {joinStep === 'farm_id' ? 'Join Existing Farm' : 'Farm Password Required'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => { setShowJoinFarmModal(false); setJoinStep('farm_id'); setJoinPasswordInput(''); setJoinPasswordError(''); }}>
                 <X color={colors.textSecondary} size={24} />
               </TouchableOpacity>
             </View>
-            
-            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
-              Enter the Farm ID shared by another team member to sync data across devices.
-            </Text>
-            
-            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <TextInput
-                style={[styles.joinInputText, { color: colors.text }]}
-                placeholder="Enter Farm ID"
-                placeholderTextColor={colors.textSecondary}
-                value={joinFarmId}
-                onChangeText={setJoinFarmId}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
+
+            {joinStep === 'farm_id' ? (
+              <>
+                <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+                  Enter the Farm ID shared by another team member to sync data across devices.
+                </Text>
+                <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <TextInput
+                    style={[styles.joinInputText, { color: colors.text }]}
+                    placeholder="Enter Farm ID"
+                    placeholderTextColor={colors.textSecondary}
+                    value={joinFarmId}
+                    onChangeText={setJoinFarmId}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </>
+            ) : (
+              <>
+                <View style={[styles.passwordProtectedBanner, { backgroundColor: colors.statusOverdue + '12', borderColor: colors.statusOverdue + '30' }]}>
+                  <Lock color={colors.statusOverdue} size={16} />
+                  <Text style={[styles.passwordProtectedText, { color: colors.statusOverdue }]}>
+                    This farm requires a password to join.
+                  </Text>
+                </View>
+                <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+                  Ask your farm admin for the join password.
+                </Text>
+                <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: joinPasswordError ? colors.statusOverdue : colors.border }]}>
+                  <TextInput
+                    style={[styles.joinInputText, { color: colors.text }]}
+                    placeholder="Enter join password"
+                    placeholderTextColor={colors.textSecondary}
+                    value={joinPasswordInput}
+                    onChangeText={(t) => { setJoinPasswordInput(t); setJoinPasswordError(''); }}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    secureTextEntry
+                  />
+                </View>
+                {joinPasswordError ? (
+                  <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>{joinPasswordError}</Text>
+                ) : null}
+              </>
+            )}
             
             <TouchableOpacity 
               style={[styles.joinButton, { backgroundColor: colors.primary }]}
@@ -1212,9 +1372,98 @@ export default function SettingsScreen() {
               {isCheckingDuplicates ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.joinButtonText}>Join Farm</Text>
+                <Text style={styles.joinButtonText}>
+                  {joinStep === 'farm_id' ? 'Continue' : 'Join Farm'}
+                </Text>
               )}
             </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showSetPasswordModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSetPasswordModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowSetPasswordModal(false); }} />
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Join Password</Text>
+              <TouchableOpacity onPress={() => setShowSetPasswordModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              {joinPassword
+                ? 'Your farm is password protected. Update or remove the password below.'
+                : 'Set a password that members must enter before joining your farm.'}
+            </Text>
+
+            {joinPassword && (
+              <View style={[styles.passwordProtectedBanner, { backgroundColor: colors.statusOk + '12', borderColor: colors.statusOk + '30' }]}>
+                <Lock color={colors.statusOk} size={14} />
+                <Text style={[styles.passwordProtectedText, { color: colors.statusOk }]}>Currently password protected</Text>
+              </View>
+            )}
+
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: joinPasswordSetError ? colors.statusOverdue : colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder={joinPassword ? 'New password' : 'Set a password'}
+                placeholderTextColor={colors.textSecondary}
+                value={newJoinPassword}
+                onChangeText={(t) => { setNewJoinPassword(t); setJoinPasswordSetError(''); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+            </View>
+
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: joinPasswordSetError ? colors.statusOverdue : colors.border, marginTop: 8 }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Confirm password"
+                placeholderTextColor={colors.textSecondary}
+                value={newJoinPasswordConfirm}
+                onChangeText={(t) => { setNewJoinPasswordConfirm(t); setJoinPasswordSetError(''); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+            </View>
+
+            {joinPasswordSetError ? (
+              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>{joinPasswordSetError}</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.joinButton, { backgroundColor: colors.primary, opacity: isSettingFarmPassword ? 0.7 : 1 }]}
+              onPress={handleSaveJoinPassword}
+              disabled={isSettingFarmPassword}
+            >
+              {isSettingFarmPassword ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.joinButtonText}>{joinPassword ? 'Update Password' : 'Set Password'}</Text>
+              )}
+            </TouchableOpacity>
+
+            {joinPassword && (
+              <TouchableOpacity
+                style={[styles.removePasswordButton, { borderColor: colors.statusOverdue + '50' }]}
+                onPress={handleRemoveJoinPassword}
+                disabled={isSettingFarmPassword}
+              >
+                <Text style={[styles.removePasswordText, { color: colors.statusOverdue }]}>Remove Password</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -1957,5 +2206,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
+  },
+  modalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    flex: 1,
+  },
+  backButton: {
+    padding: 2,
+  },
+  passwordProtectedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  passwordProtectedText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    flex: 1,
+  },
+  removePasswordButton: {
+    marginTop: 10,
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+  },
+  removePasswordText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
   },
 });

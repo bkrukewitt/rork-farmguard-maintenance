@@ -21,6 +21,7 @@ const STORAGE_KEYS = {
   DEVICE_ID: 'farmguard_device_id',
   IS_FARM_CREATOR: 'farmguard_is_farm_creator',
   DISPLAY_NAME: 'farmguard_display_name',
+  FARM_PASSWORD: 'farmguard_farm_password',
 };
 
 export interface FarmMember {
@@ -43,6 +44,7 @@ interface FarmDataPayload {
   workOrders: WorkOrder[];
   employees: Employee[];
   deletedIds?: string[];
+  joinPassword?: string | null;
 }
 
 export interface DuplicateItem {
@@ -129,6 +131,21 @@ async function getDeviceId(): Promise<string> {
   }
 }
 
+export async function fetchFarmPasswordForId(targetFarmId: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .from('farm_data')
+      .select('data')
+      .eq('farm_id', targetFarmId)
+      .maybeSingle();
+    if (error || !data?.data) return null;
+    const rd = data.data as Record<string, unknown>;
+    return (rd._joinPassword as string) || null;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchRemoteData(farmId: string): Promise<FarmDataPayload | null> {
   try {
     const { data, error } = await supabase
@@ -154,6 +171,7 @@ async function fetchRemoteData(farmId: string): Promise<FarmDataPayload | null> 
       workOrders: (rd.workOrders as WorkOrder[]) || [],
       employees: (rd.employees as Employee[]) || [],
       deletedIds: (rd.deletedIds as string[]) || [],
+      joinPassword: (rd._joinPassword as string) || null,
     };
   } catch (error) {
     console.error('Error fetching remote farm data:', JSON.stringify(error));
@@ -168,6 +186,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [joinPassword, setJoinPassword] = useState<string | null>(null);
   const deletedIdsRef = useRef<string[]>([]);
   const skipAutoMergeRef = useRef(false);
   const initialMergeDoneRef = useRef(false);
@@ -178,6 +197,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     getDeviceId().then(setDeviceId);
     AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME).then(name => {
       if (name) setDisplayName(name);
+    });
+    AsyncStorage.getItem(STORAGE_KEYS.FARM_PASSWORD).then(pw => {
+      if (pw) setJoinPassword(pw);
     });
     loadData<string>(STORAGE_KEYS.DELETED_IDS).then(ids => {
       if (ids.length > 0) {
@@ -612,6 +634,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
             workOrders: finalWorkOrders,
             employees: finalEmployees,
             deletedIds: finalDeletedIds,
+            _joinPassword: joinPassword || null,
           },
           updated_at: new Date().toISOString(),
         });
@@ -1516,6 +1539,44 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
   });
 
+  const setJoinPasswordMutation = useMutation({
+    mutationFn: async (password: string | null) => {
+      if (!isAdmin) throw new Error('Only the farm admin can set a join password.');
+      const trimmed = password ? password.trim() : null;
+      if (trimmed) {
+        await AsyncStorage.setItem(STORAGE_KEYS.FARM_PASSWORD, trimmed);
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEYS.FARM_PASSWORD);
+      }
+      setJoinPassword(trimmed);
+
+      const { data: existing } = await supabase
+        .from('farm_data')
+        .select('data')
+        .eq('farm_id', farmId)
+        .maybeSingle();
+
+      const existingData = (existing?.data as Record<string, unknown>) || {};
+
+      const { error } = await supabase.from('farm_data').upsert({
+        farm_id: farmId,
+        data: {
+          ...existingData,
+          _joinPassword: trimmed || null,
+        },
+        updated_at: new Date().toISOString(),
+      });
+
+      if (error) {
+        console.error('[Farm] Error setting join password:', JSON.stringify(error));
+        throw new Error('Failed to update join password on server.');
+      }
+
+      console.log(`[Farm] Join password ${trimmed ? 'set' : 'removed'}`);
+      return trimmed;
+    },
+  });
+
   const updateDisplayNameMutation = useMutation({
     mutationFn: async (name: string) => {
       const trimmed = name.trim();
@@ -1718,6 +1779,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     forceDeleteConsumables: forceDeleteConsumableMutation.mutateAsync,
     purgeAndResync: purgeAndResyncMutation.mutateAsync,
     isPurging: purgeAndResyncMutation.isPending,
+    joinPassword,
+    setFarmPassword: setJoinPasswordMutation.mutateAsync,
+    isSettingFarmPassword: setJoinPasswordMutation.isPending,
     updateFarmId: updateFarmIdMutation.mutateAsync,
     isUpdatingFarmId: updateFarmIdMutation.isPending,
     displayName,
