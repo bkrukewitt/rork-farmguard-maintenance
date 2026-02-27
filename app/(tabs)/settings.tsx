@@ -121,6 +121,7 @@ export default function SettingsScreen() {
   const [showDisplayNameModal, setShowDisplayNameModal] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isDebugMode, setIsDebugMode] = useState(false);
   const [showSuperAdminPinModal, setShowSuperAdminPinModal] = useState(false);
   const [superAdminPin, setSuperAdminPin] = useState('');
   const [superAdminPinError, setSuperAdminPinError] = useState('');
@@ -137,14 +138,16 @@ export default function SettingsScreen() {
   const [joinPasswordSetError, setJoinPasswordSetError] = useState('');
 
   const SUPER_ADMIN_PIN = '9173';
+  const DEBUG_PIN = '1847';
 
   const handleFooterTap = useCallback(() => {
     footerTapCountRef.current += 1;
     if (footerTapTimerRef.current) clearTimeout(footerTapTimerRef.current);
     if (footerTapCountRef.current >= 5) {
       footerTapCountRef.current = 0;
-      if (isSuperAdmin) {
+      if (isSuperAdmin || isDebugMode) {
         setIsSuperAdmin(false);
+        setIsDebugMode(false);
       } else {
         setSuperAdminPin('');
         setSuperAdminPinError('');
@@ -155,11 +158,18 @@ export default function SettingsScreen() {
         footerTapCountRef.current = 0;
       }, 2000);
     }
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, isDebugMode]);
 
   const handleSuperAdminLogin = useCallback(() => {
     if (superAdminPin === SUPER_ADMIN_PIN) {
       setIsSuperAdmin(true);
+      setIsDebugMode(false);
+      setShowSuperAdminPinModal(false);
+      setSuperAdminPin('');
+      setSuperAdminPinError('');
+    } else if (superAdminPin === DEBUG_PIN) {
+      setIsDebugMode(true);
+      setIsSuperAdmin(false);
       setShowSuperAdminPinModal(false);
       setSuperAdminPin('');
       setSuperAdminPinError('');
@@ -1161,6 +1171,58 @@ export default function SettingsScreen() {
 
       </View>
 
+      {isDebugMode && !isSuperAdmin && (
+        <View style={styles.section}>
+          <View style={[styles.superAdminHeader, { backgroundColor: colors.accent + '15' }]}>
+            <Database color={colors.accent} size={16} />
+            <Text style={[styles.sectionTitle, { color: colors.accent, marginBottom: 0 }]}>Debug Info</Text>
+          </View>
+
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Device & Farm</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Farm ID: {farmId}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Device ID: {deviceId}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Display Name: {displayName || '(none)'}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Member Count: {memberCount}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Last Sync: {lastSyncTime ? new Date(lastSyncTime).toLocaleString() : 'Never'}</Text>
+          </View>
+
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Data Counts</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Equipment: {equipment.length}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Maintenance Logs: {maintenanceLogs.length}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Consumables: {consumables.length}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Intervals: {intervals.length}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Service Routines: {serviceRoutines.length}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Inspection Routines: {inspectionRoutines.length}</Text>
+          </View>
+
+          <TouchableOpacity
+            style={[styles.superAdminButton, { backgroundColor: colors.accent, marginHorizontal: 16, marginBottom: 8 }]}
+            onPress={() => {
+              const info = [
+                `Farm ID: ${farmId}`,
+                `Device ID: ${deviceId}`,
+                `Display Name: ${displayName || '(none)'}`,
+                `Member Count: ${memberCount}`,
+                `Last Sync: ${lastSyncTime ? new Date(lastSyncTime).toLocaleString() : 'Never'}`,
+                `Equipment: ${equipment.length}`,
+                `Maintenance Logs: ${maintenanceLogs.length}`,
+                `Consumables: ${consumables.length}`,
+                `Intervals: ${intervals.length}`,
+                `Service Routines: ${serviceRoutines.length}`,
+                `Inspection Routines: ${inspectionRoutines.length}`,
+              ].join('\n');
+              Clipboard.setStringAsync(info);
+              Alert.alert('Copied', 'Debug info copied to clipboard. Send it to support.');
+            }}
+          >
+            <Copy color="#fff" size={16} />
+            <Text style={styles.superAdminButtonText}>Copy Debug Info</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {isSuperAdmin && (
         <View style={styles.section}>
           <View style={[styles.superAdminHeader, { backgroundColor: colors.statusOverdue + '12' }]}>
@@ -1228,12 +1290,38 @@ export default function SettingsScreen() {
             <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Debug Info</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Farm ID: {farmId}</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Device ID: {deviceId}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Display Name: {displayName || '(none)'}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Member Count: {memberCount}</Text>
+            <Text style={[styles.debugText, { color: colors.text }]}>Last Sync: {lastSyncTime ? new Date(lastSyncTime).toLocaleString() : 'Never'}</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Equipment: {equipment.length}</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Logs: {maintenanceLogs.length}</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Consumables: {consumables.length}</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Intervals: {intervals.length}</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Service Routines: {serviceRoutines.length}</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Inspection Routines: {inspectionRoutines.length}</Text>
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.accent, marginTop: 8 }]}
+              onPress={() => {
+                const info = [
+                  `Farm ID: ${farmId}`,
+                  `Device ID: ${deviceId}`,
+                  `Display Name: ${displayName || '(none)'}`,
+                  `Member Count: ${memberCount}`,
+                  `Last Sync: ${lastSyncTime ? new Date(lastSyncTime).toLocaleString() : 'Never'}`,
+                  `Equipment: ${equipment.length}`,
+                  `Logs: ${maintenanceLogs.length}`,
+                  `Consumables: ${consumables.length}`,
+                  `Intervals: ${intervals.length}`,
+                  `Service Routines: ${serviceRoutines.length}`,
+                  `Inspection Routines: ${inspectionRoutines.length}`,
+                ].join('\n');
+                Clipboard.setStringAsync(info);
+                Alert.alert('Copied', 'Debug info copied to clipboard.');
+              }}
+            >
+              <Copy color="#fff" size={16} />
+              <Text style={styles.superAdminButtonText}>Copy Debug Info</Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
@@ -1242,6 +1330,9 @@ export default function SettingsScreen() {
         <Text style={[styles.footerText, { color: colors.primary }]}>FarmGuard Maintenance</Text>
         {isSuperAdmin && (
           <Text style={[styles.footerSubtext, { color: colors.statusOverdue }]}>Super Admin Active</Text>
+        )}
+        {isDebugMode && !isSuperAdmin && (
+          <Text style={[styles.footerSubtext, { color: colors.accent }]}>Debug Mode Active</Text>
         )}
       </TouchableOpacity>
 
