@@ -184,7 +184,15 @@ async function saveFarmData(farmId: string, data: FarmData): Promise<void> {
   }
 }
 
+const MIN_REQUIRED_VERSION = "1.0.0";
+
 export const farmRouter = createTRPCRouter({
+  getMinVersion: publicProcedure
+    .query(() => {
+      console.log(`[Farm] Min required version requested: ${MIN_REQUIRED_VERSION}`);
+      return { minVersion: MIN_REQUIRED_VERSION };
+    }),
+
   getData: publicProcedure
     .input(z.object({ farmId: z.string() }))
     .query(async ({ input }) => {

@@ -5,6 +5,8 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { FarmDataProvider } from "@/contexts/FarmDataContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
+import { trpc, trpcClient } from "@/lib/trpc";
+import VersionGate from "@/components/VersionGate";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -103,14 +105,18 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <ThemeProvider>
-          <FarmDataProvider>
-            <RootLayoutNav />
-          </FarmDataProvider>
-        </ThemeProvider>
-      </GestureHandlerRootView>
-    </QueryClientProvider>
+    <trpc.Provider client={trpcClient} queryClient={queryClient}>
+      <QueryClientProvider client={queryClient}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <ThemeProvider>
+            <VersionGate>
+              <FarmDataProvider>
+                <RootLayoutNav />
+              </FarmDataProvider>
+            </VersionGate>
+          </ThemeProvider>
+        </GestureHandlerRootView>
+      </QueryClientProvider>
+    </trpc.Provider>
   );
 }
