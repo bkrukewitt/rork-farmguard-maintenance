@@ -5,8 +5,10 @@ import React, { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { FarmDataProvider } from "@/contexts/FarmDataContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
+import { PurchasesProvider } from "@/contexts/PurchasesContext";
 import { trpc, trpcClient } from "@/lib/trpc";
 import VersionGate from "@/components/VersionGate";
+import SubscriptionGate from "@/components/SubscriptionGate";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -109,11 +111,15 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <ThemeProvider>
-            <VersionGate>
-              <FarmDataProvider>
-                <RootLayoutNav />
-              </FarmDataProvider>
-            </VersionGate>
+            <PurchasesProvider>
+              <VersionGate>
+                <SubscriptionGate>
+                  <FarmDataProvider>
+                    <RootLayoutNav />
+                  </FarmDataProvider>
+                </SubscriptionGate>
+              </VersionGate>
+            </PurchasesProvider>
           </ThemeProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>
