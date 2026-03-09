@@ -3,15 +3,13 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   TouchableOpacity,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
   Image,
 } from 'react-native';
+import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import * as ImagePicker from 'expo-image-picker';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
@@ -195,18 +193,30 @@ export default function EditEquipmentScreen() {
   return (
     <>
       <Stack.Screen options={{ title: `Edit ${equipment.name}` }} />
-      <KeyboardAvoidingView 
-        style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
+      <KeyboardAwareScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        stickyFooter={
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => router.back()}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveButton, saveMutation.isPending && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              disabled={saveMutation.isPending}
+            >
+              <Check color={Colors.textOnPrimary} size={20} />
+              <Text style={styles.saveButtonText}>
+                {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        }
       >
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
           <View style={styles.section}>
           <Text style={styles.sectionTitle}>Equipment Photo</Text>
           {imageUri ? (
@@ -386,27 +396,7 @@ export default function EditEquipmentScreen() {
               />
             </View>
           </View>
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.saveButton, saveMutation.isPending && styles.saveButtonDisabled]}
-            onPress={handleSave}
-            disabled={saveMutation.isPending}
-          >
-            <Check color={Colors.textOnPrimary} size={20} />
-            <Text style={styles.saveButtonText}>
-              {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </>
   );
 }
@@ -443,9 +433,6 @@ const styles = StyleSheet.create({
   backButtonText: {
     color: Colors.textOnPrimary,
     fontWeight: '600' as const,
-  },
-  scrollView: {
-    flex: 1,
   },
   content: {
     padding: 16,

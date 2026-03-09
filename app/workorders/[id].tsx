@@ -10,8 +10,8 @@ import {
   Platform,
   Modal,
   Pressable,
-  KeyboardAvoidingView,
 } from 'react-native';
+import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { 
   Save, 
@@ -283,16 +283,9 @@ export default function WorkOrderDetailScreen() {
           }}
         />
 
-        <KeyboardAvoidingView
+        <KeyboardAwareScrollView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
-        >
-        <ScrollView
-          style={styles.scrollView}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
+          contentContainerStyle={styles.scrollContent}
         >
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Details</Text>
@@ -486,8 +479,7 @@ export default function WorkOrderDetailScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
-        </KeyboardAvoidingView>
+        </KeyboardAwareScrollView>
 
         <Modal visible={showEquipmentPicker} transparent animationType="slide">
           <Pressable style={styles.modalOverlay} onPress={() => setShowEquipmentPicker(false)}>
@@ -857,6 +849,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  scrollContent: {
+    paddingBottom: 40,
   },
   scrollView: {
     flex: 1,

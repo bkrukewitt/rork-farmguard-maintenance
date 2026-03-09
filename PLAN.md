@@ -1,14 +1,18 @@
-# Add app version number to the bottom of Settings
+# Fix keyboard covering text inputs across all screens
 
-**What changes:**
+**Problem**
+On several screens, when you tap a text box the keyboard slides up and covers it, making it impossible to see what you're typing.
 
-- A small, centered version label (e.g. "Version 2.1.2") will appear at the very bottom of the Settings screen, below all other content
-- On iPhone/Android, this will automatically reflect the version number shown on the App Store / Google Play — so when you release a new version, the number updates on its own
-- On web, it will show the version from your app configuration
+**Solution**
 
-**Design:**
+- Update the shared keyboard-aware scroll component to automatically scroll the focused text input into view when the keyboard appears
+- Add extra padding at the bottom of scrollable content so even the lowest text fields can scroll above the keyboard
+- Apply this fix consistently across all form screens (add/edit equipment, add/edit maintenance, work orders, inventory, routines, settings modals, etc.)
 
-- Subtle, muted text centered at the bottom of the scrollable area
-- Small font size so it doesn't distract from the main settings content
-- Includes a bit of padding above and below for breathing room
+**What you'll notice**
+
+- Tapping any text field will auto-scroll so the field is visible above the keyboard
+- Pages will temporarily extend with extra space at the bottom so the last fields are never trapped behind the keyboard
+- Dismissing the keyboard returns the page to its normal size
+- Works on both iOS and Android
 

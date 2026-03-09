@@ -3,13 +3,11 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   TouchableOpacity,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
+import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import { useRouter, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import { 
@@ -98,18 +96,30 @@ export default function AddInspectionRoutineScreen() {
           headerTintColor: Colors.text,
         }}
       />
-      <KeyboardAvoidingView 
-        style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
+      <KeyboardAwareScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        stickyFooter={
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => router.back()}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveButton, saveMutation.isPending && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              disabled={saveMutation.isPending}
+            >
+              <Check color={Colors.textOnPrimary} size={20} />
+              <Text style={styles.saveButtonText}>
+                {saveMutation.isPending ? 'Saving...' : 'Save Inspection'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        }
       >
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Inspection Details</Text>
             
@@ -181,27 +191,7 @@ export default function AddInspectionRoutineScreen() {
               <Text style={styles.addItemRowText}>Add another item</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.saveButton, saveMutation.isPending && styles.saveButtonDisabled]}
-            onPress={handleSave}
-            disabled={saveMutation.isPending}
-          >
-            <Check color={Colors.textOnPrimary} size={20} />
-            <Text style={styles.saveButtonText}>
-              {saveMutation.isPending ? 'Saving...' : 'Save Inspection'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </>
   );
 }
@@ -210,9 +200,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-  },
-  scrollView: {
-    flex: 1,
   },
   content: {
     padding: 16,

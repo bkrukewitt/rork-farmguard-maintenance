@@ -3,14 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   TouchableOpacity,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   Image,
 } from 'react-native';
+import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
@@ -138,18 +136,30 @@ export default function AddConsumableScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAwareScrollView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
+      contentContainerStyle={styles.content}
+      stickyFooter={
+        <View style={styles.footer}>
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => router.back()}
+          >
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.saveButton, saveMutation.isPending && styles.saveButtonDisabled]}
+            onPress={handleSave}
+            disabled={saveMutation.isPending}
+          >
+            <Check color={Colors.textOnPrimary} size={20} />
+            <Text style={styles.saveButtonText}>
+              {saveMutation.isPending ? 'Saving...' : 'Add Part'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      }
     >
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.content}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-      >
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Part Photo</Text>
           {imageUri ? (
@@ -360,27 +370,7 @@ export default function AddConsumableScreen() {
             textAlignVertical="top"
           />
         </View>
-      </ScrollView>
-
-      <View style={styles.footer}>
-        <TouchableOpacity
-          style={styles.cancelButton}
-          onPress={() => router.back()}
-        >
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.saveButton, saveMutation.isPending && styles.saveButtonDisabled]}
-          onPress={handleSave}
-          disabled={saveMutation.isPending}
-        >
-          <Check color={Colors.textOnPrimary} size={20} />
-          <Text style={styles.saveButtonText}>
-            {saveMutation.isPending ? 'Saving...' : 'Add Part'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+    </KeyboardAwareScrollView>
   );
 }
 
@@ -388,9 +378,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
-  },
-  scrollView: {
-    flex: 1,
   },
   content: {
     padding: 16,

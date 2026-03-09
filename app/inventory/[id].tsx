@@ -7,10 +7,9 @@ import {
   TouchableOpacity,
   Alert,
   TextInput,
-  KeyboardAvoidingView,
-  Platform,
   Image,
 } from 'react-native';
+import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
@@ -215,13 +214,28 @@ export default function ConsumableDetailScreen() {
 
   if (isEditing) {
     return (
-      <KeyboardAvoidingView
+      <KeyboardAwareScrollView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
+        contentContainerStyle={styles.content}
+        stickyFooter={
+          <View style={styles.footer}>
+            <TouchableOpacity style={styles.cancelButton} onPress={() => setIsEditing(false)}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveButton, updateMutation.isPending && styles.saveButtonDisabled]}
+              onPress={() => updateMutation.mutate()}
+              disabled={updateMutation.isPending}
+            >
+              <Check color={Colors.textOnPrimary} size={20} />
+              <Text style={styles.saveButtonText}>
+                {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        }
       >
         <Stack.Screen options={{ title: 'Edit Part' }} />
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <View style={styles.section}>
             <Text style={styles.inputLabel}>Part Photo</Text>
             {editImageUrl ? (
@@ -423,24 +437,7 @@ export default function ConsumableDetailScreen() {
               )}
             </View>
           </View>
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <TouchableOpacity style={styles.cancelButton} onPress={() => setIsEditing(false)}>
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.saveButton, updateMutation.isPending && styles.saveButtonDisabled]}
-            onPress={() => updateMutation.mutate()}
-            disabled={updateMutation.isPending}
-          >
-            <Check color={Colors.textOnPrimary} size={20} />
-            <Text style={styles.saveButtonText}>
-              {updateMutation.isPending ? 'Saving...' : 'Save Changes'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     );
   }
 

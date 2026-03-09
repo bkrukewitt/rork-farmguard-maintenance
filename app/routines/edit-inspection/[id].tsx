@@ -3,14 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   TextInput,
   TouchableOpacity,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ActivityIndicator,
 } from 'react-native';
+import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import { 
@@ -122,18 +120,30 @@ export default function EditInspectionRoutineScreen() {
           headerTintColor: Colors.text,
         }}
       />
-      <KeyboardAvoidingView 
-        style={styles.container} 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 30}
+      <KeyboardAwareScrollView
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        stickyFooter={
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => router.back()}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveButton, saveMutation.isPending && styles.saveButtonDisabled]}
+              onPress={handleSave}
+              disabled={saveMutation.isPending}
+            >
+              <Check color={Colors.textOnPrimary} size={20} />
+              <Text style={styles.saveButtonText}>
+                {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        }
       >
-        <ScrollView 
-          style={styles.scrollView}
-          contentContainerStyle={styles.content}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Inspection Details</Text>
             
@@ -205,27 +215,7 @@ export default function EditInspectionRoutineScreen() {
               <Text style={styles.addItemRowText}>Add another item</Text>
             </TouchableOpacity>
           </View>
-        </ScrollView>
-
-        <View style={styles.footer}>
-          <TouchableOpacity
-            style={styles.cancelButton}
-            onPress={() => router.back()}
-          >
-            <Text style={styles.cancelButtonText}>Cancel</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.saveButton, saveMutation.isPending && styles.saveButtonDisabled]}
-            onPress={handleSave}
-            disabled={saveMutation.isPending}
-          >
-            <Check color={Colors.textOnPrimary} size={20} />
-            <Text style={styles.saveButtonText}>
-              {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
+      </KeyboardAwareScrollView>
     </>
   );
 }
@@ -240,9 +230,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: Colors.background,
-  },
-  scrollView: {
-    flex: 1,
   },
   content: {
     padding: 16,
