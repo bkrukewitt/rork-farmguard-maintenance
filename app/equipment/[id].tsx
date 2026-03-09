@@ -45,7 +45,7 @@ import {
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { EquipmentType, EquipmentAttachment } from '@/types/equipment';
-import { formatDate, formatHours, getMaintenanceStatus, generateId } from '@/utils/helpers';
+import { formatDate, formatMetric, getMaintenanceStatus, generateId } from '@/utils/helpers';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
   tractor: Tractor,
@@ -301,7 +301,7 @@ export default function EquipmentDetailScreen() {
               </Text>
               <View style={styles.imageHoursContainer}>
                 <Clock color="#fff" size={18} />
-                <Text style={styles.imageHoursText}>{formatHours(equipment.currentHours)}</Text>
+                <Text style={styles.imageHoursText}>{formatMetric(equipment.currentHours, equipment.metric)}</Text>
               </View>
             </View>
           </View>
@@ -316,7 +316,7 @@ export default function EquipmentDetailScreen() {
             </Text>
             <View style={styles.hoursContainer}>
               <Clock color={Colors.accent} size={18} />
-              <Text style={styles.hoursText}>{formatHours(equipment.currentHours)}</Text>
+              <Text style={styles.hoursText}>{formatMetric(equipment.currentHours, equipment.metric)}</Text>
             </View>
           </View>
         )}
@@ -513,7 +513,7 @@ export default function EquipmentDetailScreen() {
                 </View>
                 <Text style={styles.logDescription}>{log.description}</Text>
                 <View style={styles.logMeta}>
-                  <Text style={styles.logMetaText}>@ {formatHours(log.hoursAtService)}</Text>
+                  <Text style={styles.logMetaText}>@ {formatMetric(log.hoursAtService, equipment.metric)}</Text>
                 </View>
               </TouchableOpacity>
             ))

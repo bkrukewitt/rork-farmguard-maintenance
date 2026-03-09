@@ -50,6 +50,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
 import { useFarmData, DuplicateItem, FarmMember, fetchFarmPasswordForId } from '@/contexts/FarmDataContext';
+import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Equipment, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
 import { User } from 'lucide-react-native';
@@ -91,6 +92,8 @@ export default function SettingsScreen() {
     joinPassword,
     setFarmPassword,
     isSettingFarmPassword,
+    createFarm,
+    isCreatingFarm,
   } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -128,6 +131,14 @@ export default function SettingsScreen() {
   const [deleteFarmIdInput, setDeleteFarmIdInput] = useState('');
   const footerTapCountRef = useRef(0);
   const footerTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showCreateFarmModal, setShowCreateFarmModal] = useState(false);
+  const [newFarmIdToCreate, setNewFarmIdToCreate] = useState<string>('');
+  const [createFarmError, setCreateFarmError] = useState<string>('');
+  const [adminFarmIdLookup, setAdminFarmIdLookup] = useState<string>('');
+  const [adminFarmMembers, setAdminFarmMembers] = useState<FarmMember[]>([]);
+  const [isFetchingAdminMembers, setIsFetchingAdminMembers] = useState<boolean>(false);
+  const [adminMembersError, setAdminMembersError] = useState<string>('');
+  const [isUpdatingAdminMember, setIsUpdatingAdminMember] = useState<string | null>(null);
   const [joinStep, setJoinStep] = useState<'farm_id' | 'password'>('farm_id');
   const [joinPasswordInput, setJoinPasswordInput] = useState('');
   const [joinPasswordError, setJoinPasswordError] = useState('');
@@ -177,6 +188,121 @@ export default function SettingsScreen() {
       setSuperAdminPinError('Incorrect PIN');
     }
   }, [superAdminPin]);
+
+  const handleCreateFarm = async () => {
+    const trimmed = newFarmIdToCreate.trim();
+    if (!trimmed) {
+      setCreateFarmError('Please enter a Farm ID.');
+      return;
+    }
+    if (/\s/.test(trimmed)) {
+      setCreateFarmError('Farm ID cannot contain spaces.');
+      return;
+    }
+    try {
+      await createFarm(trimmed);
+      setShowCreateFarmModal(false);
+      setNewFarmIdToCreate('');
+      setCreateFarmError('');
+      Alert.alert('Farm Created', `Farm ID "${trimmed}" is ready. Share it with your team to sync data across devices.`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create farm.';
+      setCreateFarmError(msg);
+    }
+  };
+
+  const handleGenerateAndCreateFarm = async () => {
+    try {
+      const result = await createFarm(undefined);
+      setShowCreateFarmModal(false);
+      Alert.alert('Farm Created', `Your Farm ID is ready. Share it with your team to sync across devices.`);
+      console.log('[Settings] Farm created:', result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to create farm.';
+      Alert.alert('Error', msg);
+    }
+  };
+
+  const handleFetchAdminFarmMembers = async () => {
+    const targetId = adminFarmIdLookup.trim();
+    if (!targetId) {
+      setAdminMembersError('Enter a Farm ID to look up.');
+      return;
+    }
+    setIsFetchingAdminMembers(true);
+    setAdminMembersError('');
+    setAdminFarmMembers([]);
+    try {
+      const { data, error } = await supabase
+        .from('farm_members')
+        .select('*')
+        .eq('farm_id', targetId)
+        .order('joined_at', { ascending: true });
+      if (error) throw error;
+      if (!data || data.length === 0) {
+        setAdminMembersError('No members found for this Farm ID.');
+      } else {
+        setAdminFarmMembers(data as FarmMember[]);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to fetch members.';
+      setAdminMembersError(msg);
+    } finally {
+      setIsFetchingAdminMembers(false);
+    }
+  };
+
+  const handleAdminChangeRole = async (member: FarmMember) => {
+    const newRole = member.role === 'admin' ? 'member' : 'admin';
+    setIsUpdatingAdminMember(member.device_id);
+    try {
+      const { error } = await supabase
+        .from('farm_members')
+        .update({ role: newRole })
+        .eq('farm_id', member.farm_id)
+        .eq('device_id', member.device_id);
+      if (error) throw error;
+      setAdminFarmMembers(prev =>
+        prev.map(m => m.device_id === member.device_id ? { ...m, role: newRole } : m)
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to update role.';
+      Alert.alert('Error', msg);
+    } finally {
+      setIsUpdatingAdminMember(null);
+    }
+  };
+
+  const handleAdminDeleteMember = (member: FarmMember) => {
+    Alert.alert(
+      'Remove Member',
+      `Remove ${member.display_name || member.device_id.slice(0, 12)} from farm ${member.farm_id}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            setIsUpdatingAdminMember(member.device_id);
+            try {
+              const { error } = await supabase
+                .from('farm_members')
+                .delete()
+                .eq('farm_id', member.farm_id)
+                .eq('device_id', member.device_id);
+              if (error) throw error;
+              setAdminFarmMembers(prev => prev.filter(m => m.device_id !== member.device_id));
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'Failed to remove member.';
+              Alert.alert('Error', msg);
+            } finally {
+              setIsUpdatingAdminMember(null);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleDeleteFarmFromServer = useCallback(() => {
     const targetId = deleteFarmIdInput.trim();
@@ -276,7 +402,7 @@ export default function SettingsScreen() {
                 'farmguard_consumables',
                 'farmguard_service_routines',
               ]);
-              queryClient.invalidateQueries();
+              void queryClient.invalidateQueries();
               Alert.alert('Success', 'All data has been cleared.');
             } catch (error) {
               console.log('Error clearing data:', error);
@@ -399,7 +525,7 @@ export default function SettingsScreen() {
               await AsyncStorage.setItem('farmguard_service_routines', JSON.stringify(data.serviceRoutines || []));
               await AsyncStorage.setItem('farmguard_inspection_routines', JSON.stringify(data.inspectionRoutines || []));
 
-              queryClient.invalidateQueries();
+              void queryClient.invalidateQueries();
 
               Alert.alert(
                 'Success',
@@ -805,8 +931,8 @@ export default function SettingsScreen() {
             <Cloud color={colors.primary} size={24} />
             <View style={styles.syncInfo}>
               <Text style={[styles.syncTitle, { color: colors.text }]}>Farm ID</Text>
-              <Text style={[styles.syncId, { color: colors.textSecondary }]} numberOfLines={1}>
-                {farmId || 'Loading...'}
+              <Text style={[styles.syncId, { color: farmId ? colors.textSecondary : colors.statusDue }]} numberOfLines={1}>
+                {farmId || 'Not configured'}
               </Text>
             </View>
             <View style={styles.farmIdActions}>
@@ -936,37 +1062,53 @@ export default function SettingsScreen() {
             </Text>
           )}
           
-          <View style={styles.syncActions}>
-            <TouchableOpacity 
-              style={[styles.syncButton, { backgroundColor: colors.primary }]}
-              onPress={handleManualSync}
-              disabled={isSyncing}
-            >
-              {isSyncing ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <RefreshCw color="#fff" size={18} />
-              )}
-              <Text style={styles.syncButtonText}>
-                {isSyncing ? 'Syncing...' : 'Sync Now'}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity 
-              style={[styles.syncButton, { backgroundColor: colors.secondary }]}
-              onPress={() => setShowJoinFarmModal(true)}
-              disabled={isCheckingDuplicates}
-            >
-              {isCheckingDuplicates ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <Users color="#fff" size={18} />
-              )}
-              <Text style={styles.syncButtonText}>
-                {isCheckingDuplicates ? 'Checking...' : 'Join Farm'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          {!farmId ? (
+            <View>
+              <TouchableOpacity
+                style={{ paddingVertical: 8, alignItems: 'center', marginBottom: 8 }}
+                onPress={() => { setNewFarmIdToCreate(''); setCreateFarmError(''); setShowCreateFarmModal(true); }}
+              >
+                <Text style={[{ fontSize: 13, textDecorationLine: 'underline' as const }, { color: colors.primary }]}>Set a custom Farm ID</Text>
+              </TouchableOpacity>
+              <View style={styles.syncActions}>
+                <TouchableOpacity
+                  style={[styles.syncButton, { backgroundColor: colors.primary }]}
+                  onPress={handleGenerateAndCreateFarm}
+                  disabled={isCreatingFarm}
+                >
+                  {isCreatingFarm ? (<ActivityIndicator size="small" color="#fff" />) : (<Cloud color="#fff" size={18} />)}
+                  <Text style={styles.syncButtonText}>{isCreatingFarm ? 'Creating...' : 'Create Farm'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.syncButton, { backgroundColor: colors.secondary }]}
+                  onPress={() => setShowJoinFarmModal(true)}
+                  disabled={isCheckingDuplicates}
+                >
+                  {isCheckingDuplicates ? (<ActivityIndicator size="small" color="#fff" />) : (<Users color="#fff" size={18} />)}
+                  <Text style={styles.syncButtonText}>{isCheckingDuplicates ? 'Checking...' : 'Join Farm'}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.syncActions}>
+              <TouchableOpacity
+                style={[styles.syncButton, { backgroundColor: colors.primary }]}
+                onPress={handleManualSync}
+                disabled={isSyncing}
+              >
+                {isSyncing ? (<ActivityIndicator size="small" color="#fff" />) : (<RefreshCw color="#fff" size={18} />)}
+                <Text style={styles.syncButtonText}>{isSyncing ? 'Syncing...' : 'Sync Now'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.syncButton, { backgroundColor: colors.secondary }]}
+                onPress={() => setShowJoinFarmModal(true)}
+                disabled={isCheckingDuplicates}
+              >
+                {isCheckingDuplicates ? (<ActivityIndicator size="small" color="#fff" />) : (<Users color="#fff" size={18} />)}
+                <Text style={styles.syncButtonText}>{isCheckingDuplicates ? 'Checking...' : 'Join Farm'}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       </View>
 
@@ -1213,7 +1355,7 @@ export default function SettingsScreen() {
                 `Service Routines: ${serviceRoutines.length}`,
                 `Inspection Routines: ${inspectionRoutines.length}`,
               ].join('\n');
-              Clipboard.setStringAsync(info);
+              void Clipboard.setStringAsync(info);
               Alert.alert('Copied', 'Debug info copied to clipboard. Send it to support.');
             }}
           >
@@ -1287,6 +1429,91 @@ export default function SettingsScreen() {
           </View>
 
           <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Farm Member Manager</Text>
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Enter Farm ID to look up"
+                placeholderTextColor={colors.textSecondary}
+                value={adminFarmIdLookup}
+                onChangeText={setAdminFarmIdLookup}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            {adminMembersError ? (
+              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>{adminMembersError}</Text>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.primary }]}
+              onPress={handleFetchAdminFarmMembers}
+              disabled={isFetchingAdminMembers}
+            >
+              {isFetchingAdminMembers ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Users color="#fff" size={16} />
+                  <Text style={styles.superAdminButtonText}>Fetch Members</Text>
+                </>
+              )}
+            </TouchableOpacity>
+            {adminFarmMembers.length > 0 && (
+              <View style={{ gap: 8, marginTop: 8 }}>
+                <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>
+                  {adminFarmMembers.length} member{adminFarmMembers.length !== 1 ? 's' : ''}
+                </Text>
+                {adminFarmMembers.map((member: FarmMember) => (
+                  <View key={member.device_id} style={[styles.memberRow, { backgroundColor: colors.background }]}>
+                    <View style={styles.memberInfo}>
+                      <View style={[styles.memberAvatar, { backgroundColor: colors.primary + '20' }]}>
+                        <Text style={[styles.memberAvatarText, { color: colors.primary }]}>
+                          {(member.display_name || member.device_id).charAt(0).toUpperCase()}
+                        </Text>
+                      </View>
+                      <View style={styles.memberDetails}>
+                        <Text style={[styles.memberDeviceId, { color: colors.text }]} numberOfLines={1}>
+                          {member.display_name || `Device ${member.device_id.slice(0, 10)}`}
+                        </Text>
+                        <View style={styles.memberBadges}>
+                          <View style={[styles.roleBadge, { backgroundColor: member.role === 'admin' ? colors.primary + '20' : colors.border }]}>
+                            <Text style={[styles.roleBadgeText, { color: member.role === 'admin' ? colors.primary : colors.textSecondary }]}>
+                              {member.role === 'admin' ? 'Admin' : 'Member'}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={[styles.memberJoinDate, { color: colors.textSecondary }]}>
+                          Last active: {new Date(member.last_active_at).toLocaleDateString()}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <TouchableOpacity
+                        style={[styles.copyButton, { backgroundColor: colors.accent + '20' }]}
+                        onPress={() => handleAdminChangeRole(member)}
+                        disabled={isUpdatingAdminMember === member.device_id}
+                      >
+                        {isUpdatingAdminMember === member.device_id ? (
+                          <ActivityIndicator size="small" color={colors.accent} />
+                        ) : (
+                          <Shield color={colors.accent} size={14} />
+                        )}
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.removeMemberBtn, { backgroundColor: colors.statusOverdue + '20' }]}
+                        onPress={() => handleAdminDeleteMember(member)}
+                        disabled={isUpdatingAdminMember === member.device_id}
+                      >
+                        <X color={colors.statusOverdue} size={14} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Debug Info</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Farm ID: {farmId}</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Device ID: {deviceId}</Text>
@@ -1315,7 +1542,7 @@ export default function SettingsScreen() {
                   `Service Routines: ${serviceRoutines.length}`,
                   `Inspection Routines: ${inspectionRoutines.length}`,
                 ].join('\n');
-                Clipboard.setStringAsync(info);
+                void Clipboard.setStringAsync(info);
                 Alert.alert('Copied', 'Debug info copied to clipboard.');
               }}
             >
@@ -1764,6 +1991,56 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
         </View>
+      </Modal>
+
+      <Modal
+        visible={showCreateFarmModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowCreateFarmModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowCreateFarmModal(false); }} />
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Custom Farm ID</Text>
+              <TouchableOpacity onPress={() => setShowCreateFarmModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              Choose a unique Farm ID. No spaces allowed. Share it with your team to sync data across devices.
+            </Text>
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: createFarmError ? colors.statusOverdue : colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="e.g., SmithFarm2024"
+                placeholderTextColor={colors.textSecondary}
+                value={newFarmIdToCreate}
+                onChangeText={(t) => { setNewFarmIdToCreate(t.replace(/\s/g, '')); setCreateFarmError(''); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            {createFarmError ? (
+              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>{createFarmError}</Text>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.joinButton, { backgroundColor: colors.primary, opacity: isCreatingFarm ? 0.7 : 1 }]}
+              onPress={handleCreateFarm}
+              disabled={isCreatingFarm}
+            >
+              {isCreatingFarm ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.joinButtonText}>Create Farm</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal

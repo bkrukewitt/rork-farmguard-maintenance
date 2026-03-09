@@ -4,7 +4,7 @@ import { useCallback } from 'react';
 import { Platform } from 'react-native';
 import Purchases, { CustomerInfo, PurchasesOfferings } from 'react-native-purchases';
 
-const ENTITLEMENT_ID = 'FarmGuard Maintenance Pro';
+const ENTITLEMENT_ID = 'pro';
 
 function getRCApiKey(): string {
   if (__DEV__ || Platform.OS === 'web') {

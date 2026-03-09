@@ -33,7 +33,7 @@ import {
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
-import { EquipmentType } from '@/types/equipment';
+import { EquipmentType, EquipmentMetric } from '@/types/equipment';
 
 const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
   { value: 'tractor', label: 'Tractor', Icon: Tractor },
@@ -62,6 +62,7 @@ export default function EditEquipmentScreen() {
   const [year, setYear] = useState('');
   const [serialNumber, setSerialNumber] = useState('');
   const [currentHours, setCurrentHours] = useState('');
+  const [metric, setMetric] = useState<EquipmentMetric>('hours');
   const [purchaseDate, setPurchaseDate] = useState('');
   const [notes, setNotes] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
@@ -80,6 +81,7 @@ export default function EditEquipmentScreen() {
       setNotes(equipment.notes ?? '');
       setImageUri(equipment.imageUrl ?? null);
       setOilCapacity(equipment.oilCapacity ?? '');
+      setMetric(equipment.metric ?? 'hours');
     }
   }, [equipment]);
 
@@ -152,6 +154,7 @@ export default function EditEquipmentScreen() {
         year: parseInt(year) || new Date().getFullYear(),
         serialNumber: serialNumber.trim(),
         currentHours: parseFloat(currentHours) || 0,
+        metric,
         purchaseDate: purchaseDate || new Date().toISOString().split('T')[0],
         notes: notes.trim(),
         imageUrl: imageUri || undefined,
@@ -305,7 +308,7 @@ export default function EditEquipmentScreen() {
                 />
               </View>
               <View style={[styles.inputGroup, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>Current Hours</Text>
+                <Text style={styles.inputLabel}>{metric === 'miles' ? 'Current Miles' : 'Current Hours'}</Text>
                 <TextInput
                   style={styles.input}
                   value={currentHours}
@@ -314,6 +317,24 @@ export default function EditEquipmentScreen() {
                   placeholderTextColor={Colors.textSecondary}
                   keyboardType="decimal-pad"
                 />
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Usage Metric</Text>
+              <View style={styles.metricToggle}>
+                <TouchableOpacity
+                  style={[styles.metricOption, metric === 'hours' && styles.metricOptionActive]}
+                  onPress={() => setMetric('hours')}
+                >
+                  <Text style={[styles.metricOptionText, metric === 'hours' && styles.metricOptionTextActive]}>Hours</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.metricOption, metric === 'miles' && styles.metricOptionActive]}
+                  onPress={() => setMetric('miles')}
+                >
+                  <Text style={[styles.metricOptionText, metric === 'miles' && styles.metricOptionTextActive]}>Miles</Text>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -532,6 +553,31 @@ const styles = StyleSheet.create({
   saveButtonText: {
     fontSize: 16,
     fontWeight: '600' as const,
+    color: Colors.textOnPrimary,
+  },
+  metricToggle: {
+    flexDirection: 'row',
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    overflow: 'hidden',
+  },
+  metricOption: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  metricOptionActive: {
+    backgroundColor: Colors.primary,
+  },
+  metricOptionText: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: Colors.textSecondary,
+  },
+  metricOptionTextActive: {
     color: Colors.textOnPrimary,
   },
   imageButtonsRow: {

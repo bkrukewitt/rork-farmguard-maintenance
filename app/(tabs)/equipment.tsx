@@ -43,7 +43,7 @@ import {
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Equipment, EquipmentType } from '@/types/equipment';
-import { formatHours, getMaintenanceStatus } from '@/utils/helpers';
+import { formatMetric, getMaintenanceStatus } from '@/utils/helpers';
 import { generateEquipmentCSVTemplate, exportEquipmentToCSV } from '@/utils/csvHelpers';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
@@ -236,7 +236,7 @@ export default function EquipmentScreen() {
             {item.year} {item.make} {item.model}
           </Text>
           <View style={styles.cardFooter}>
-            <Text style={[styles.hoursText, { color: colors.primary }]}>{formatHours(item.currentHours)}</Text>
+            <Text style={[styles.hoursText, { color: colors.primary }]}>{formatMetric(item.currentHours, item.metric)}</Text>
             <Text style={[styles.typeText, { color: colors.textSecondary }]}>{item.type.charAt(0).toUpperCase() + item.type.slice(1)}</Text>
           </View>
         </View>

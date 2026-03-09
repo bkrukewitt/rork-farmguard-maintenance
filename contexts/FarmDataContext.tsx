@@ -102,17 +102,11 @@ async function saveData<T>(key: string, data: T[]): Promise<void> {
 
 async function getFarmId(): Promise<string> {
   try {
-    let farmId = await AsyncStorage.getItem(STORAGE_KEYS.FARM_ID);
-    if (!farmId) {
-      farmId = generateId();
-      await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, farmId);
-      await AsyncStorage.setItem(STORAGE_KEYS.IS_FARM_CREATOR, 'true');
-      console.log(`Generated new farm ID: ${farmId}`);
-    }
-    return farmId;
+    const farmId = await AsyncStorage.getItem(STORAGE_KEYS.FARM_ID);
+    return farmId || '';
   } catch (error) {
     console.error('Error getting farm ID:', error);
-    return generateId();
+    return '';
   }
 }
 
@@ -240,7 +234,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       if (!farmId || !deviceId) return null;
       console.log(`[Supabase] Registering device ${deviceId} for farm ${farmId}`);
 
-      const { error: farmError } = await supabase.from('farms').upsert({ id: farmId }, { onConflict: 'id' });
+      const { error: farmError } = await supabase.from('farms').upsert({ id: farmId, last_accessed_at: new Date().toISOString() }, { onConflict: 'id' });
       if (farmError) {
         console.error('[Supabase] Error upserting farm:', JSON.stringify(farmError));
         throw new Error(`Failed to register farm: ${farmError.message}`);
@@ -558,7 +552,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     setIsSyncing(true);
     try {
       console.log(`[Sync] Starting sync for farm: ${farmId}, skipMerge: ${shouldSkipMerge}`);
-      await supabase.from('farms').upsert({ id: farmId });
+      await supabase.from('farms').upsert({ id: farmId, last_accessed_at: new Date().toISOString() });
 
       const currentEquipment = await loadData<Equipment>(STORAGE_KEYS.EQUIPMENT);
       const currentLogs = await loadData<MaintenanceLog>(STORAGE_KEYS.MAINTENANCE_LOGS);
@@ -1442,6 +1436,39 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     console.log('[DuplicateResolution] Data merged, saved locally, and pushed to server');
   }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, workOrders, employees, deviceId, queryClient, mergeDeletedIds]);
 
+  const createFarmMutation = useMutation({
+    mutationFn: async (customId?: string) => {
+      const newFarmId = customId?.trim() || generateId();
+      if (/\s/.test(newFarmId)) throw new Error('Farm ID cannot contain spaces.');
+
+      const { data: existing } = await supabase
+        .from('farms')
+        .select('id')
+        .eq('id', newFarmId)
+        .maybeSingle();
+      if (existing) throw new Error('This Farm ID is already taken. Please choose a different one.');
+
+      const { error: farmError } = await supabase
+        .from('farms')
+        .insert({ id: newFarmId, last_accessed_at: new Date().toISOString() });
+      if (farmError) throw new Error(`Failed to create farm: ${farmError.message}`);
+
+      await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
+      await AsyncStorage.setItem(STORAGE_KEYS.IS_FARM_CREATOR, 'true');
+      setFarmId(newFarmId);
+
+      initialMergeDoneRef.current = false;
+      skipAutoMergeRef.current = false;
+
+      void queryClient.invalidateQueries({ queryKey: ['remoteData'] });
+      void queryClient.invalidateQueries({ queryKey: ['farmMembers'] });
+      void queryClient.invalidateQueries({ queryKey: ['memberRegistration'] });
+
+      console.log(`[Farm] Created new farm: ${newFarmId}`);
+      return newFarmId;
+    },
+  });
+
   const updateFarmIdMutation = useMutation({
     mutationFn: async (newFarmId: string) => {
       if (!isAdmin) {
@@ -1782,6 +1809,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     joinPassword,
     setFarmPassword: setJoinPasswordMutation.mutateAsync,
     isSettingFarmPassword: setJoinPasswordMutation.isPending,
+    createFarm: createFarmMutation.mutateAsync,
+    isCreatingFarm: createFarmMutation.isPending,
     updateFarmId: updateFarmIdMutation.mutateAsync,
     isUpdatingFarmId: updateFarmIdMutation.isPending,
     displayName,

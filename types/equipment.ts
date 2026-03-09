@@ -18,6 +18,8 @@ export interface EquipmentAttachment {
   createdAt: string;
 }
 
+export type EquipmentMetric = 'hours' | 'miles';
+
 export interface Equipment {
   id: string;
   name: string;
@@ -28,6 +30,7 @@ export interface Equipment {
   serialNumber: string;
   purchaseDate: string;
   currentHours: number;
+  metric?: EquipmentMetric;
   oilCapacity?: string;
   imageUrl?: string;
   warrantyExpiry?: string;

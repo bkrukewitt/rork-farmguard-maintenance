@@ -22,6 +22,21 @@ export function formatHours(hours: number): string {
   return `${hours.toLocaleString()} hrs`;
 }
 
+export function formatMetric(value: number, metric?: 'hours' | 'miles'): string {
+  if (metric === 'miles') {
+    return `${value.toLocaleString()} mi`;
+  }
+  return `${value.toLocaleString()} hrs`;
+}
+
+export function getMetricLabel(metric?: 'hours' | 'miles'): string {
+  return metric === 'miles' ? 'Miles' : 'Hours';
+}
+
+export function getMetricUnit(metric?: 'hours' | 'miles'): string {
+  return metric === 'miles' ? 'mi' : 'hrs';
+}
+
 export function getMaintenanceStatus(
   lastServiceHours: number | undefined,
   currentHours: number,
