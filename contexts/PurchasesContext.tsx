@@ -1,7 +1,8 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, { CustomerInfo, PurchasesOfferings } from 'react-native-purchases';
 
 const GRANDFATHER_IOS_MAX_BUILD = '1';
@@ -131,11 +132,29 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   const hasActiveEntitlement =
     customerInfoQuery.data?.entitlements.active[ENTITLEMENT_ID] !== undefined;
 
+  const [isTrial, setIsTrial] = useState(false);
+
   const isSubscribed = hasActiveEntitlement || isGrandfathered;
 
   if (isGrandfathered) {
     console.log('[Purchases] User is grandfathered — full access granted');
   }
+
+  const startTrial = useCallback(async () => {
+    await AsyncStorage.setItem('farmguard_trial_active', 'true');
+    setIsTrial(true);
+    console.log('[Purchases] Free trial started');
+  }, []);
+
+  const endTrial = useCallback(async () => {
+    await AsyncStorage.removeItem('farmguard_trial_active');
+    setIsTrial(false);
+    console.log('[Purchases] Free trial ended');
+  }, []);
+
+  void AsyncStorage.getItem('farmguard_trial_active').then(val => {
+    if (val === 'true' && !isTrial) setIsTrial(true);
+  });
 
   const purchasePackage = useCallback(
     (pkg: import('react-native-purchases').PurchasesPackage) => {
@@ -151,6 +170,9 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   return useMemo(() => ({
     isSubscribed,
     isGrandfathered,
+    isTrial,
+    startTrial,
+    endTrial,
     isLoadingCustomerInfo: customerInfoQuery.isLoading,
     customerInfo: customerInfoQuery.data ?? null,
     offerings: offeringsQuery.data ?? null,
@@ -165,6 +187,9 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   }), [
     isSubscribed,
     isGrandfathered,
+    isTrial,
+    startTrial,
+    endTrial,
     customerInfoQuery.isLoading,
     customerInfoQuery.data,
     offeringsQuery.data,

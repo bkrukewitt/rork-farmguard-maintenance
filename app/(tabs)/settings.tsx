@@ -67,7 +67,7 @@ export default function SettingsScreen() {
     getLowStockConsumables,
     farmId,
     deviceId,
-    setFarmId,
+    setFarmId: _setFarmId,
     isSyncing,
     lastSyncTime,
     syncToServer,
@@ -85,7 +85,7 @@ export default function SettingsScreen() {
     deleteFarmFromServer,
     isDeletingFarm,
     forceDeleteEquipment,
-    forceDeleteConsumables,
+    forceDeleteConsumables: _forceDeleteConsumables,
     purgeAndResync,
     isPurging,
     refreshData,
@@ -94,6 +94,8 @@ export default function SettingsScreen() {
     isSettingFarmPassword,
     createFarm,
     isCreatingFarm,
+    employees,
+    updateEmployee,
   } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -147,6 +149,8 @@ export default function SettingsScreen() {
   const [newJoinPassword, setNewJoinPassword] = useState('');
   const [newJoinPasswordConfirm, setNewJoinPasswordConfirm] = useState('');
   const [joinPasswordSetError, setJoinPasswordSetError] = useState('');
+  const [showLinkEmployeeModal, setShowLinkEmployeeModal] = useState(false);
+  const [linkingMemberDeviceId, setLinkingMemberDeviceId] = useState<string>('');
 
   const SUPER_ADMIN_PIN = '9173';
   const DEBUG_PIN = '1847';
@@ -1043,16 +1047,46 @@ export default function SettingsScreen() {
                       </Text>
                     </View>
                   </View>
-                  {isAdmin && member.device_id !== deviceId && member.role !== 'admin' && (
-                    <TouchableOpacity
-                      onPress={() => handleRemoveMember(member.device_id)}
-                      style={[styles.removeMemberBtn, { backgroundColor: colors.statusOverdue + '15' }]}
-                    >
-                      <X color={colors.statusOverdue} size={16} />
-                    </TouchableOpacity>
-                  )}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    {isAdmin && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setLinkingMemberDeviceId(member.device_id);
+                          setShowLinkEmployeeModal(true);
+                        }}
+                        style={[styles.removeMemberBtn, { backgroundColor: colors.primary + '15' }]}
+                      >
+                        <User color={colors.primary} size={16} />
+                      </TouchableOpacity>
+                    )}
+                    {isAdmin && member.device_id !== deviceId && member.role !== 'admin' && (
+                      <TouchableOpacity
+                        onPress={() => handleRemoveMember(member.device_id)}
+                        style={[styles.removeMemberBtn, { backgroundColor: colors.statusOverdue + '15' }]}
+                      >
+                        <X color={colors.statusOverdue} size={16} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               ))}
+              {(() => {
+                const linkedPairs = employees.filter(e => e.linkedDeviceId);
+                if (linkedPairs.length === 0) return null;
+                return (
+                  <View style={{ marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: colors.borderLight }}>
+                    <Text style={[{ fontSize: 12, fontWeight: '500' as const, marginBottom: 4 }, { color: colors.textSecondary }]}>Linked Employees</Text>
+                    {linkedPairs.map(emp => {
+                      const linkedMember = farmMembers.find(m => m.device_id === emp.linkedDeviceId);
+                      return (
+                        <Text key={emp.id} style={[{ fontSize: 12, marginBottom: 2 }, { color: colors.text }]}>
+                          {emp.name} → {linkedMember?.display_name || `Device ${emp.linkedDeviceId?.slice(0, 8)}`}
+                        </Text>
+                      );
+                    })}
+                  </View>
+                );
+              })()}
             </View>
           )}
           
@@ -2094,6 +2128,98 @@ export default function SettingsScreen() {
             >
               <Text style={styles.joinButtonText}>Unlock</Text>
             </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showLinkEmployeeModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowLinkEmployeeModal(false)}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => setShowLinkEmployeeModal(false)} />
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Link Employee</Text>
+              <TouchableOpacity onPress={() => setShowLinkEmployeeModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              Link an employee to this device so work orders assigned to them appear on their dashboard.
+            </Text>
+
+            {employees.length === 0 ? (
+              <Text style={[{ fontSize: 14, textAlign: 'center', paddingVertical: 20 }, { color: colors.textSecondary }]}>
+                No employees added yet. Add employees from the Work Orders screen.
+              </Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 300 }}>
+                <TouchableOpacity
+                  style={[styles.memberRow, { backgroundColor: colors.background, marginBottom: 4 }]}
+                  onPress={async () => {
+                    const linkedEmp = employees.find(e => e.linkedDeviceId === linkingMemberDeviceId);
+                    if (linkedEmp) {
+                      try {
+                        await updateEmployee({ id: linkedEmp.id, linkedDeviceId: undefined });
+                        Alert.alert('Unlinked', `${linkedEmp.name} has been unlinked from this device.`);
+                      } catch (err) {
+                        console.error('Error unlinking employee:', err);
+                      }
+                    }
+                    setShowLinkEmployeeModal(false);
+                  }}
+                >
+                  <Text style={[{ fontSize: 14, fontWeight: '500' as const }, { color: colors.textSecondary }]}>None (Unlink)</Text>
+                </TouchableOpacity>
+                {employees.map(emp => {
+                  const isLinked = emp.linkedDeviceId === linkingMemberDeviceId;
+                  return (
+                    <TouchableOpacity
+                      key={emp.id}
+                      style={[styles.memberRow, { backgroundColor: isLinked ? colors.primary + '15' : colors.background, marginBottom: 4 }]}
+                      onPress={async () => {
+                        try {
+                          const prevLinked = employees.find(e => e.linkedDeviceId === linkingMemberDeviceId);
+                          if (prevLinked && prevLinked.id !== emp.id) {
+                            await updateEmployee({ id: prevLinked.id, linkedDeviceId: undefined });
+                          }
+                          await updateEmployee({ id: emp.id, linkedDeviceId: linkingMemberDeviceId });
+                          Alert.alert('Linked', `${emp.name} is now linked to this device.`);
+                        } catch (err) {
+                          console.error('Error linking employee:', err);
+                          Alert.alert('Error', 'Failed to link employee.');
+                        }
+                        setShowLinkEmployeeModal(false);
+                      }}
+                    >
+                      <View style={styles.memberInfo}>
+                        <View style={[styles.memberAvatar, { backgroundColor: colors.primary + '20' }]}>
+                          <Text style={[styles.memberAvatarText, { color: colors.primary }]}>
+                            {emp.name.charAt(0).toUpperCase()}
+                          </Text>
+                        </View>
+                        <View style={styles.memberDetails}>
+                          <Text style={[styles.memberDeviceId, { color: colors.text }]}>{emp.name}</Text>
+                          {emp.role && <Text style={[styles.memberJoinDate, { color: colors.textSecondary }]}>{emp.role}</Text>}
+                        </View>
+                      </View>
+                      {isLinked && (
+                        <View style={[styles.roleBadge, { backgroundColor: colors.primary + '20' }]}>
+                          <Text style={[styles.roleBadgeText, { color: colors.primary }]}>Linked</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
           </View>
         </KeyboardAvoidingView>
       </Modal>

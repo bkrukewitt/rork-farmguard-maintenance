@@ -11,7 +11,6 @@ import {
   Modal,
   Pressable,
   KeyboardAvoidingView,
-  Keyboard,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import { 
@@ -25,7 +24,11 @@ import {
   Trash2,
   Clock,
   Wrench,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -33,8 +36,10 @@ import {
   WorkOrderPriority, 
   WorkOrderStatus, 
   WORK_ORDER_PRIORITIES, 
-  WORK_ORDER_STATUSES 
+  WORK_ORDER_STATUSES,
+  WorkOrderImage,
 } from '@/types/equipment';
+import { generateId } from '@/utils/helpers';
 import { formatDate } from '@/utils/helpers';
 
 export default function WorkOrderDetailScreen() {
@@ -70,6 +75,7 @@ export default function WorkOrderDetailScreen() {
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [newEmployeeRole, setNewEmployeeRole] = useState('');
+  const [images, setImages] = useState<WorkOrderImage[]>([]);
   
   const [isSaving, setIsSaving] = useState(false);
 
@@ -84,6 +90,7 @@ export default function WorkOrderDetailScreen() {
       setEstimatedHours(workOrder.estimatedHours?.toString() || '');
       setNotes(workOrder.notes || '');
       setAssignedTo(workOrder.assignedTo || []);
+      setImages(workOrder.images || []);
     }
   }, [workOrder]);
 
@@ -125,6 +132,7 @@ export default function WorkOrderDetailScreen() {
         estimatedHours: estimatedHours ? parseFloat(estimatedHours) : undefined,
         notes: notes.trim() || undefined,
         assignedTo: assignedTo.length > 0 ? assignedTo : undefined,
+        images: images.length > 0 ? images : undefined,
         completedAt: status === 'completed' && workOrder.status !== 'completed' 
           ? new Date().toISOString() 
           : workOrder.completedAt,
@@ -193,6 +201,53 @@ export default function WorkOrderDetailScreen() {
       console.error('Error adding employee:', error);
       Alert.alert('Error', 'Failed to add employee');
     }
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        quality: 0.7,
+      });
+      if (!result.canceled && result.assets) {
+        const newImages: WorkOrderImage[] = result.assets.map(asset => ({
+          id: generateId(),
+          uri: asset.uri,
+          createdAt: new Date().toISOString(),
+        }));
+        setImages(prev => [...prev, ...newImages]);
+      }
+    } catch (err) {
+      console.error('Error picking image:', err);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Camera permission is required to take photos.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.7,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const newImage: WorkOrderImage = {
+          id: generateId(),
+          uri: result.assets[0].uri,
+          createdAt: new Date().toISOString(),
+        };
+        setImages(prev => [...prev, newImage]);
+      }
+    } catch (err) {
+      console.error('Error taking photo:', err);
+    }
+  };
+
+  const handleRemoveImage = (imageId: string) => {
+    setImages(prev => prev.filter(img => img.id !== imageId));
   };
 
   const toggleEmployee = (employeeId: string) => {
@@ -379,6 +434,38 @@ export default function WorkOrderDetailScreen() {
               numberOfLines={3}
               textAlignVertical="top"
             />
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Photos</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={styles.addButton} onPress={handleTakePhoto}>
+                  <Camera color={Colors.primary} size={18} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.addButton} onPress={handlePickImage}>
+                  <ImageIcon color={Colors.primary} size={18} />
+                  <Text style={styles.addButtonText}>Add</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+            {images.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
+                {images.map(img => (
+                  <View key={img.id} style={{ marginHorizontal: 4, position: 'relative' as const }}>
+                    <Image source={{ uri: img.uri }} style={{ width: 100, height: 100, borderRadius: 10 }} />
+                    <TouchableOpacity
+                      style={{ position: 'absolute' as const, top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 10, width: 20, height: 20, justifyContent: 'center' as const, alignItems: 'center' as const }}
+                      onPress={() => handleRemoveImage(img.id)}
+                    >
+                      <X color="#fff" size={12} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <Text style={styles.noAssignedText}>No photos added</Text>
+            )}
           </View>
 
           <View style={styles.buttonRow}>
@@ -727,6 +814,19 @@ export default function WorkOrderDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Notes</Text>
             <Text style={styles.notesText}>{workOrder.notes}</Text>
+          </View>
+        )}
+
+        {workOrder.images && workOrder.images.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Photos</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginHorizontal: -4 }}>
+              {workOrder.images.map(img => (
+                <View key={img.id} style={{ marginHorizontal: 4 }}>
+                  <Image source={{ uri: img.uri }} style={{ width: 120, height: 120, borderRadius: 12 }} />
+                </View>
+              ))}
+            </ScrollView>
           </View>
         )}
 

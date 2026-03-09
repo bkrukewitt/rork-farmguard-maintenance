@@ -8,7 +8,9 @@ interface SubscriptionGateProps {
 }
 
 export default function SubscriptionGate({ children }: SubscriptionGateProps) {
-  const { isSubscribed, isLoadingCustomerInfo } = usePurchases();
+  const { isSubscribed, isLoadingCustomerInfo, isTrial } = usePurchases();
+
+  console.log('[SubscriptionGate] isSubscribed:', isSubscribed, 'isTrial:', isTrial, 'isLoading:', isLoadingCustomerInfo);
 
   if (isLoadingCustomerInfo) {
     return (
@@ -18,7 +20,7 @@ export default function SubscriptionGate({ children }: SubscriptionGateProps) {
     );
   }
 
-  if (!isSubscribed) {
+  if (!isSubscribed && !isTrial) {
     return <Paywall />;
   }
 

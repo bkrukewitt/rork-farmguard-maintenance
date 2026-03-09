@@ -115,16 +115,7 @@ export const EQUIPMENT_TYPES: { value: EquipmentType; label: string; icon: strin
   { value: 'other', label: 'Other', icon: 'settings' },
 ];
 
-export const DEFAULT_MAINTENANCE_INTERVALS = [
-  { name: 'Oil Change', intervalHours: 250 },
-  { name: 'Grease Fittings', intervalHours: 50 },
-  { name: 'Air Filter', intervalHours: 500 },
-  { name: 'Fuel Filter', intervalHours: 500 },
-  { name: 'Hydraulic Filter', intervalHours: 1000 },
-  { name: 'Coolant Check', intervalHours: 100 },
-  { name: 'Belt Inspection', intervalHours: 500 },
-  { name: 'Annual Inspection', intervalDays: 365 },
-];
+export const DEFAULT_MAINTENANCE_INTERVALS: { name: string; intervalHours?: number; intervalDays?: number }[] = [];
 
 export interface ChecklistItem {
   id: string;
@@ -158,12 +149,20 @@ export interface Employee {
   role?: string;
   phone?: string;
   email?: string;
+  linkedDeviceId?: string;
   createdAt: string;
   updatedAt: string;
 }
 
 export type WorkOrderPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type WorkOrderStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled';
+
+export interface WorkOrderImage {
+  id: string;
+  uri: string;
+  caption?: string;
+  createdAt: string;
+}
 
 export interface WorkOrder {
   id: string;
@@ -176,6 +175,7 @@ export interface WorkOrder {
   dueDate?: string;
   estimatedHours?: number;
   notes?: string;
+  images?: WorkOrderImage[];
   createdAt: string;
   updatedAt: string;
   completedAt?: string;

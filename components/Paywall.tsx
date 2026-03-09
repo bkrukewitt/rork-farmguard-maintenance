@@ -13,6 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Shield, Check, Tractor, Wrench, Package, ClipboardList, Star, RefreshCw, X } from 'lucide-react-native';
 import { PurchasesPackage } from 'react-native-purchases';
 import { usePurchases } from '@/contexts/PurchasesContext';
+import { useQueryClient } from '@tanstack/react-query';
+import { Eye } from 'lucide-react-native';
 
 const FEATURES = [
   { icon: Tractor, text: 'Unlimited equipment tracking' },
@@ -36,6 +38,7 @@ export default function Paywall({ onDismiss }: PaywallProps) {
     isPurchasing,
     restorePurchases,
     isRestoring,
+    startTrial,
   } = usePurchases();
 
   const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
@@ -94,10 +97,19 @@ export default function Paywall({ onDismiss }: PaywallProps) {
 
   const savings = getAnnualSavings();
 
+  const queryClient = useQueryClient();
+
+  const handleStartTrial = async () => {
+    await startTrial();
+  };
+
   const handlePurchase = async () => {
     if (!selectedPackage) return;
     try {
-      await purchasePackage(selectedPackage);
+      const customerInfo = await purchasePackage(selectedPackage);
+      console.log('[Paywall] Purchase completed, checking entitlements:', Object.keys(customerInfo?.entitlements?.active ?? {}));
+      await queryClient.invalidateQueries({ queryKey: ['purchases', 'customerInfo'] });
+      await queryClient.refetchQueries({ queryKey: ['purchases', 'customerInfo'] });
     } catch (err: unknown) {
       const error = err as { userCancelled?: boolean; message?: string };
       if (!error?.userCancelled) {
@@ -109,6 +121,8 @@ export default function Paywall({ onDismiss }: PaywallProps) {
   const handleRestore = async () => {
     try {
       await restorePurchases();
+      await queryClient.invalidateQueries({ queryKey: ['purchases', 'customerInfo'] });
+      await queryClient.refetchQueries({ queryKey: ['purchases', 'customerInfo'] });
       Alert.alert('Purchases Restored', 'Your subscription has been restored successfully.');
     } catch {
       Alert.alert('Restore Failed', 'Could not restore purchases. Please try again.');
@@ -281,6 +295,16 @@ export default function Paywall({ onDismiss }: PaywallProps) {
                 <Text style={styles.restoreText}>Restore Purchases</Text>
               </>
             )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.trialBtn}
+            onPress={handleStartTrial}
+            activeOpacity={0.7}
+            testID="paywall-trial"
+          >
+            <Eye size={14} color="rgba(255,255,255,0.6)" />
+            <Text style={styles.trialText}>Try Free Preview</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -528,5 +552,17 @@ const styles = StyleSheet.create({
   restoreText: {
     fontSize: 13,
     color: 'rgba(255,255,255,0.5)',
+  },
+  trialBtn: {
+    flexDirection: 'row' as const,
+    alignItems: 'center' as const,
+    gap: 6,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  trialText: {
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+    textDecorationLine: 'underline' as const,
   },
 });

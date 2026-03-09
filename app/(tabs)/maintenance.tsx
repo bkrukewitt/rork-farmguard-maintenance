@@ -9,6 +9,7 @@ import {
   Modal,
   Pressable,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -22,17 +23,29 @@ import {
   ClipboardList,
   Search,
   FileText,
+  ChevronDown,
 } from 'lucide-react-native';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
-import { MaintenanceLog } from '@/types/equipment';
 import { formatDate, formatHours } from '@/utils/helpers';
 
-type FilterType = 'all' | 'routine' | 'repair' | 'inspection';
+type FilterType = 'all' | 'routine' | 'repair' | 'inspection' | 'workorder';
+interface CombinedLogItem {
+  id: string;
+  type: 'log' | 'workorder';
+  date: string;
+  title: string;
+  subtitle: string;
+  logType: string;
+  equipmentId?: string;
+  hoursAtService?: number;
+  priority?: string;
+  status?: string;
+}
 
 export default function MaintenanceScreen() {
   const router = useRouter();
-  const { maintenanceLogs, equipment, isLoading, refreshData } = useFarmData();
+  const { maintenanceLogs, workOrders, equipment, isLoading, refreshData } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
@@ -45,37 +58,87 @@ export default function MaintenanceScreen() {
   }, [refreshData]);
   const { colors } = useTheme();
   const [filterType, setFilterType] = useState<FilterType>('all');
+  const [sortType] = useState<'newest' | 'oldest'>('newest');
+  const [searchQuery, setSearchQuery] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [selectedEquipmentFilter, setSelectedEquipmentFilter] = useState<string>('all');
+  const [showEquipmentFilter, setShowEquipmentFilter] = useState(false);
 
-  const sortedLogs = useMemo(() => {
-    let logs = [...maintenanceLogs].sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-    
+  const combinedItems = useMemo(() => {
+    const logItems: CombinedLogItem[] = maintenanceLogs.map(log => ({
+      id: log.id,
+      type: 'log' as const,
+      date: log.date,
+      title: log.description,
+      subtitle: equipment.find(e => e.id === log.equipmentId)?.name ?? 'Unknown Equipment',
+      logType: log.type,
+      equipmentId: log.equipmentId,
+      hoursAtService: log.hoursAtService,
+    }));
+
+    const completedWorkOrders: CombinedLogItem[] = workOrders
+      .filter(wo => wo.status === 'completed')
+      .map(wo => ({
+        id: wo.id,
+        type: 'workorder' as const,
+        date: wo.completedAt ?? wo.updatedAt,
+        title: wo.title,
+        subtitle: equipment.find(e => e.id === wo.equipmentId)?.name ?? 'Work Order',
+        logType: 'workorder',
+        equipmentId: wo.equipmentId,
+        priority: wo.priority,
+        status: wo.status,
+      }));
+
+    let items = [...logItems, ...completedWorkOrders];
+
     if (filterType !== 'all') {
-      logs = logs.filter(log => log.type === filterType);
+      if (filterType === 'workorder') {
+        items = items.filter(item => item.type === 'workorder');
+      } else {
+        items = items.filter(item => item.type === 'log' && item.logType === filterType);
+      }
     }
-    
-    return logs;
-  }, [maintenanceLogs, filterType]);
 
-  const groupedLogs = useMemo(() => {
-    const groups: { [key: string]: MaintenanceLog[] } = {};
+    if (selectedEquipmentFilter !== 'all') {
+      items = items.filter(item => item.equipmentId === selectedEquipmentFilter);
+    }
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      items = items.filter(item =>
+        item.title.toLowerCase().includes(q) ||
+        item.subtitle.toLowerCase().includes(q)
+      );
+    }
+
+    items.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      return sortType === 'newest' ? dateB - dateA : dateA - dateB;
+    });
+
+    return items;
+  }, [maintenanceLogs, workOrders, equipment, filterType, sortType, searchQuery, selectedEquipmentFilter]);
+
+  const groupedItems = useMemo(() => {
+    const groups: { [key: string]: CombinedLogItem[] } = {};
     
-    sortedLogs.forEach(log => {
-      const date = new Date(log.date);
+    combinedItems.forEach(item => {
+      const date = new Date(item.date);
       const monthYear = date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
       if (!groups[monthYear]) {
         groups[monthYear] = [];
       }
-      groups[monthYear].push(log);
+      groups[monthYear].push(item);
     });
     
     return Object.entries(groups);
-  }, [sortedLogs]);
+  }, [combinedItems]);
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
+  const getTypeIcon = (item: CombinedLogItem) => {
+    if (item.type === 'workorder') return FileText;
+    switch (item.logType) {
       case 'repair':
         return AlertCircle;
       case 'inspection':
@@ -85,8 +148,9 @@ export default function MaintenanceScreen() {
     }
   };
 
-  const getTypeColor = (type: string) => {
-    switch (type) {
+  const getTypeColor = (item: CombinedLogItem) => {
+    if (item.type === 'workorder') return '#3B82F6';
+    switch (item.logType) {
       case 'repair':
         return colors.statusOverdue;
       case 'inspection':
@@ -96,15 +160,30 @@ export default function MaintenanceScreen() {
     }
   };
 
-  const renderLogItem = ({ item }: { item: MaintenanceLog }) => {
-    const eq = equipment.find(e => e.id === item.equipmentId);
-    const Icon = getTypeIcon(item.type);
-    const typeColor = getTypeColor(item.type);
+  const getTypeLabel = (item: CombinedLogItem) => {
+    if (item.type === 'workorder') return 'Work Order';
+    return item.logType.charAt(0).toUpperCase() + item.logType.slice(1);
+  };
+
+  const selectedEquipmentName = useMemo(() => {
+    if (selectedEquipmentFilter === 'all') return 'All Equipment';
+    return equipment.find(e => e.id === selectedEquipmentFilter)?.name ?? 'Unknown';
+  }, [selectedEquipmentFilter, equipment]);
+
+  const renderLogItem = (item: CombinedLogItem) => {
+    const Icon = getTypeIcon(item);
+    const typeColor = getTypeColor(item);
 
     return (
       <TouchableOpacity
         style={[styles.logCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-        onPress={() => router.push(`/maintenance/${item.id}` as any)}
+        onPress={() => {
+          if (item.type === 'workorder') {
+            router.push(`/workorders/${item.id}` as any);
+          } else {
+            router.push(`/maintenance/${item.id}` as any);
+          }
+        }}
         activeOpacity={0.7}
       >
         <View style={[styles.logIconContainer, { backgroundColor: typeColor + '15' }]}>
@@ -112,18 +191,20 @@ export default function MaintenanceScreen() {
         </View>
         
         <View style={styles.logContent}>
-          <Text style={[styles.logDescription, { color: colors.text }]} numberOfLines={2}>{item.description}</Text>
-          <Text style={[styles.logEquipment, { color: colors.textSecondary }]}>{eq?.name ?? 'Unknown Equipment'}</Text>
-          <View style={styles.logMeta}>
-            <Text style={[styles.logMetaText, { color: colors.primary }]}>{formatHours(item.hoursAtService)}</Text>
-          </View>
+          <Text style={[styles.logDescription, { color: colors.text }]} numberOfLines={2}>{item.title}</Text>
+          <Text style={[styles.logEquipment, { color: colors.textSecondary }]}>{item.subtitle}</Text>
+          {item.hoursAtService !== undefined && item.hoursAtService > 0 && (
+            <View style={styles.logMeta}>
+              <Text style={[styles.logMetaText, { color: colors.primary }]}>{formatHours(item.hoursAtService)}</Text>
+            </View>
+          )}
         </View>
         
         <View style={styles.logRight}>
           <Text style={[styles.logDate, { color: colors.textSecondary }]}>{formatDate(item.date)}</Text>
           <View style={[styles.typeBadge, { backgroundColor: typeColor + '20' }]}>
             <Text style={[styles.typeBadgeText, { color: typeColor }]}>
-              {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+              {getTypeLabel(item)}
             </Text>
           </View>
         </View>
@@ -148,51 +229,57 @@ export default function MaintenanceScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.filterContainer, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
-        <Filter color={colors.textSecondary} size={18} />
+      <View style={[styles.searchContainer, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
+        <View style={[styles.searchBar, { backgroundColor: colors.surfaceAlt }]}>
+          <Search color={colors.textSecondary} size={16} />
+          <TextInput
+            style={[styles.searchInput, { color: colors.text }]}
+            placeholder="Search logs..."
+            placeholderTextColor={colors.textSecondary}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <X color={colors.textSecondary} size={16} />
+            </TouchableOpacity>
+          )}
+        </View>
         <TouchableOpacity
-          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === 'all' && { backgroundColor: colors.primary }]}
-          onPress={() => setFilterType('all')}
+          style={[styles.equipmentFilterBtn, { backgroundColor: colors.surfaceAlt }]}
+          onPress={() => setShowEquipmentFilter(true)}
         >
-          <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === 'all' && { color: colors.textOnPrimary }]}>
-            All
+          <Text style={[styles.equipmentFilterText, { color: colors.text }]} numberOfLines={1}>
+            {selectedEquipmentName}
           </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === 'routine' && { backgroundColor: colors.primary }]}
-          onPress={() => setFilterType('routine')}
-        >
-          <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === 'routine' && { color: colors.textOnPrimary }]}>
-            Routine
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === 'repair' && { backgroundColor: colors.primary }]}
-          onPress={() => setFilterType('repair')}
-        >
-          <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === 'repair' && { color: colors.textOnPrimary }]}>
-            Repairs
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === 'inspection' && { backgroundColor: colors.primary }]}
-          onPress={() => setFilterType('inspection')}
-        >
-          <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === 'inspection' && { color: colors.textOnPrimary }]}>
-            Inspections
-          </Text>
+          <ChevronDown color={colors.textSecondary} size={14} />
         </TouchableOpacity>
       </View>
 
+      <View style={[styles.filterContainer, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
+        <Filter color={colors.textSecondary} size={16} />
+        {(['all', 'routine', 'repair', 'inspection', 'workorder'] as FilterType[]).map(type => (
+          <TouchableOpacity
+            key={type}
+            style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === type && { backgroundColor: colors.primary }]}
+            onPress={() => setFilterType(type)}
+          >
+            <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === type && { color: colors.textOnPrimary }]}>
+              {type === 'all' ? 'All' : type === 'workorder' ? 'Orders' : type.charAt(0).toUpperCase() + type.slice(1)}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <FlatList
-        data={groupedLogs}
+        data={groupedItems}
         keyExtractor={([title]) => title}
-        renderItem={({ item: [title, logs] }) => (
+        renderItem={({ item: [title, items] }) => (
           <View>
             {renderSectionHeader(title)}
-            {logs.map(log => (
-              <View key={log.id}>
-                {renderLogItem({ item: log })}
+            {items.map(logItem => (
+              <View key={logItem.id}>
+                {renderLogItem(logItem)}
               </View>
             ))}
           </View>
@@ -210,9 +297,11 @@ export default function MaintenanceScreen() {
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Wrench color={colors.textSecondary} size={64} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Maintenance Logs</Text>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>No Logs Found</Text>
             <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-              Start logging your equipment maintenance to track history
+              {searchQuery || filterType !== 'all' || selectedEquipmentFilter !== 'all'
+                ? 'Try adjusting your filters'
+                : 'Start logging your equipment maintenance to track history'}
             </Text>
           </View>
         }
@@ -310,6 +399,45 @@ export default function MaintenanceScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <Modal
+        visible={showEquipmentFilter}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowEquipmentFilter(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowEquipmentFilter(false)}>
+          <Pressable style={[styles.menuContainer, { backgroundColor: colors.surface }]} onPress={e => e.stopPropagation()}>
+            <View style={[styles.menuHeader, { borderBottomColor: colors.borderLight }]}>
+              <Text style={[styles.menuTitle, { color: colors.text }]}>Filter by Equipment</Text>
+              <TouchableOpacity onPress={() => setShowEquipmentFilter(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+            <FlatList
+              data={[{ id: 'all', name: 'All Equipment' }, ...equipment]}
+              keyExtractor={item => item.id}
+              renderItem={({ item: eqItem }) => (
+                <TouchableOpacity
+                  style={[styles.equipmentFilterItem, { borderBottomColor: colors.borderLight }]}
+                  onPress={() => {
+                    setSelectedEquipmentFilter(eqItem.id);
+                    setShowEquipmentFilter(false);
+                  }}
+                >
+                  <Text style={[styles.equipmentFilterItemText, { color: colors.text }]}>{eqItem.name}</Text>
+                  {selectedEquipmentFilter === eqItem.id && (
+                    <View style={[styles.filterCheckmark, { backgroundColor: colors.primary }]}>
+                      <Text style={{ color: '#fff', fontSize: 10, fontWeight: '700' as const }}>✓</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              )}
+              style={{ maxHeight: 400 }}
+            />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -323,21 +451,54 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+    gap: 8,
+    borderBottomWidth: 0,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    padding: 0,
+  },
+  equipmentFilterBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  equipmentFilterText: {
+    fontSize: 13,
+    fontWeight: '500' as const,
+    flex: 1,
+  },
   filterContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
+    paddingVertical: 10,
+    gap: 6,
     borderBottomWidth: 1,
   },
   filterButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 18,
   },
   filterText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500' as const,
   },
   listContent: {
@@ -492,5 +653,24 @@ const styles = StyleSheet.create({
   },
   menuItemSubtitle: {
     fontSize: 13,
+  },
+  equipmentFilterItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderBottomWidth: 1,
+  },
+  equipmentFilterItemText: {
+    fontSize: 15,
+    flex: 1,
+  },
+  filterCheckmark: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
