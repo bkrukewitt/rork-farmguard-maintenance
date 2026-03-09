@@ -143,7 +143,7 @@ export default function Paywall({ onDismiss }: PaywallProps) {
           <View style={styles.iconRing}>
             <Shield size={36} color="#FFFFFF" strokeWidth={1.5} />
           </View>
-          <Text style={styles.appName}>FarmGuard Pro</Text>
+          <Text style={styles.appName}>FarmGuard</Text>
           <Text style={styles.headline}>Keep Every Machine{'\n'}Running at Peak.</Text>
           <Text style={styles.subheadline}>
             Full access to equipment tracking, maintenance logs, inventory, and more.
