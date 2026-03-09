@@ -1,8 +1,11 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { Platform } from 'react-native';
 import Purchases, { CustomerInfo, PurchasesOfferings } from 'react-native-purchases';
+
+const GRANDFATHER_IOS_MAX_BUILD = '1';
+const GRANDFATHER_ANDROID_MAX_VERSION_CODE = '12';
 
 const ENTITLEMENT_ID = 'pro';
 
@@ -57,7 +60,7 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     },
     onSuccess: (customerInfo) => {
       queryClient.setQueryData(['purchases', 'customerInfo'], customerInfo);
-      queryClient.invalidateQueries({ queryKey: ['purchases', 'customerInfo'] });
+      void queryClient.invalidateQueries({ queryKey: ['purchases', 'customerInfo'] });
     },
     onError: (error) => {
       console.error('[Purchases] Purchase error:', error);
@@ -73,15 +76,47 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     },
     onSuccess: (customerInfo) => {
       queryClient.setQueryData(['purchases', 'customerInfo'], customerInfo);
-      queryClient.invalidateQueries({ queryKey: ['purchases', 'customerInfo'] });
+      void queryClient.invalidateQueries({ queryKey: ['purchases', 'customerInfo'] });
     },
     onError: (error) => {
       console.error('[Purchases] Restore error:', error);
     },
   });
 
-  const isSubscribed =
+  const isGrandfathered = (() => {
+    if (Platform.OS === 'web') return false;
+    const info = customerInfoQuery.data as (CustomerInfo & { originalAppVersion?: string }) | undefined;
+    const originalVersion = info?.originalAppVersion;
+    if (!originalVersion) return false;
+    console.log('[Purchases] originalAppVersion:', originalVersion);
+    if (Platform.OS === 'ios') {
+      const buildNum = parseInt(originalVersion, 10);
+      const cutoff = parseInt(GRANDFATHER_IOS_MAX_BUILD, 10);
+      if (!isNaN(buildNum) && !isNaN(cutoff)) {
+        return buildNum <= cutoff;
+      }
+      return originalVersion <= GRANDFATHER_IOS_MAX_BUILD;
+    }
+    if (Platform.OS === 'android') {
+      const versionCode = parseInt(originalVersion, 10);
+      const cutoff = parseInt(GRANDFATHER_ANDROID_MAX_VERSION_CODE, 10);
+      if (!isNaN(versionCode) && !isNaN(cutoff)) {
+        return versionCode <= cutoff;
+      }
+      return false;
+    }
+    return false;
+  })();
+
+  const hasActiveEntitlement =
     customerInfoQuery.data?.entitlements.active[ENTITLEMENT_ID] !== undefined;
+
+  const isSubscribed = hasActiveEntitlement || isGrandfathered;
+
+  if (isGrandfathered) {
+    const info = customerInfoQuery.data as (CustomerInfo & { originalAppVersion?: string }) | undefined;
+    console.log('[Purchases] User is grandfathered in (originalAppVersion:', info?.originalAppVersion, ')');
+  }
 
   const purchasePackage = useCallback(
     (pkg: import('react-native-purchases').PurchasesPackage) => {
@@ -94,8 +129,9 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     return restoreMutateAsync();
   }, [restoreMutateAsync]);
 
-  return {
+  return useMemo(() => ({
     isSubscribed,
+    isGrandfathered,
     isLoadingCustomerInfo: customerInfoQuery.isLoading,
     customerInfo: customerInfoQuery.data ?? null,
     offerings: offeringsQuery.data ?? null,
@@ -107,5 +143,19 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     isRestoring,
     restoreError,
     refetchCustomerInfo: customerInfoQuery.refetch,
-  };
+  }), [
+    isSubscribed,
+    isGrandfathered,
+    customerInfoQuery.isLoading,
+    customerInfoQuery.data,
+    offeringsQuery.data,
+    offeringsQuery.isLoading,
+    purchasePackage,
+    isPurchasing,
+    purchaseError,
+    restorePurchases,
+    isRestoring,
+    restoreError,
+    customerInfoQuery.refetch,
+  ]);
 });
