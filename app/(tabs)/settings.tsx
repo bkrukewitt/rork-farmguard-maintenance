@@ -44,6 +44,7 @@ import {
   AlertTriangle,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
+import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useQueryClient } from '@tanstack/react-query';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -2223,6 +2224,12 @@ export default function SettingsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <View style={styles.versionContainer}>
+        <Text style={[styles.versionText, { color: colors.textSecondary }]}>
+          Version {Constants.expoConfig?.version ?? '1.0.0'}
+        </Text>
+      </View>
     </ScrollView>
   );
 }
@@ -2735,5 +2742,14 @@ const styles = StyleSheet.create({
   removePasswordText: {
     fontSize: 15,
     fontWeight: '600' as const,
+  },
+  versionContainer: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    paddingBottom: 40,
+  },
+  versionText: {
+    fontSize: 12,
+    fontWeight: '400' as const,
   },
 });
