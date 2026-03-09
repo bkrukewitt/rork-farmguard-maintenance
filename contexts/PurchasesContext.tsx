@@ -1,6 +1,6 @@
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, { CustomerInfo, PurchasesOfferings } from 'react-native-purchases';
@@ -152,9 +152,11 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     console.log('[Purchases] Free trial ended');
   }, []);
 
-  void AsyncStorage.getItem('farmguard_trial_active').then(val => {
-    if (val === 'true' && !isTrial) setIsTrial(true);
-  });
+  useEffect(() => {
+    void AsyncStorage.getItem('farmguard_trial_active').then(val => {
+      if (val === 'true') setIsTrial(true);
+    });
+  }, []);
 
   const purchasePackage = useCallback(
     (pkg: import('react-native-purchases').PurchasesPackage) => {
