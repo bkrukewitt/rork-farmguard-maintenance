@@ -6,6 +6,7 @@ import Purchases, { CustomerInfo, PurchasesOfferings } from 'react-native-purcha
 
 const GRANDFATHER_IOS_MAX_BUILD = '1';
 const GRANDFATHER_ANDROID_MAX_VERSION_CODE = '12';
+const GRANDFATHER_CUTOFF_DATE = '2026-03-09T00:00:00Z';
 
 const ENTITLEMENT_ID = 'pro';
 
@@ -85,27 +86,46 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
 
   const isGrandfathered = (() => {
     if (Platform.OS === 'web') return false;
-    const info = customerInfoQuery.data as (CustomerInfo & { originalAppVersion?: string }) | undefined;
-    const originalVersion = info?.originalAppVersion;
-    if (!originalVersion) return false;
+    const info = customerInfoQuery.data as (CustomerInfo & { originalAppVersion?: string; originalPurchaseDate?: string }) | undefined;
+    if (!info) return false;
+
+    const originalVersion = info.originalAppVersion;
+    const originalPurchaseDate = info.originalPurchaseDate;
+
     console.log('[Purchases] originalAppVersion:', originalVersion);
-    if (Platform.OS === 'ios') {
-      const buildNum = parseInt(originalVersion, 10);
-      const cutoff = parseInt(GRANDFATHER_IOS_MAX_BUILD, 10);
-      if (!isNaN(buildNum) && !isNaN(cutoff)) {
-        return buildNum <= cutoff;
+    console.log('[Purchases] originalPurchaseDate:', originalPurchaseDate);
+
+    let grantedByBuild = false;
+    let grantedByDate = false;
+
+    if (originalVersion) {
+      if (Platform.OS === 'ios') {
+        const buildNum = parseInt(originalVersion, 10);
+        const cutoff = parseInt(GRANDFATHER_IOS_MAX_BUILD, 10);
+        if (!isNaN(buildNum) && !isNaN(cutoff)) {
+          grantedByBuild = buildNum <= cutoff;
+        }
+      } else if (Platform.OS === 'android') {
+        const versionCode = parseInt(originalVersion, 10);
+        const cutoff = parseInt(GRANDFATHER_ANDROID_MAX_VERSION_CODE, 10);
+        if (!isNaN(versionCode) && !isNaN(cutoff)) {
+          grantedByBuild = versionCode <= cutoff;
+        }
       }
-      return originalVersion <= GRANDFATHER_IOS_MAX_BUILD;
     }
-    if (Platform.OS === 'android') {
-      const versionCode = parseInt(originalVersion, 10);
-      const cutoff = parseInt(GRANDFATHER_ANDROID_MAX_VERSION_CODE, 10);
-      if (!isNaN(versionCode) && !isNaN(cutoff)) {
-        return versionCode <= cutoff;
+
+    if (originalPurchaseDate) {
+      const purchaseTime = new Date(originalPurchaseDate).getTime();
+      const cutoffTime = new Date(GRANDFATHER_CUTOFF_DATE).getTime();
+      if (!isNaN(purchaseTime) && !isNaN(cutoffTime)) {
+        grantedByDate = purchaseTime < cutoffTime;
       }
-      return false;
     }
-    return false;
+
+    if (grantedByBuild) console.log('[Purchases] Grandfathered by build number:', originalVersion);
+    if (grantedByDate) console.log('[Purchases] Grandfathered by purchase date:', originalPurchaseDate);
+
+    return grantedByBuild || grantedByDate;
   })();
 
   const hasActiveEntitlement =
@@ -114,8 +134,7 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   const isSubscribed = hasActiveEntitlement || isGrandfathered;
 
   if (isGrandfathered) {
-    const info = customerInfoQuery.data as (CustomerInfo & { originalAppVersion?: string }) | undefined;
-    console.log('[Purchases] User is grandfathered in (originalAppVersion:', info?.originalAppVersion, ')');
+    console.log('[Purchases] User is grandfathered — full access granted');
   }
 
   const purchasePackage = useCallback(
