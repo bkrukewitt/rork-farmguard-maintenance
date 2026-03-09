@@ -34,6 +34,8 @@ import {
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { usePurchases } from '@/contexts/PurchasesContext';
+import Paywall from '@/components/Paywall';
 import { MaintenanceLog, Consumable, ServiceRoutine, ChecklistItem, EquipmentAttachment, ConsumableCategory, CONSUMABLE_CATEGORIES } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 
@@ -53,6 +55,11 @@ export default function AddMaintenanceScreen() {
   const router = useRouter();
   const { equipmentId: preselectedEquipmentId } = useLocalSearchParams<{ equipmentId?: string }>();
   const { equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines, updateEquipment, addConsumable } = useFarmData();
+  const { isTrial, isSubscribed } = usePurchases();
+
+  if (isTrial && !isSubscribed) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   const [selectedEquipmentId, setSelectedEquipmentId] = useState(preselectedEquipmentId ?? '');
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
@@ -213,7 +220,7 @@ export default function AddMaintenanceScreen() {
     setAttachments(prev => prev.filter(a => a.id !== attachmentId));
   };
 
-  const saveAttachmentFiles = async (logId: string): Promise<EquipmentAttachment[]> => {
+  const saveAttachmentFiles = async (_logId: string): Promise<EquipmentAttachment[]> => {
     const savedAttachments: EquipmentAttachment[] = [];
 
     for (const attachment of attachments) {

@@ -32,6 +32,8 @@ import {
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { usePurchases } from '@/contexts/PurchasesContext';
+import Paywall from '@/components/Paywall';
 import { EquipmentType, EquipmentMetric, DEFAULT_MAINTENANCE_INTERVALS } from '@/types/equipment';
 
 const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
@@ -50,6 +52,11 @@ const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.Compon
 export default function AddEquipmentScreen() {
   const router = useRouter();
   const { addEquipment, addInterval } = useFarmData();
+  const { isTrial, isSubscribed } = usePurchases();
+
+  if (isTrial && !isSubscribed) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   const [name, setName] = useState('');
   const [type, setType] = useState<EquipmentType>('tractor');

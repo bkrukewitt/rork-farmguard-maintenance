@@ -17,11 +17,18 @@ import { useMutation } from '@tanstack/react-query';
 import { Check, ChevronDown, Camera, Image as ImageIcon, X } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { usePurchases } from '@/contexts/PurchasesContext';
+import Paywall from '@/components/Paywall';
 import { CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
 
 export default function AddConsumableScreen() {
   const router = useRouter();
   const { addConsumable, equipment } = useFarmData();
+  const { isTrial, isSubscribed } = usePurchases();
+
+  if (isTrial && !isSubscribed) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   const [name, setName] = useState('');
   const [partNumber, setPartNumber] = useState('');

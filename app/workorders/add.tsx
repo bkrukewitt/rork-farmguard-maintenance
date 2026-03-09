@@ -11,7 +11,6 @@ import {
   Modal,
   Pressable,
   KeyboardAvoidingView,
-  Keyboard,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { 
@@ -26,6 +25,8 @@ import {
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { usePurchases } from '@/contexts/PurchasesContext';
+import Paywall from '@/components/Paywall';
 import { 
   WorkOrderPriority, 
   WorkOrderStatus, 
@@ -36,6 +37,11 @@ import {
 export default function AddWorkOrderScreen() {
   const router = useRouter();
   const { equipment, employees, addWorkOrder, addEmployee } = useFarmData();
+  const { isTrial, isSubscribed } = usePurchases();
+
+  if (isTrial && !isSubscribed) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
   
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');

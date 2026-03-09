@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -24,6 +23,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { usePurchases } from '@/contexts/PurchasesContext';
+import PaywallModal from '@/components/PaywallModal';
 import { formatDate, formatMetric } from '@/utils/helpers';
 
 export default function DashboardScreen() {
@@ -31,6 +31,7 @@ export default function DashboardScreen() {
   const { equipment, maintenanceLogs, workOrders, employees, isLoading, refreshData, deviceId, getLowStockConsumables } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
   const { isTrial, isSubscribed } = usePurchases();
+  const [showPaywall, setShowPaywall] = useState(false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -43,7 +44,7 @@ export default function DashboardScreen() {
   const { colors } = useTheme();
 
   const handleTrialAction = useCallback(() => {
-    Alert.alert('Preview Mode', 'Subscribe to FarmGuard to add and manage data. This is a free preview of the app.');
+    setShowPaywall(true);
   }, []);
 
   const myWorkOrders = useMemo(() => {
@@ -351,6 +352,7 @@ export default function DashboardScreen() {
           </View>
         )}
       </View>
+      <PaywallModal visible={showPaywall} onDismiss={() => setShowPaywall(false)} />
     </ScrollView>
   );
 }
