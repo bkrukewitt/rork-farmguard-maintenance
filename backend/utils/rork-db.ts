@@ -13,7 +13,7 @@ function getKeyUrl(key: string): string {
   return `${DB_ENDPOINT}/${DB_NAMESPACE}/${encodeURIComponent(key)}`;
 }
 
-async function getValue<T>(key: string): Promise<T | null> {
+export async function getValue<T>(key: string): Promise<T | null> {
   try {
     const url = getKeyUrl(key);
     console.log(`[RorkDB] GET ${key}`);
@@ -37,7 +37,7 @@ async function getValue<T>(key: string): Promise<T | null> {
   }
 }
 
-async function setValue<T>(key: string, value: T): Promise<boolean> {
+export async function setValue<T>(key: string, value: T): Promise<boolean> {
   try {
     const url = getKeyUrl(key);
     console.log(`[RorkDB] PUT ${key}`);

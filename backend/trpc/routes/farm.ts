@@ -1,7 +1,7 @@
 import * as z from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, publicProcedure } from "../create-context";
-import { getFarmData, upsertFarmData, getFarmMembers, upsertFarmMember, updateMemberActivity } from "../../utils/rork-db";
+import { getFarmData, upsertFarmData, getFarmMembers, upsertFarmMember, updateMemberActivity, getValue, setValue } from "../../utils/rork-db";
 import { verifyFarmAccess, getFarmPasswordFromDb } from "../../utils/supabase-server";
 import { sanitizeObject } from "../../utils/sanitize";
 import { requireSubscription, startTrial, getTrialInfo, verifySubscription } from "../../utils/revenuecat";
@@ -648,5 +648,34 @@ export const farmRouter = createTRPCRouter({
       data.inspectionRoutines = data.inspectionRoutines.filter(r => r.id !== input.routineId);
       await saveFarmData(input.farmId, data);
       return { success: true };
+    }),
+
+  submitFeedback: publicProcedure
+    .input(z.object({
+      email: z.string().email(),
+      category: z.enum(['bug', 'feature', 'question', 'other']),
+      subject: z.string().optional(),
+      message: z.string().min(1),
+      farmId: z.string().optional(),
+      deviceId: z.string().optional(),
+      platform: z.string().optional(),
+      appVersion: z.string().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      console.log(`[Farm] Submitting feedback from: ${input.email}`);
+      const feedbackId = `fb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const feedbackEntry = {
+        id: feedbackId,
+        ...input,
+        createdAt: new Date().toISOString(),
+      };
+      const existing = await getValue<Array<Record<string, unknown>>>('app_feedback') ?? [];
+      existing.push(feedbackEntry);
+      const success = await setValue('app_feedback', existing);
+      if (!success) {
+        throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to save feedback' });
+      }
+      console.log(`[Farm] Feedback saved: ${feedbackId}`);
+      return { success: true, feedbackId };
     }),
 });

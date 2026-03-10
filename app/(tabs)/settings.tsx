@@ -15,7 +15,6 @@ import {
   RefreshControl,
   Keyboard,
   Pressable,
-  Linking,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
@@ -56,6 +55,7 @@ import * as XLSX from 'xlsx';
 import { useFarmData, DuplicateItem, FarmMember, verifyFarmPasswordForId, checkFarmHasPassword } from '@/contexts/FarmDataContext';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
+import { trpc } from '@/lib/trpc';
 import { Equipment, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
 import { User } from 'lucide-react-native';
 
@@ -160,9 +160,7 @@ export default function SettingsScreen() {
   const [feedbackSubject, setFeedbackSubject] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackEmail, setFeedbackEmail] = useState('');
-  const [isSendingFeedback, setIsSendingFeedback] = useState(false);
 
-  const SUPPORT_EMAIL = 'farmguardmaintain@gmail.com';
   const SUPER_ADMIN_PIN = '9173';
   const DEBUG_PIN = '1847';
 
@@ -810,46 +808,34 @@ export default function SettingsScreen() {
     { key: 'other', label: 'Other' },
   ];
 
-  const handleSendFeedback = async () => {
-    const subject = feedbackSubject.trim() || `[${feedbackCategory}] FarmGuard Feedback`;
-    const appVersion = Constants.expoConfig?.version ?? '1.0.0';
-    const body = [
-      feedbackMessage.trim(),
-      '',
-      '---',
-      `From: ${feedbackEmail.trim()}`,
-      `Category: ${feedbackCategory}`,
-      `App Version: ${appVersion}`,
-      `Farm ID: ${farmId || 'Not set'}`,
-      `Device ID: ${deviceId?.slice(0, 12) || 'Unknown'}`,
-      `Platform: ${Platform.OS}`,
-    ].join('\n');
-
-    const mailto = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
-    setIsSendingFeedback(true);
-    try {
-      const supported = await Linking.canOpenURL(mailto);
-      if (supported) {
-        await Linking.openURL(mailto);
-      } else {
-        await Clipboard.setStringAsync(SUPPORT_EMAIL);
-        Alert.alert(
-          'Email Client Not Available',
-          `Email address copied to clipboard: ${SUPPORT_EMAIL}`,
-        );
-      }
+  const submitFeedbackMutation = trpc.farm.submitFeedback.useMutation({
+    onSuccess: () => {
+      console.log('[Settings] Feedback submitted successfully');
       setShowFeedbackModal(false);
       setFeedbackSubject('');
       setFeedbackMessage('');
       setFeedbackEmail('');
       setFeedbackCategory('bug');
-    } catch (error) {
-      console.error('[Settings] Error opening mail:', error);
-      Alert.alert('Error', 'Could not open email client. Please try again.');
-    } finally {
-      setIsSendingFeedback(false);
-    }
+      Alert.alert('Thank You!', 'Your feedback has been submitted successfully. We appreciate your input!');
+    },
+    onError: (error) => {
+      console.error('[Settings] Error submitting feedback:', error);
+      Alert.alert('Error', 'Could not submit feedback. Please try again.');
+    },
+  });
+
+  const handleSendFeedback = async () => {
+    const appVersion = Constants.expoConfig?.version ?? '1.0.0';
+    submitFeedbackMutation.mutate({
+      email: feedbackEmail.trim(),
+      category: feedbackCategory,
+      subject: feedbackSubject.trim() || undefined,
+      message: feedbackMessage.trim(),
+      farmId: farmId || undefined,
+      deviceId: deviceId?.slice(0, 12) || undefined,
+      platform: Platform.OS,
+      appVersion,
+    });
   };
 
   const handleManualSync = async () => {
@@ -2338,7 +2324,7 @@ export default function SettingsScreen() {
             </View>
 
             <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
-              Choose a category and describe your feedback below. This will open your email app.
+              Choose a category and describe your feedback below.
             </Text>
 
             <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -2405,14 +2391,14 @@ export default function SettingsScreen() {
             <TouchableOpacity
               style={[styles.joinButton, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: (!feedbackMessage.trim() || !feedbackEmail.trim()) ? 0.5 : 1 }]}
               onPress={handleSendFeedback}
-              disabled={!feedbackMessage.trim() || !feedbackEmail.trim() || isSendingFeedback}
+              disabled={!feedbackMessage.trim() || !feedbackEmail.trim() || submitFeedbackMutation.isPending}
             >
-              {isSendingFeedback ? (
+              {submitFeedbackMutation.isPending ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <>
                   <Send color="#fff" size={18} />
-                  <Text style={styles.joinButtonText}>Open Email</Text>
+                  <Text style={styles.joinButtonText}>Send Feedback</Text>
                 </>
               )}
             </TouchableOpacity>
