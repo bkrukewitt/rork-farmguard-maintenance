@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useEffect, useState, useRef } from 'react';
@@ -6,6 +7,7 @@ import { AppState, AppStateStatus } from 'react-native';
 import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine, WorkOrder, Employee } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 import { supabase } from '@/lib/supabase';
+import { trpcClient } from '@/lib/trpc';
 
 const STORAGE_KEYS = {
   EQUIPMENT: 'farmguard_equipment',
@@ -125,18 +127,28 @@ async function getDeviceId(): Promise<string> {
   }
 }
 
-export async function fetchFarmPasswordForId(targetFarmId: string): Promise<string | null> {
+export async function verifyFarmPasswordForId(targetFarmId: string, password: string): Promise<{ valid: boolean; hasPassword: boolean }> {
   try {
-    const { data, error } = await supabase
-      .from('farm_data')
-      .select('data')
-      .eq('farm_id', targetFarmId)
-      .maybeSingle();
-    if (error || !data?.data) return null;
-    const rd = data.data as Record<string, unknown>;
-    return (rd._joinPassword as string) || null;
+    const result = await trpcClient.farm.verifyFarmPassword.mutate({
+      farmId: targetFarmId,
+      password,
+    });
+    return result;
+  } catch (err) {
+    console.error('[Auth] Error verifying farm password:', err);
+    return { valid: false, hasPassword: true };
+  }
+}
+
+export async function checkFarmHasPassword(targetFarmId: string): Promise<boolean> {
+  try {
+    const result = await trpcClient.farm.verifyFarmPassword.mutate({
+      farmId: targetFarmId,
+      password: '',
+    });
+    return result.hasPassword;
   } catch {
-    return null;
+    return false;
   }
 }
 
@@ -192,8 +204,17 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     void AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME).then(name => {
       if (name) setDisplayName(name);
     });
-    void AsyncStorage.getItem(STORAGE_KEYS.FARM_PASSWORD).then(pw => {
+    void SecureStore.getItemAsync('farmguard_farm_password').then(pw => {
       if (pw) setJoinPassword(pw);
+    }).catch(() => {
+      void AsyncStorage.getItem(STORAGE_KEYS.FARM_PASSWORD).then(async (pw) => {
+        if (pw) {
+          setJoinPassword(pw);
+          await SecureStore.setItemAsync('farmguard_farm_password', pw);
+          await AsyncStorage.removeItem(STORAGE_KEYS.FARM_PASSWORD);
+          console.log('[Security] Migrated farm password from AsyncStorage to SecureStore');
+        }
+      });
     });
     void loadData<string>(STORAGE_KEYS.DELETED_IDS).then(ids => {
       if (ids.length > 0) {
@@ -1571,10 +1592,11 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       if (!isAdmin) throw new Error('Only the farm admin can set a join password.');
       const trimmed = password ? password.trim() : null;
       if (trimmed) {
-        await AsyncStorage.setItem(STORAGE_KEYS.FARM_PASSWORD, trimmed);
+        await SecureStore.setItemAsync('farmguard_farm_password', trimmed);
       } else {
-        await AsyncStorage.removeItem(STORAGE_KEYS.FARM_PASSWORD);
+        await SecureStore.deleteItemAsync('farmguard_farm_password');
       }
+      await AsyncStorage.removeItem(STORAGE_KEYS.FARM_PASSWORD);
       setJoinPassword(trimmed);
 
       const { data: existing } = await supabase

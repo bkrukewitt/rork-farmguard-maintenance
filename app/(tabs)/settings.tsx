@@ -50,7 +50,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
-import { useFarmData, DuplicateItem, FarmMember, fetchFarmPasswordForId } from '@/contexts/FarmDataContext';
+import { useFarmData, DuplicateItem, FarmMember, verifyFarmPasswordForId, checkFarmHasPassword } from '@/contexts/FarmDataContext';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Equipment, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
@@ -145,7 +145,7 @@ export default function SettingsScreen() {
   const [joinStep, setJoinStep] = useState<'farm_id' | 'password'>('farm_id');
   const [joinPasswordInput, setJoinPasswordInput] = useState('');
   const [joinPasswordError, setJoinPasswordError] = useState('');
-  const [pendingFarmPassword, setPendingFarmPassword] = useState<string | null>(null);
+
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
   const [newJoinPassword, setNewJoinPassword] = useState('');
   const [newJoinPasswordConfirm, setNewJoinPasswordConfirm] = useState('');
@@ -666,9 +666,8 @@ export default function SettingsScreen() {
     if (joinStep === 'farm_id') {
       setIsCheckingDuplicates(true);
       try {
-        const password = await fetchFarmPasswordForId(joinFarmId.trim());
-        setPendingFarmPassword(password);
-        if (password) {
+        const hasPassword = await checkFarmHasPassword(joinFarmId.trim());
+        if (hasPassword) {
           setJoinStep('password');
           setJoinPasswordInput('');
           setJoinPasswordError('');
@@ -686,12 +685,21 @@ export default function SettingsScreen() {
         setJoinPasswordError('Please enter the farm password.');
         return;
       }
-      if (joinPasswordInput.trim() !== pendingFarmPassword) {
-        setJoinPasswordError('Incorrect password. Please try again.');
-        return;
+      setIsCheckingDuplicates(true);
+      try {
+        const result = await verifyFarmPasswordForId(joinFarmId.trim(), joinPasswordInput.trim());
+        if (!result.valid) {
+          setJoinPasswordError('Incorrect password. Please try again.');
+          return;
+        }
+        setJoinPasswordError('');
+        await proceedWithJoin(joinFarmId.trim());
+      } catch (error) {
+        console.error('Error verifying farm password:', error);
+        setJoinPasswordError('Failed to verify password. Please try again.');
+      } finally {
+        setIsCheckingDuplicates(false);
       }
-      setJoinPasswordError('');
-      await proceedWithJoin(joinFarmId.trim());
     }
   };
 
