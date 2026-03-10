@@ -10,6 +10,7 @@ import {
   Platform,
   Modal,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
@@ -32,6 +33,7 @@ import { Image } from 'expo-image';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { uploadImage } from '@/utils/imageUpload';
 import { 
   WorkOrderPriority, 
   WorkOrderStatus, 
@@ -76,6 +78,7 @@ export default function WorkOrderDetailScreen() {
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [newEmployeeRole, setNewEmployeeRole] = useState('');
   const [images, setImages] = useState<WorkOrderImage[]>([]);
+  const [uploadingImageIds, setUploadingImageIds] = useState<Set<string>>(new Set());
   
   const [isSaving, setIsSaving] = useState(false);
 
@@ -203,6 +206,27 @@ export default function WorkOrderDetailScreen() {
     }
   };
 
+  const uploadAndSetImage = async (localUri: string, imageId: string) => {
+    setUploadingImageIds(prev => new Set(prev).add(imageId));
+    try {
+      const publicUrl = await uploadImage(localUri);
+      console.log('[WorkOrder] Image uploaded:', publicUrl);
+      setImages(prev => prev.map(img => img.id === imageId ? { ...img, uri: publicUrl } : img));
+    } catch (error) {
+      console.error('[WorkOrder] Image upload failed:', error);
+      Alert.alert(
+        'Upload Failed',
+        'Photo could not be uploaded to the cloud. It will only be visible on this device.',
+      );
+    } finally {
+      setUploadingImageIds(prev => {
+        const next = new Set(prev);
+        next.delete(imageId);
+        return next;
+      });
+    }
+  };
+
   const handlePickImage = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -217,6 +241,9 @@ export default function WorkOrderDetailScreen() {
           createdAt: new Date().toISOString(),
         }));
         setImages(prev => [...prev, ...newImages]);
+        for (const img of newImages) {
+          void uploadAndSetImage(img.uri, img.id);
+        }
       }
     } catch (err) {
       console.error('Error picking image:', err);
@@ -240,6 +267,7 @@ export default function WorkOrderDetailScreen() {
           createdAt: new Date().toISOString(),
         };
         setImages(prev => [...prev, newImage]);
+        void uploadAndSetImage(newImage.uri, newImage.id);
       }
     } catch (err) {
       console.error('Error taking photo:', err);
@@ -447,6 +475,11 @@ export default function WorkOrderDetailScreen() {
                 {images.map(img => (
                   <View key={img.id} style={{ marginHorizontal: 4, position: 'relative' as const }}>
                     <Image source={{ uri: img.uri }} style={{ width: 100, height: 100, borderRadius: 10 }} />
+                    {uploadingImageIds.has(img.id) && (
+                      <View style={{ position: 'absolute' as const, top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 10, justifyContent: 'center' as const, alignItems: 'center' as const }}>
+                        <ActivityIndicator size="small" color="#fff" />
+                      </View>
+                    )}
                     <TouchableOpacity
                       style={{ position: 'absolute' as const, top: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 10, width: 20, height: 20, justifyContent: 'center' as const, alignItems: 'center' as const }}
                       onPress={() => handleRemoveImage(img.id)}

@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   Alert,
   Image,
+  ActivityIndicator,
 } from 'react-native';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import * as ImagePicker from 'expo-image-picker';
@@ -33,6 +34,7 @@ import { useFarmData } from '@/contexts/FarmDataContext';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import Paywall from '@/components/Paywall';
 import { EquipmentType, EquipmentMetric, DEFAULT_MAINTENANCE_INTERVALS } from '@/types/equipment';
+import { uploadImage } from '@/utils/imageUpload';
 
 const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
   { value: 'tractor', label: 'Tractor', Icon: Tractor },
@@ -67,6 +69,7 @@ export default function AddEquipmentScreen() {
   const [purchaseDate, setPurchaseDate] = useState('');
   const [notes, setNotes] = useState('');
   const [imageUri, setImageUri] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const [oilCapacity, setOilCapacity] = useState('');
 
   const takePhoto = async () => {
@@ -86,7 +89,7 @@ export default function AddEquipmentScreen() {
 
       if (!result.canceled && result.assets[0]) {
         console.log('Photo taken:', result.assets[0].uri);
-        setImageUri(result.assets[0].uri);
+        await handleUploadImage(result.assets[0].uri);
       }
     } catch (error) {
       console.log('Error taking photo:', error);
@@ -105,11 +108,33 @@ export default function AddEquipmentScreen() {
 
       if (!result.canceled && result.assets[0]) {
         console.log('Image picked:', result.assets[0].uri);
-        setImageUri(result.assets[0].uri);
+        await handleUploadImage(result.assets[0].uri);
       }
     } catch (error) {
       console.log('Error picking image:', error);
       Alert.alert('Error', 'Failed to pick image');
+    }
+  };
+
+  const handleUploadImage = async (uri: string) => {
+    setIsUploading(true);
+    setImageUri(uri);
+    try {
+      const publicUrl = await uploadImage(uri);
+      console.log('Image uploaded, public URL:', publicUrl);
+      setImageUri(publicUrl);
+    } catch (error) {
+      console.log('Error uploading image:', error);
+      Alert.alert(
+        'Upload Failed',
+        'Photo could not be uploaded to the cloud. It will only be visible on this device.',
+        [
+          { text: 'Keep Local', style: 'cancel' },
+          { text: 'Retry', onPress: () => handleUploadImage(uri) },
+        ]
+      );
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -201,7 +226,13 @@ export default function AddEquipmentScreen() {
         {imageUri ? (
           <View style={styles.imagePreviewContainer}>
             <Image source={{ uri: imageUri }} style={styles.imagePreview} />
-            <TouchableOpacity style={styles.removeImageButton} onPress={removeImage}>
+            {isUploading && (
+              <View style={styles.uploadOverlay}>
+                <ActivityIndicator size="large" color="#fff" />
+                <Text style={styles.uploadOverlayText}>Uploading...</Text>
+              </View>
+            )}
+            <TouchableOpacity style={styles.removeImageButton} onPress={removeImage} disabled={isUploading}>
               <X color={Colors.textOnPrimary} size={20} />
             </TouchableOpacity>
           </View>
@@ -573,6 +604,19 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 200,
     borderRadius: 16,
+  },
+  uploadOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  uploadOverlayText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600' as const,
+    marginTop: 8,
   },
   removeImageButton: {
     position: 'absolute',
