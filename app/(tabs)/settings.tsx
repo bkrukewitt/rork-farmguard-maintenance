@@ -159,6 +159,7 @@ export default function SettingsScreen() {
   const [feedbackCategory, setFeedbackCategory] = useState<'bug' | 'feature' | 'question' | 'other'>('bug');
   const [feedbackSubject, setFeedbackSubject] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState('');
+  const [feedbackEmail, setFeedbackEmail] = useState('');
   const [isSendingFeedback, setIsSendingFeedback] = useState(false);
 
   const SUPPORT_EMAIL = 'farmguardmaintain@gmail.com';
@@ -816,6 +817,7 @@ export default function SettingsScreen() {
       feedbackMessage.trim(),
       '',
       '---',
+      `From: ${feedbackEmail.trim()}`,
       `Category: ${feedbackCategory}`,
       `App Version: ${appVersion}`,
       `Farm ID: ${farmId || 'Not set'}`,
@@ -840,6 +842,7 @@ export default function SettingsScreen() {
       setShowFeedbackModal(false);
       setFeedbackSubject('');
       setFeedbackMessage('');
+      setFeedbackEmail('');
       setFeedbackCategory('bug');
     } catch (error) {
       console.error('[Settings] Error opening mail:', error);
@@ -1402,6 +1405,7 @@ export default function SettingsScreen() {
           onPress={() => {
             setFeedbackSubject('');
             setFeedbackMessage('');
+            setFeedbackEmail('');
             setFeedbackCategory('bug');
             setShowFeedbackModal(true);
           }}
@@ -2337,6 +2341,20 @@ export default function SettingsScreen() {
               Choose a category and describe your feedback below. This will open your email app.
             </Text>
 
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Your email address *"
+                placeholderTextColor={colors.textSecondary}
+                value={feedbackEmail}
+                onChangeText={setFeedbackEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={120}
+              />
+            </View>
+
             <View style={styles.feedbackCategoryRow}>
               {feedbackCategories.map((cat) => (
                 <TouchableOpacity
@@ -2385,9 +2403,9 @@ export default function SettingsScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.joinButton, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: !feedbackMessage.trim() ? 0.5 : 1 }]}
+              style={[styles.joinButton, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: (!feedbackMessage.trim() || !feedbackEmail.trim()) ? 0.5 : 1 }]}
               onPress={handleSendFeedback}
-              disabled={!feedbackMessage.trim() || isSendingFeedback}
+              disabled={!feedbackMessage.trim() || !feedbackEmail.trim() || isSendingFeedback}
             >
               {isSendingFeedback ? (
                 <ActivityIndicator size="small" color="#fff" />
