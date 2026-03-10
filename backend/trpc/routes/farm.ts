@@ -669,11 +669,25 @@ export const farmRouter = createTRPCRouter({
         ...input,
         createdAt: new Date().toISOString(),
       };
-      const existing = await getValue<Array<Record<string, unknown>>>('app_feedback') ?? [];
-      existing.push(feedbackEntry);
-      const success = await setValue('app_feedback', existing);
+      const success = await setValue(`feedback:${feedbackId}`, feedbackEntry);
       if (!success) {
+        console.error(`[Farm] Failed to save feedback entry: ${feedbackId}`);
+        const indexKey = 'app_feedback_index';
+        const existing = await getValue<string[]>(indexKey) ?? [];
+        existing.push(feedbackId);
+        const indexSuccess = await setValue(indexKey, existing);
+        if (!indexSuccess) {
+          console.error(`[Farm] Also failed to save feedback index`);
+        }
         throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to save feedback' });
+      }
+      try {
+        const indexKey = 'app_feedback_index';
+        const existing = await getValue<string[]>(indexKey) ?? [];
+        existing.push(feedbackId);
+        await setValue(indexKey, existing);
+      } catch (indexErr) {
+        console.error(`[Farm] Failed to update feedback index, but entry was saved:`, indexErr);
       }
       console.log(`[Farm] Feedback saved: ${feedbackId}`);
       return { success: true, feedbackId };

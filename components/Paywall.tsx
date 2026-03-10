@@ -100,6 +100,11 @@ export default function Paywall({ onDismiss }: PaywallProps) {
   const { farmId } = useFarmData();
 
   const handleStartTrial = async () => {
+    if (!farmId) {
+      console.warn('[Paywall] farmId is empty, cannot start trial');
+      Alert.alert('Error', 'Farm not loaded yet. Please try again in a moment.');
+      return;
+    }
     await startTrial(farmId);
   };
 
