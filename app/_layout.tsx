@@ -10,7 +10,7 @@ import { trpc, trpcClient } from "@/lib/trpc";
 import VersionGate from "@/components/VersionGate";
 import SubscriptionGate from "@/components/SubscriptionGate";
 
-SplashScreen.preventAutoHideAsync();
+void SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -103,7 +103,7 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   useEffect(() => {
-    SplashScreen.hideAsync();
+    void SplashScreen.hideAsync();
   }, []);
 
   return (
@@ -112,13 +112,13 @@ export default function RootLayout() {
         <GestureHandlerRootView style={{ flex: 1 }}>
           <ThemeProvider>
             <PurchasesProvider>
-              <VersionGate>
-                <SubscriptionGate>
-                  <FarmDataProvider>
+              <FarmDataProvider>
+                <VersionGate>
+                  <SubscriptionGate>
                     <RootLayoutNav />
-                  </FarmDataProvider>
-                </SubscriptionGate>
-              </VersionGate>
+                  </SubscriptionGate>
+                </VersionGate>
+              </FarmDataProvider>
             </PurchasesProvider>
           </ThemeProvider>
         </GestureHandlerRootView>
