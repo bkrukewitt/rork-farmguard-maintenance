@@ -111,15 +111,15 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <GestureHandlerRootView style={{ flex: 1 }}>
           <ThemeProvider>
-            <PurchasesProvider>
-              <FarmDataProvider>
+            <FarmDataProvider>
+              <PurchasesProvider>
                 <VersionGate>
                   <SubscriptionGate>
                     <RootLayoutNav />
                   </SubscriptionGate>
                 </VersionGate>
-              </FarmDataProvider>
-            </PurchasesProvider>
+              </PurchasesProvider>
+            </FarmDataProvider>
           </ThemeProvider>
         </GestureHandlerRootView>
       </QueryClientProvider>

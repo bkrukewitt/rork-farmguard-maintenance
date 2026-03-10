@@ -57,13 +57,24 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   const { mutateAsync: purchaseMutateAsync, isPending: isPurchasing, error: purchaseError } = useMutation({
     mutationFn: async (packageToPurchase: import('react-native-purchases').PurchasesPackage) => {
       console.log('[Purchases] Purchasing package:', packageToPurchase.identifier);
-      const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
-      console.log('[Purchases] Purchase successful');
-      return customerInfo;
+      try {
+        const { customerInfo } = await Purchases.purchasePackage(packageToPurchase);
+        console.log('[Purchases] Purchase successful');
+        return customerInfo;
+      } catch (err: unknown) {
+        const error = err as { userCancelled?: boolean; code?: string; message?: string };
+        if (error?.userCancelled) {
+          console.log('[Purchases] User cancelled purchase');
+          return null;
+        }
+        throw err;
+      }
     },
     onSuccess: (customerInfo) => {
-      console.log('[Purchases] Setting customer info after purchase, entitlements:', Object.keys(customerInfo.entitlements.active));
-      queryClient.setQueryData(['purchases', 'customerInfo'], customerInfo);
+      if (customerInfo) {
+        console.log('[Purchases] Setting customer info after purchase, entitlements:', Object.keys(customerInfo.entitlements.active));
+        queryClient.setQueryData(['purchases', 'customerInfo'], customerInfo);
+      }
     },
     onError: (error) => {
       console.error('[Purchases] Purchase error:', error);
