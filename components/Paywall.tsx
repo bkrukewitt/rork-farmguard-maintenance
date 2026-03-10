@@ -14,7 +14,6 @@ import { Shield, Check, Tractor, Wrench, Package, ClipboardList, Star, RefreshCw
 import { PurchasesPackage } from 'react-native-purchases';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import { useFarmData } from '@/contexts/FarmDataContext';
-import { useQueryClient } from '@tanstack/react-query';
 import { Eye } from 'lucide-react-native';
 
 const FEATURES = [
@@ -98,8 +97,6 @@ export default function Paywall({ onDismiss }: PaywallProps) {
 
   const savings = getAnnualSavings();
 
-  const queryClient = useQueryClient();
-
   const { farmId } = useFarmData();
 
   const handleStartTrial = async () => {
@@ -110,9 +107,7 @@ export default function Paywall({ onDismiss }: PaywallProps) {
     if (!selectedPackage) return;
     try {
       const customerInfo = await purchasePackage(selectedPackage);
-      console.log('[Paywall] Purchase completed, checking entitlements:', Object.keys(customerInfo?.entitlements?.active ?? {}));
-      await queryClient.invalidateQueries({ queryKey: ['purchases', 'customerInfo'] });
-      await queryClient.refetchQueries({ queryKey: ['purchases', 'customerInfo'] });
+      console.log('[Paywall] Purchase completed, active entitlements:', Object.keys(customerInfo?.entitlements?.active ?? {}));
     } catch (err: unknown) {
       const error = err as { userCancelled?: boolean; message?: string };
       if (!error?.userCancelled) {
@@ -124,8 +119,6 @@ export default function Paywall({ onDismiss }: PaywallProps) {
   const handleRestore = async () => {
     try {
       await restorePurchases();
-      await queryClient.invalidateQueries({ queryKey: ['purchases', 'customerInfo'] });
-      await queryClient.refetchQueries({ queryKey: ['purchases', 'customerInfo'] });
       Alert.alert('Purchases Restored', 'Your subscription has been restored successfully.');
     } catch {
       Alert.alert('Restore Failed', 'Could not restore purchases. Please try again.');

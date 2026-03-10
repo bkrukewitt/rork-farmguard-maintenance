@@ -62,8 +62,8 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
       return customerInfo;
     },
     onSuccess: (customerInfo) => {
+      console.log('[Purchases] Setting customer info after purchase, entitlements:', Object.keys(customerInfo.entitlements.active));
       queryClient.setQueryData(['purchases', 'customerInfo'], customerInfo);
-      void queryClient.invalidateQueries({ queryKey: ['purchases', 'customerInfo'] });
     },
     onError: (error) => {
       console.error('[Purchases] Purchase error:', error);
@@ -78,8 +78,8 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
       return customerInfo;
     },
     onSuccess: (customerInfo) => {
+      console.log('[Purchases] Setting customer info after restore, entitlements:', Object.keys(customerInfo.entitlements.active));
       queryClient.setQueryData(['purchases', 'customerInfo'], customerInfo);
-      void queryClient.invalidateQueries({ queryKey: ['purchases', 'customerInfo'] });
     },
     onError: (error) => {
       console.error('[Purchases] Restore error:', error);
