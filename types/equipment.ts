@@ -195,6 +195,41 @@ export const WORK_ORDER_STATUSES: { value: WorkOrderStatus; label: string; color
   { value: 'cancelled', label: 'Cancelled', color: '#9CA3AF' },
 ];
 
+export type FuelType = 'off_road_diesel' | 'on_road_diesel' | 'gasoline' | 'custom';
+
+export interface FuelLog {
+  id: string;
+  equipmentId: string;
+  date: string;
+  fuelType: FuelType;
+  customFuelTypeName?: string;
+  gallons: number;
+  defGallons?: number;
+  hoursAtFillUp: number;
+  filledBy: 'owner' | 'dealer' | 'employee';
+  filledByName?: string;
+  notes?: string;
+  createdAt: string;
+}
+
+export interface CustomFuelType {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export const BUILT_IN_FUEL_TYPES: { value: FuelType; label: string }[] = [
+  { value: 'off_road_diesel', label: 'Off-Road Diesel' },
+  { value: 'on_road_diesel', label: 'On-Road Diesel' },
+  { value: 'gasoline', label: 'Gasoline' },
+];
+
+export const FUEL_FILLER_OPTIONS: { value: FuelLog['filledBy']; label: string }[] = [
+  { value: 'owner', label: 'Owner' },
+  { value: 'dealer', label: 'Dealer' },
+  { value: 'employee', label: 'Employee' },
+];
+
 export const DEFAULT_SERVICE_ROUTINES: Omit<ServiceRoutine, 'id' | 'createdAt' | 'updatedAt'>[] = [
   {
     name: '250 Hour Service',

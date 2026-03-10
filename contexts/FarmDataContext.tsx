@@ -4,7 +4,7 @@ import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
-import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine, WorkOrder, Employee } from '@/types/equipment';
+import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine, WorkOrder, Employee, FuelLog, CustomFuelType } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 import { supabase } from '@/lib/supabase';
 import { trpcClient } from '@/lib/trpc';
@@ -18,6 +18,8 @@ const STORAGE_KEYS = {
   INSPECTION_ROUTINES: 'farmguard_inspection_routines',
   WORK_ORDERS: 'farmguard_work_orders',
   EMPLOYEES: 'farmguard_employees',
+  FUEL_LOGS: 'farmguard_fuel_logs',
+  CUSTOM_FUEL_TYPES: 'farmguard_custom_fuel_types',
   DELETED_IDS: 'farmguard_deleted_ids',
   FARM_ID: 'farmguard_farm_id',
   DEVICE_ID: 'farmguard_device_id',
@@ -45,6 +47,8 @@ interface FarmDataPayload {
   inspectionRoutines: InspectionRoutine[];
   workOrders: WorkOrder[];
   employees: Employee[];
+  fuelLogs: FuelLog[];
+  customFuelTypes: CustomFuelType[];
   deletedIds?: string[];
   joinPassword?: string | null;
 }
@@ -71,6 +75,8 @@ const DEFAULT_PAYLOAD: FarmDataPayload = {
   inspectionRoutines: [],
   workOrders: [],
   employees: [],
+  fuelLogs: [],
+  customFuelTypes: [],
   deletedIds: [],
 };
 
@@ -176,6 +182,8 @@ async function fetchRemoteData(farmId: string): Promise<FarmDataPayload | null> 
       inspectionRoutines: (rd.inspectionRoutines as InspectionRoutine[]) || [],
       workOrders: (rd.workOrders as WorkOrder[]) || [],
       employees: (rd.employees as Employee[]) || [],
+      fuelLogs: (rd.fuelLogs as FuelLog[]) || [],
+      customFuelTypes: (rd.customFuelTypes as CustomFuelType[]) || [],
       deletedIds: (rd.deletedIds as string[]) || [],
       joinPassword: (rd._joinPassword as string) || null,
     };
@@ -464,6 +472,33 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const workOrders = useMemo(() => workOrdersQuery.data ?? [], [workOrdersQuery.data]);
   const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
 
+  const fuelLogsQuery = useQuery({
+    queryKey: ['fuelLogs'],
+    queryFn: () => loadData<FuelLog>(STORAGE_KEYS.FUEL_LOGS),
+    staleTime: 120000,
+    gcTime: 300000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchInterval: 120000,
+    refetchIntervalInBackground: false,
+    refetchOnReconnect: false,
+  });
+
+  const customFuelTypesQuery = useQuery({
+    queryKey: ['customFuelTypes'],
+    queryFn: () => loadData<CustomFuelType>(STORAGE_KEYS.CUSTOM_FUEL_TYPES),
+    staleTime: 120000,
+    gcTime: 300000,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
+    refetchInterval: 120000,
+    refetchIntervalInBackground: false,
+    refetchOnReconnect: false,
+  });
+
+  const fuelLogs = useMemo(() => fuelLogsQuery.data ?? [], [fuelLogsQuery.data]);
+  const customFuelTypes = useMemo(() => customFuelTypesQuery.data ?? [], [customFuelTypesQuery.data]);
+
   const mergeArraysSmart = useCallback(<T extends { id: string }>(local: T[], remoteArr: T[], tombstoneSet: Set<string>): T[] => {
     const map = new Map<string, T>();
     local.forEach(item => {
@@ -522,7 +557,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         remote.serviceRoutines.length > 0 ||
         remote.inspectionRoutines.length > 0 ||
         remote.workOrders.length > 0 ||
-        remote.employees.length > 0;
+        remote.employees.length > 0 ||
+        remote.fuelLogs.length > 0 ||
+        remote.customFuelTypes.length > 0;
 
       if (hasRemoteData || remoteDeletedIds.length > 0) {
         console.log('[AutoMerge] Initial remote data found, merging with local... Tombstones:', combinedDeletedIds.length);
@@ -535,6 +572,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         const mergedInspectionRoutines = mergeArraysSmart(inspectionRoutines, remote.inspectionRoutines, tombstoneSet);
         const mergedWorkOrders = mergeArraysSmart(workOrders, remote.workOrders, tombstoneSet);
         const mergedEmployees = mergeArraysSmart(employees, remote.employees, tombstoneSet);
+        const mergedFuelLogs = mergeArraysSmart(fuelLogs, remote.fuelLogs, tombstoneSet);
+        const mergedCustomFuelTypes = mergeArraysSmart(customFuelTypes, remote.customFuelTypes, tombstoneSet);
 
         deletedIdsRef.current = combinedDeletedIds;
 
@@ -547,6 +586,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           saveData(STORAGE_KEYS.INSPECTION_ROUTINES, mergedInspectionRoutines),
           saveData(STORAGE_KEYS.WORK_ORDERS, mergedWorkOrders),
           saveData(STORAGE_KEYS.EMPLOYEES, mergedEmployees),
+          saveData(STORAGE_KEYS.FUEL_LOGS, mergedFuelLogs),
+          saveData(STORAGE_KEYS.CUSTOM_FUEL_TYPES, mergedCustomFuelTypes),
           saveData(STORAGE_KEYS.DELETED_IDS, combinedDeletedIds),
         ]).then(() => {
           void queryClient.invalidateQueries({ queryKey: ['equipment'] });
@@ -557,6 +598,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           void queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
           void queryClient.invalidateQueries({ queryKey: ['workOrders'] });
           void queryClient.invalidateQueries({ queryKey: ['employees'] });
+          void queryClient.invalidateQueries({ queryKey: ['fuelLogs'] });
+          void queryClient.invalidateQueries({ queryKey: ['customFuelTypes'] });
           initialMergeDoneRef.current = true;
           console.log('[AutoMerge] Initial merge completed and saved locally');
         });
@@ -564,7 +607,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         initialMergeDoneRef.current = true;
       }
     }
-  }, [remoteDataQuery.data, farmId, equipment, maintenanceLogs, consumables, intervals, serviceRoutines, inspectionRoutines, workOrders, employees, mergeArraysSmart, mergeDeletedIds, queryClient]);
+  }, [remoteDataQuery.data, farmId, equipment, maintenanceLogs, consumables, intervals, serviceRoutines, inspectionRoutines, workOrders, employees, fuelLogs, customFuelTypes, mergeArraysSmart, mergeDeletedIds, queryClient]);
 
   const syncToServer = useCallback(async (options?: { skipMerge?: boolean }) => {
     if (!farmId) return;
@@ -583,6 +626,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       const currentInspectionRoutines = await loadData<InspectionRoutine>(STORAGE_KEYS.INSPECTION_ROUTINES);
       const currentWorkOrders = await loadData<WorkOrder>(STORAGE_KEYS.WORK_ORDERS);
       const currentEmployees = await loadData<Employee>(STORAGE_KEYS.EMPLOYEES);
+      const currentFuelLogs = await loadData<FuelLog>(STORAGE_KEYS.FUEL_LOGS);
+      const currentCustomFuelTypes = await loadData<CustomFuelType>(STORAGE_KEYS.CUSTOM_FUEL_TYPES);
       const currentDeletedIds = await loadData<string>(STORAGE_KEYS.DELETED_IDS);
 
       let finalEquipment = currentEquipment;
@@ -593,6 +638,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       let finalInspectionRoutines = currentInspectionRoutines;
       let finalWorkOrders = currentWorkOrders;
       let finalEmployees = currentEmployees;
+      let finalFuelLogs = currentFuelLogs;
+      let finalCustomFuelTypes = currentCustomFuelTypes;
       let finalDeletedIds = currentDeletedIds;
 
       if (!shouldSkipMerge) {
@@ -614,8 +661,10 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           finalInspectionRoutines = mergeArraysSmart(currentInspectionRoutines, remoteData.inspectionRoutines, tombstoneSet);
           finalWorkOrders = mergeArraysSmart(currentWorkOrders, remoteData.workOrders, tombstoneSet);
           finalEmployees = mergeArraysSmart(currentEmployees, remoteData.employees, tombstoneSet);
+          finalFuelLogs = mergeArraysSmart(currentFuelLogs, remoteData.fuelLogs, tombstoneSet);
+          finalCustomFuelTypes = mergeArraysSmart(currentCustomFuelTypes, remoteData.customFuelTypes, tombstoneSet);
 
-          console.log('[Sync] Merged counts - Equipment:', finalEquipment.length, 'Logs:', finalLogs.length, 'Consumables:', finalConsumables.length);
+          console.log('[Sync] Merged counts - Equipment:', finalEquipment.length, 'Logs:', finalLogs.length, 'Consumables:', finalConsumables.length, 'FuelLogs:', finalFuelLogs.length);
 
           deletedIdsRef.current = finalDeletedIds;
 
@@ -628,6 +677,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
             saveData(STORAGE_KEYS.INSPECTION_ROUTINES, finalInspectionRoutines),
             saveData(STORAGE_KEYS.WORK_ORDERS, finalWorkOrders),
             saveData(STORAGE_KEYS.EMPLOYEES, finalEmployees),
+            saveData(STORAGE_KEYS.FUEL_LOGS, finalFuelLogs),
+            saveData(STORAGE_KEYS.CUSTOM_FUEL_TYPES, finalCustomFuelTypes),
             saveData(STORAGE_KEYS.DELETED_IDS, finalDeletedIds),
           ]);
         }
@@ -648,6 +699,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
             inspectionRoutines: finalInspectionRoutines,
             workOrders: finalWorkOrders,
             employees: finalEmployees,
+            fuelLogs: finalFuelLogs,
+            customFuelTypes: finalCustomFuelTypes,
             deletedIds: finalDeletedIds,
             _joinPassword: joinPassword || null,
           },
@@ -666,6 +719,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       void queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
       void queryClient.invalidateQueries({ queryKey: ['workOrders'] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
+      void queryClient.invalidateQueries({ queryKey: ['fuelLogs'] });
+      void queryClient.invalidateQueries({ queryKey: ['customFuelTypes'] });
       void queryClient.invalidateQueries({ queryKey: ['remoteData'] });
 
       setLastSyncTime(new Date().toISOString());
@@ -718,7 +773,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       console.log(`[Delete] Deleting equipment: ${id}`);
       const relatedLogIds = maintenanceLogs.filter(l => l.equipmentId === id).map(l => l.id);
       const relatedIntervalIds = intervals.filter(i => i.equipmentId === id).map(i => i.id);
-      const allTombstoneIds = [id, ...relatedLogIds, ...relatedIntervalIds];
+      const relatedFuelLogIds = fuelLogs.filter(f => f.equipmentId === id).map(f => f.id);
+      const allTombstoneIds = [id, ...relatedLogIds, ...relatedIntervalIds, ...relatedFuelLogIds];
 
       await addTombstones(allTombstoneIds);
 
@@ -728,12 +784,15 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updatedLogs);
       const updatedIntervals = intervals.filter(i => i.equipmentId !== id);
       await saveData(STORAGE_KEYS.INTERVALS, updatedIntervals);
+      const updatedFuelLogs = fuelLogs.filter(f => f.equipmentId !== id);
+      await saveData(STORAGE_KEYS.FUEL_LOGS, updatedFuelLogs);
       console.log(`[Delete] Equipment deleted with ${allTombstoneIds.length} tombstones. Remaining: ${updated.length}`);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['equipment'] });
       void queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
       void queryClient.invalidateQueries({ queryKey: ['intervals'] });
+      void queryClient.invalidateQueries({ queryKey: ['fuelLogs'] });
       void syncToServer({ skipMerge: true });
     },
   });
@@ -941,6 +1000,72 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     () => consumables.filter(c => c.quantity <= c.lowStockThreshold),
     [consumables]
   );
+
+  const addFuelLogMutation = useMutation({
+    mutationFn: async (log: Omit<FuelLog, 'id' | 'createdAt'>) => {
+      const newLog: FuelLog = {
+        ...log,
+        id: generateId(),
+        createdAt: new Date().toISOString(),
+      };
+      const updated = [...fuelLogs, newLog];
+      await saveData(STORAGE_KEYS.FUEL_LOGS, updated);
+      return newLog;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['fuelLogs'] });
+      void syncToServer({ skipMerge: true });
+    },
+  });
+
+  const deleteFuelLogMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await addTombstones([id]);
+      const updated = fuelLogs.filter(f => f.id !== id);
+      await saveData(STORAGE_KEYS.FUEL_LOGS, updated);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['fuelLogs'] });
+      void syncToServer({ skipMerge: true });
+    },
+  });
+
+  const getFuelLogsForEquipment = useCallback(
+    (equipmentId: string) =>
+      fuelLogs
+        .filter(f => f.equipmentId === equipmentId)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [fuelLogs]
+  );
+
+  const addCustomFuelTypeMutation = useMutation({
+    mutationFn: async (name: string) => {
+      const newType: CustomFuelType = {
+        id: generateId(),
+        name: name.trim(),
+        createdAt: new Date().toISOString(),
+      };
+      const updated = [...customFuelTypes, newType];
+      await saveData(STORAGE_KEYS.CUSTOM_FUEL_TYPES, updated);
+      return newType;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['customFuelTypes'] });
+      void syncToServer({ skipMerge: true });
+    },
+  });
+
+  const deleteCustomFuelTypeMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await addTombstones([id]);
+      const updated = customFuelTypes.filter(t => t.id !== id);
+      await saveData(STORAGE_KEYS.CUSTOM_FUEL_TYPES, updated);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['customFuelTypes'] });
+      void syncToServer({ skipMerge: true });
+    },
+  });
 
   const bulkAddConsumablesMutation = useMutation({
     mutationFn: async (newConsumables: Omit<Consumable, 'id' | 'createdAt' | 'updatedAt'>[]) => {
