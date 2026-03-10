@@ -8,15 +8,19 @@ interface TrialBannerProps {
 }
 
 export default function TrialBanner({ message }: TrialBannerProps) {
-  const { isTrial, isSubscribed, endTrial } = usePurchases();
+  const { isTrial, isSubscribed, endTrial, trialDaysRemaining } = usePurchases();
 
   if (!isTrial || isSubscribed) return null;
+
+  const defaultMessage = trialDaysRemaining > 0
+    ? `Free trial — ${trialDaysRemaining} day${trialDaysRemaining !== 1 ? 's' : ''} remaining.`
+    : 'Preview mode — subscribe to add and manage data.';
 
   return (
     <View style={styles.container}>
       <Lock size={16} color="#92400E" />
       <Text style={styles.text}>
-        {message ?? 'Preview mode — subscribe to add and manage data.'}
+        {message ?? defaultMessage}
       </Text>
       <TouchableOpacity
         style={styles.button}

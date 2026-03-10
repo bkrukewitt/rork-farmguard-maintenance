@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Shield, Check, Tractor, Wrench, Package, ClipboardList, Star, RefreshCw, X } from 'lucide-react-native';
 import { PurchasesPackage } from 'react-native-purchases';
 import { usePurchases } from '@/contexts/PurchasesContext';
+import { useFarmData } from '@/contexts/FarmDataContext';
 import { useQueryClient } from '@tanstack/react-query';
 import { Eye } from 'lucide-react-native';
 
@@ -99,8 +100,10 @@ export default function Paywall({ onDismiss }: PaywallProps) {
 
   const queryClient = useQueryClient();
 
+  const { farmId } = useFarmData();
+
   const handleStartTrial = async () => {
-    await startTrial();
+    await startTrial(farmId);
   };
 
   const handlePurchase = async () => {

@@ -4,6 +4,7 @@ import { createTRPCRouter, publicProcedure } from "../create-context";
 import { getFarmData, upsertFarmData, getFarmMembers, upsertFarmMember, updateMemberActivity } from "../../utils/rork-db";
 import { verifyFarmAccess, getFarmPasswordFromDb } from "../../utils/supabase-server";
 import { sanitizeObject } from "../../utils/sanitize";
+import { requireSubscription, startTrial, getTrialInfo, verifySubscription } from "../../utils/revenuecat";
 
 const EquipmentTypeSchema = z.enum([
   'tractor', 'combine', 'truck', 'implement', 'sprayer', 
@@ -168,6 +169,8 @@ const AuthenticatedFarmInput = z.object({
   farmPassword: z.string().nullable().optional(),
 });
 
+
+
 async function requireFarmAccess(farmId: string, farmPassword: string | null | undefined): Promise<void> {
   const allowed = await verifyFarmAccess(farmId, farmPassword ?? null);
   if (!allowed) {
@@ -270,14 +273,51 @@ export const farmRouter = createTRPCRouter({
       return { success: true };
     }),
 
+  getTrialInfo: publicProcedure
+    .input(z.object({ farmId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      console.log(`[Farm] Getting trial info for farm: ${input.farmId}`);
+      return await getTrialInfo(input.farmId);
+    }),
+
+  startTrial: publicProcedure
+    .input(z.object({
+      farmId: z.string().min(1),
+      farmPassword: z.string().nullable().optional(),
+    }))
+    .mutation(async ({ input }) => {
+      await requireFarmAccess(input.farmId, input.farmPassword);
+      console.log(`[Farm] Starting trial for farm: ${input.farmId}`);
+      return await startTrial(input.farmId);
+    }),
+
+  checkSubscription: publicProcedure
+    .input(z.object({
+      rcUserId: z.string().min(1),
+      farmId: z.string().min(1),
+    }))
+    .query(async ({ input }) => {
+      console.log(`[Farm] Checking subscription for RC user: ${input.rcUserId}`);
+      const status = await verifySubscription(input.rcUserId);
+      const trial = await getTrialInfo(input.farmId);
+      return {
+        ...status,
+        isTrial: trial.active,
+        trialDaysRemaining: trial.daysRemaining,
+        hasAccess: status.hasAccess || trial.active,
+      };
+    }),
+
   syncData: publicProcedure
     .input(z.object({
       farmId: z.string(),
       data: FarmDataSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Syncing data for farm: ${input.farmId}`);
       const sanitizedData = sanitizeObject(input.data);
       const dataToSave: FarmData = {
@@ -294,9 +334,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       equipment: EquipmentSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Adding equipment for farm: ${input.farmId}`);
       const sanitizedEquipment = sanitizeObject(input.equipment);
       const data = await getOrCreateFarmData(input.farmId);
@@ -310,9 +352,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       equipment: EquipmentSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Updating equipment: ${input.equipment.id}`);
       const sanitizedEquipment = sanitizeObject(input.equipment);
       const data = await getOrCreateFarmData(input.farmId);
@@ -329,9 +373,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       equipmentId: z.string(),
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Deleting equipment: ${input.equipmentId}`);
       const data = await getOrCreateFarmData(input.farmId);
       data.equipment = data.equipment.filter(e => e.id !== input.equipmentId);
@@ -346,9 +392,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       log: MaintenanceLogSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Adding maintenance log for farm: ${input.farmId}`);
       const sanitizedLog = sanitizeObject(input.log);
       const data = await getOrCreateFarmData(input.farmId);
@@ -362,9 +410,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       log: MaintenanceLogSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Updating maintenance log: ${input.log.id}`);
       const sanitizedLog = sanitizeObject(input.log);
       const data = await getOrCreateFarmData(input.farmId);
@@ -381,9 +431,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       logId: z.string(),
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Deleting maintenance log: ${input.logId}`);
       const data = await getOrCreateFarmData(input.farmId);
       data.maintenanceLogs = data.maintenanceLogs.filter(l => l.id !== input.logId);
@@ -396,9 +448,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       consumable: ConsumableSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Adding consumable for farm: ${input.farmId}`);
       const sanitizedConsumable = sanitizeObject(input.consumable);
       const data = await getOrCreateFarmData(input.farmId);
@@ -412,9 +466,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       consumable: ConsumableSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Updating consumable: ${input.consumable.id}`);
       const sanitizedConsumable = sanitizeObject(input.consumable);
       const data = await getOrCreateFarmData(input.farmId);
@@ -431,9 +487,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       consumableId: z.string(),
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Deleting consumable: ${input.consumableId}`);
       const data = await getOrCreateFarmData(input.farmId);
       data.consumables = data.consumables.filter(c => c.id !== input.consumableId);
@@ -446,9 +504,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       interval: MaintenanceIntervalSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Adding interval for farm: ${input.farmId}`);
       const sanitizedInterval = sanitizeObject(input.interval);
       const data = await getOrCreateFarmData(input.farmId);
@@ -462,9 +522,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       interval: MaintenanceIntervalSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Updating interval: ${input.interval.id}`);
       const sanitizedInterval = sanitizeObject(input.interval);
       const data = await getOrCreateFarmData(input.farmId);
@@ -481,9 +543,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routine: ServiceRoutineSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Adding service routine for farm: ${input.farmId}`);
       const sanitizedRoutine = sanitizeObject(input.routine);
       const data = await getOrCreateFarmData(input.farmId);
@@ -497,9 +561,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routine: ServiceRoutineSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Updating service routine: ${input.routine.id}`);
       const sanitizedRoutine = sanitizeObject(input.routine);
       const data = await getOrCreateFarmData(input.farmId);
@@ -516,9 +582,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routineId: z.string(),
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Deleting service routine: ${input.routineId}`);
       const data = await getOrCreateFarmData(input.farmId);
       data.serviceRoutines = data.serviceRoutines.filter(r => r.id !== input.routineId);
@@ -531,9 +599,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routine: InspectionRoutineSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Adding inspection routine for farm: ${input.farmId}`);
       const sanitizedRoutine = sanitizeObject(input.routine);
       const data = await getOrCreateFarmData(input.farmId);
@@ -547,9 +617,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routine: InspectionRoutineSchema,
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Updating inspection routine: ${input.routine.id}`);
       const sanitizedRoutine = sanitizeObject(input.routine);
       const data = await getOrCreateFarmData(input.farmId);
@@ -566,9 +638,11 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string(),
       routineId: z.string(),
       farmPassword: z.string().nullable().optional(),
+      rcUserId: z.string().nullable().optional(),
     }))
     .mutation(async ({ input }) => {
       await requireFarmAccess(input.farmId, input.farmPassword);
+      await requireSubscription(input.rcUserId, input.farmId);
       console.log(`[Farm] Deleting inspection routine: ${input.routineId}`);
       const data = await getOrCreateFarmData(input.farmId);
       data.inspectionRoutines = data.inspectionRoutines.filter(r => r.id !== input.routineId);

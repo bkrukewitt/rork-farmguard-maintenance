@@ -1,98 +1,58 @@
-# Security Hardening — All Issues
+# Add server-side RevenueCat subscription verification
+
 
 ## Overview
-
-Address all 10 security vulnerabilities identified in the audit, while keeping the current farm password approach and enforcing it server-side.
-
----
-
-### 🔴 Critical Fixes
-
-**1. Add server-side farm password verification to API routes** ✅
-
-- [x] Every tRPC procedure that reads or writes farm data requires a `farmPassword` field in addition to `farmId`
-- [x] The server fetches the stored password from Supabase and compares it before allowing the request
-- [x] If the password doesn't match, the request is rejected with an "Unauthorized" error
-- [x] The `getMinVersion` endpoint stays public (no password needed)
-- [x] New `verifyFarmPassword` endpoint added so clients never receive the actual password
-
-**2. Restrict CORS to your app's domain only** ✅
-
-- [x] CORS restricted to `rork.app`, `preview.rork.app`, and the API base URL
-- [x] Only `GET`, `POST`, `OPTIONS` methods allowed
-- [x] Max-age set to 24 hours for preflight caching
-
-**3. Farm ID no longer acts as sole access control** ✅
-
-- [x] Server-side password enforcement means knowing a farm ID alone is not enough
-- [x] Password verification happens on the server — never exposed to the client
+Add server-side subscription and grandfathering verification so the backend can confirm a user's subscription status before allowing data writes — preventing anyone from bypassing the paywall by tampering with client-side values.
 
 ---
 
-### 🟠 Medium Fixes
+### What will change
 
-**4. Add rate limiting to the API** ✅
+**1. New server-side subscription check** ✅
+- [x] Backend calls RevenueCat's REST API to verify active subscription or grandfathered status
+- [x] Check runs before every data-writing tRPC operation (add/edit/delete equipment, logs, consumables, routines, work orders, etc.)
+- [x] Read-only operations (getData, getMemberCount, getMinVersion) remain unrestricted
+- [x] Graceful fallback: if RevenueCat API key isn't configured or API is unreachable, access is allowed (no lockout)
 
-- [x] In-memory rate limiter: 60 requests/minute per client IP
-- [x] Returns 429 status with retry headers when exceeded
-- [x] Auto-cleanup of expired entries every 60 seconds
+**2. App sends its RevenueCat user ID with write requests** ✅
+- [x] All tRPC mutation inputs now accept optional `rcUserId` field
+- [x] PurchasesContext fetches and exposes the RevenueCat anonymous user ID via `Purchases.getAppUserID()`
+- [x] New `checkSubscription` tRPC endpoint combines subscription + trial status in one call
 
-**5. Enforce subscription/trial status server-side** ⚠️ (Requires additional setup)
+**3. Trial verification moves server-side** ✅
+- [x] Trial records stored in RorkDB (`trial:{farmId}`) with start date and active flag
+- [x] 14-day trial duration enforced server-side — cannot be restarted by clearing app data
+- [x] New tRPC endpoints: `startTrial`, `getTrialInfo`
+- [x] PurchasesContext updated to use server-side trial endpoints instead of local AsyncStorage flag
+- [x] TrialBanner now shows days remaining
+- [x] Paywall `startTrial` now calls server-side endpoint
 
-- [ ] Needs RevenueCat server-side API key (not currently configured)
-- [ ] Would require adding `REVENUECAT_SERVER_API_KEY` env var
-- [ ] Once configured, the server can validate receipts before allowing writes
-- Note: This is a future enhancement that requires RevenueCat REST API integration
-
-**6. Strengthen grandfathering logic** ⚠️ (Requires additional setup)
-
-- [ ] Same dependency as #5 — needs server-side RevenueCat API access
-- [ ] Server would call RevenueCat API to verify `originalAppVersion` claims
-- Note: Current client-side logic via RevenueCat SDK is reasonably secure since RevenueCat signs the data
-
-**7. Sanitize text inputs on the server** ✅
-
-- [x] `sanitizeString()` strips script tags, HTML, `javascript:` URIs, event handlers, and data URIs
-- [x] `sanitizeObject()` recursively sanitizes all string fields in nested objects/arrays
-- [x] Applied to all tRPC mutation inputs (equipment, logs, consumables, routines, etc.)
-
----
-
-### 🟡 Best Practice Fixes
-
-**8. Keep console logging as-is** ✅
-
-- [x] Logs remain for debugging per user preference
-
-**9. Keep Supabase client** ✅
-
-- [x] Supabase is the primary database — no changes needed
-- [x] Created `backend/supabase-rls-policies.sql` with RLS policies for user to apply
-
-**10. Encrypt sensitive local data** ✅
-
-- [x] Farm password moved from plain AsyncStorage to Expo SecureStore
-- [x] Automatic migration: existing AsyncStorage passwords are moved to SecureStore on first load
-- [x] Old AsyncStorage password entry is cleaned up after migration
+**4. Grandfathering verified on server** ✅
+- [x] Server checks RevenueCat's `original_application_version` and `original_purchase_date`
+- [x] Same cutoff logic as client-side (iOS build <= 1, Android versionCode <= 12, date < 2026-03-09)
+- [x] Verified server-side so it can't be spoofed by client
 
 ---
 
-## Files Changed
+### What stays the same
+- The app still uses the RevenueCat SDK for displaying paywalls and making purchases
+- The user experience doesn't change — subscribed/grandfathered users won't notice anything
+- Free trial flow remains the same from the user's perspective
+
+---
+
+### Files changed
 
 | File | Change |
 |------|--------|
-| `backend/utils/sanitize.ts` | **New** — Input sanitization utility |
-| `backend/utils/rate-limiter.ts` | **New** — In-memory rate limiter |
-| `backend/utils/supabase-server.ts` | **New** — Server-side Supabase client + password verification |
-| `backend/hono.ts` | **Modified** — Restricted CORS, added rate limiting middleware |
-| `backend/trpc/routes/farm.ts` | **Modified** — Password verification + sanitization on all routes |
-| `backend/supabase-rls-policies.sql` | **New** — Supabase RLS policies (user must run in dashboard) |
-| `contexts/FarmDataContext.tsx` | **Modified** — SecureStore for password, server-side password verification |
-| `app/(tabs)/settings.tsx` | **Modified** — Uses new server-side password verification flow |
+| `backend/utils/revenuecat.ts` | **New** — Server-side RevenueCat API client, subscription verification, trial management |
+| `backend/trpc/routes/farm.ts` | **Modified** — Added `rcUserId` to all mutations, `requireSubscription` check, new trial/subscription endpoints |
+| `contexts/PurchasesContext.tsx` | **Modified** — Server-side trial, RC user ID exposure, `checkTrialStatus` |
+| `components/Paywall.tsx` | **Modified** — Uses farmId for server-side trial start |
+| `components/TrialBanner.tsx` | **Modified** — Shows trial days remaining |
 
 ---
 
-## Manual Steps Required
-
-1. **Run Supabase RLS SQL** — Open `backend/supabase-rls-policies.sql` and execute it in your Supabase Dashboard → SQL Editor
-2. **RevenueCat server key** — For items #5 and #6, you'll need to add a `REVENUECAT_SERVER_API_KEY` environment variable with your RevenueCat secret API key
+### Setup required from you
+1. **Rotate your RevenueCat secret key** (since the old one was exposed in chat)
+2. **Add the new key** as a server environment variable named `REVENUECAT_SERVER_API_KEY`

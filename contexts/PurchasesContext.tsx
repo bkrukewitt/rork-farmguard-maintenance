@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, { CustomerInfo, PurchasesOfferings } from 'react-native-purchases';
+import { trpcClient } from '@/lib/trpc';
 
 const GRANDFATHER_IOS_MAX_BUILD = '1';
 const GRANDFATHER_ANDROID_MAX_VERSION_CODE = '12';
@@ -133,6 +134,8 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     customerInfoQuery.data?.entitlements.active[ENTITLEMENT_ID] !== undefined;
 
   const [isTrial, setIsTrial] = useState(false);
+  const [trialDaysRemaining, setTrialDaysRemaining] = useState(0);
+  const [rcUserId, setRcUserId] = useState<string | null>(null);
 
   const isSubscribed = hasActiveEntitlement || isGrandfathered;
 
@@ -140,15 +143,61 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     console.log('[Purchases] User is grandfathered — full access granted');
   }
 
-  const startTrial = useCallback(async () => {
-    await AsyncStorage.setItem('farmguard_trial_active', 'true');
-    setIsTrial(true);
-    console.log('[Purchases] Free trial started');
+  useEffect(() => {
+    if (Platform.OS !== 'web') {
+      void Purchases.getAppUserID().then(id => {
+        console.log('[Purchases] RC User ID:', id);
+        setRcUserId(id);
+      }).catch(() => {});
+    }
+  }, [customerInfoQuery.data]);
+
+  const startTrial = useCallback(async (farmId: string) => {
+    try {
+      const result = await trpcClient.farm.startTrial.mutate({ farmId });
+      if (result.success) {
+        setIsTrial(true);
+        setTrialDaysRemaining(14);
+        await AsyncStorage.setItem('farmguard_trial_active', 'true');
+        console.log('[Purchases] Server-side trial started for farm:', farmId);
+      } else if (result.alreadyUsed) {
+        console.log('[Purchases] Trial already used for farm:', farmId);
+        await AsyncStorage.removeItem('farmguard_trial_active');
+        setIsTrial(false);
+      }
+      return result;
+    } catch (error) {
+      console.error('[Purchases] Error starting trial:', error);
+      await AsyncStorage.setItem('farmguard_trial_active', 'true');
+      setIsTrial(true);
+      return { success: true, alreadyUsed: false };
+    }
+  }, []);
+
+  const checkTrialStatus = useCallback(async (farmId: string) => {
+    try {
+      const info = await trpcClient.farm.getTrialInfo.query({ farmId });
+      setIsTrial(info.active);
+      setTrialDaysRemaining(info.daysRemaining);
+      if (info.active) {
+        await AsyncStorage.setItem('farmguard_trial_active', 'true');
+      } else {
+        await AsyncStorage.removeItem('farmguard_trial_active');
+      }
+      console.log(`[Purchases] Trial status: active=${info.active}, days=${info.daysRemaining}, used=${info.alreadyUsed}`);
+      return info;
+    } catch (error) {
+      console.error('[Purchases] Error checking trial status:', error);
+      const localTrial = await AsyncStorage.getItem('farmguard_trial_active');
+      setIsTrial(localTrial === 'true');
+      return { active: localTrial === 'true', daysRemaining: 0, alreadyUsed: false };
+    }
   }, []);
 
   const endTrial = useCallback(async () => {
     await AsyncStorage.removeItem('farmguard_trial_active');
     setIsTrial(false);
+    setTrialDaysRemaining(0);
     console.log('[Purchases] Free trial ended');
   }, []);
 
@@ -173,7 +222,10 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     isSubscribed,
     isGrandfathered,
     isTrial,
+    trialDaysRemaining,
+    rcUserId,
     startTrial,
+    checkTrialStatus,
     endTrial,
     isLoadingCustomerInfo: customerInfoQuery.isLoading,
     customerInfo: customerInfoQuery.data ?? null,
@@ -190,7 +242,10 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     isSubscribed,
     isGrandfathered,
     isTrial,
+    trialDaysRemaining,
+    rcUserId,
     startTrial,
+    checkTrialStatus,
     endTrial,
     customerInfoQuery.isLoading,
     customerInfoQuery.data,
