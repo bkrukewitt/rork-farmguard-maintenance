@@ -23,7 +23,11 @@ function getRCApiKey(): string {
   }) ?? '';
 }
 
-Purchases.configure({ apiKey: getRCApiKey() });
+const rcApiKey = getRCApiKey();
+console.log('[Purchases] Platform:', Platform.OS, '| __DEV__:', __DEV__);
+console.log('[Purchases] API key present:', rcApiKey.length > 0, '| Prefix:', rcApiKey.substring(0, 8) || '(empty)');
+
+Purchases.configure({ apiKey: rcApiKey });
 
 export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   const queryClient = useQueryClient();
@@ -44,10 +48,22 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   const offeringsQuery = useQuery<PurchasesOfferings>({
     queryKey: ['purchases', 'offerings'],
     queryFn: async () => {
-      console.log('[Purchases] Fetching offerings');
-      const offerings = await Purchases.getOfferings();
-      console.log('[Purchases] Offerings fetched, current:', offerings.current?.identifier);
-      return offerings;
+      console.log('[Purchases] Fetching offerings...');
+      try {
+        const offerings = await Purchases.getOfferings();
+        console.log('[Purchases] Offerings fetched successfully');
+        console.log('[Purchases] Current offering:', offerings.current?.identifier ?? '(none)');
+        console.log('[Purchases] All offering keys:', Object.keys(offerings.all));
+        if (offerings.current) {
+          console.log('[Purchases] Available packages:', offerings.current.availablePackages.map(p => p.identifier));
+        } else {
+          console.warn('[Purchases] No current offering found — check RevenueCat dashboard that an offering is set as current');
+        }
+        return offerings;
+      } catch (err) {
+        console.error('[Purchases] getOfferings error:', err);
+        throw err;
+      }
     },
     staleTime: 1000 * 60 * 10,
     gcTime: 1000 * 60 * 60,
