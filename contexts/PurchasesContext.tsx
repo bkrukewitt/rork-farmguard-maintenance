@@ -7,8 +7,8 @@ import Purchases, { CustomerInfo, PurchasesOfferings } from 'react-native-purcha
 import { trpcClient } from '@/lib/trpc';
 
 const GRANDFATHER_IOS_MAX_BUILD = '1';
-const GRANDFATHER_ANDROID_MAX_VERSION_CODE = '12';
-const GRANDFATHER_CUTOFF_DATE = '2026-03-09T00:00:00Z';
+const GRANDFATHER_ANDROID_MAX_VERSION_CODE = '15';
+const GRANDFATHER_CUTOFF_DATE = '2026-03-15T00:00:00Z';
 
 const ENTITLEMENT_ID = 'pro';
 
@@ -271,3 +271,5 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     customerInfoQuery.refetch,
   ]);
 });
+
+

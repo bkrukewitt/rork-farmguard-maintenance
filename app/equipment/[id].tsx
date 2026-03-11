@@ -45,8 +45,11 @@ import {
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { useTheme } from '@/contexts/ThemeContext';
 import { EquipmentType, EquipmentAttachment } from '@/types/equipment';
 import { formatDate, formatMetric, getMaintenanceStatus, generateId } from '@/utils/helpers';
+import { generateMaintenancePdf, shareFile, getDateRangeForPreset } from '@/utils/exportHelpers';
+import { Download } from 'lucide-react-native';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
   tractor: Tractor,
@@ -71,8 +74,10 @@ export default function EquipmentDetailScreen() {
     getFuelLogsForEquipment,
     deleteEquipment,
     updateEquipment,
+    consumables,
     isLoading,
   } = useFarmData();
+  const { currentScheme } = useTheme();
 
   const equipment = getEquipmentById(id ?? '');
   const logs = getLogsForEquipment(id ?? '');
@@ -83,6 +88,34 @@ export default function EquipmentDetailScreen() {
   const [attachmentLabel, setAttachmentLabel] = useState('');
   const [pendingFile, setPendingFile] = useState<{ uri: string; name: string } | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [isQuickExporting, setIsQuickExporting] = useState(false);
+
+  const handleQuickExport = async () => {
+    if (!equipment) return;
+    try {
+      setIsQuickExporting(true);
+      const allDates = logs.map((l) => l.date).concat(fuelLogs.map((l) => l.date));
+      const dateRange = getDateRangeForPreset('alltime', allDates);
+      const uri = await generateMaintenancePdf({
+        equipment: [equipment],
+        maintenanceLogs: logs,
+        fuelLogs,
+        consumables,
+        colorScheme: currentScheme,
+        dateRange,
+        includeFuel: true,
+        includeNotes: true,
+        includeAttachments: true,
+        isBatchSummary: false,
+      });
+      await shareFile(uri, 'application/pdf');
+    } catch (error) {
+      Alert.alert('Export Error', 'Failed to generate PDF. Please try again.');
+      console.error('Quick export error:', error);
+    } finally {
+      setIsQuickExporting(false);
+    }
+  };
 
   const maintenanceStatus = useMemo(() => {
     if (!equipment) return [];
@@ -338,6 +371,18 @@ export default function EquipmentDetailScreen() {
           >
             <Edit3 color={Colors.primary} size={20} />
             <Text style={styles.actionButtonText}>Edit</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.actionButton}
+            onPress={handleQuickExport}
+            disabled={isQuickExporting}
+          >
+            {isQuickExporting ? (
+              <ActivityIndicator size="small" color={Colors.primary} />
+            ) : (
+              <Download color={Colors.primary} size={20} />
+            )}
+            <Text style={styles.actionButtonText}>Export</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionButton, styles.deleteButton]}

@@ -59,6 +59,7 @@ import { trpc } from '@/lib/trpc';
 import { Equipment, Consumable, ServiceRoutine, InspectionRoutine, BUILT_IN_FUEL_TYPES, FuelLog } from '@/types/equipment';
 import { Fuel } from 'lucide-react-native';
 import { User } from 'lucide-react-native';
+import ExportRecordsModal from '@/components/ExportRecordsModal';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -440,13 +441,7 @@ export default function SettingsScreen() {
     );
   };
 
-  const handleExportData = () => {
-    Alert.alert(
-      'Export Data',
-      'Data export as PDF will be available in a future update. Your maintenance history will be exportable for resale documentation and warranty claims.',
-      [{ text: 'OK' }]
-    );
-  };
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const handleBackupData = async () => {
     try {
@@ -1440,14 +1435,14 @@ export default function SettingsScreen() {
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Data Management</Text>
         
-        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={handleExportData}>
+        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() => setShowExportModal(true)}>
           <View style={styles.settingLeft}>
             <View style={[styles.settingIcon, { backgroundColor: colors.primary + '15' }]}>
               <FileText color={colors.primary} size={20} />
             </View>
             <View>
               <Text style={[styles.settingLabel, { color: colors.text }]}>Export Records</Text>
-              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Download maintenance history as PDF</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Maintenance & fuel reports as PDF or Excel</Text>
             </View>
           </View>
           <ChevronRight color={colors.textSecondary} size={20} />
@@ -2769,6 +2764,11 @@ export default function SettingsScreen() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <ExportRecordsModal
+        visible={showExportModal}
+        onDismiss={() => setShowExportModal(false)}
+      />
 
       <View style={styles.versionContainer}>
         <Text style={[styles.versionText, { color: colors.textSecondary }]}>
