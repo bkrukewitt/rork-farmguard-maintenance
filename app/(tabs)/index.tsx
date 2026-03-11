@@ -18,6 +18,7 @@ import {
   FileText,
   AlertTriangle,
   BarChart3,
+  Fuel,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -28,7 +29,7 @@ import { formatDate, formatMetric } from '@/utils/helpers';
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, workOrders, employees, isLoading, refreshData, deviceId, getLowStockConsumables } = useFarmData();
+  const { equipment, maintenanceLogs, workOrders, employees, fuelLogs, isLoading, refreshData, deviceId, getLowStockConsumables } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
   const { isTrial, isSubscribed } = usePurchases();
   const [showPaywall, setShowPaywall] = useState(false);
@@ -102,6 +103,24 @@ export default function DashboardScreen() {
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
     return maintenanceLogs.filter(l => new Date(l.date) >= startOfMonth).length;
   }, [maintenanceLogs]);
+
+  const fuelSummary = useMemo(() => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthLogs = fuelLogs.filter(fl => new Date(fl.date) >= startOfMonth);
+    const totalGallons = monthLogs.reduce((sum, fl) => sum + fl.gallons, 0);
+    const totalDef = monthLogs.reduce((sum, fl) => sum + (fl.defGallons ?? 0), 0);
+    const byType: Record<string, number> = {};
+    monthLogs.forEach(fl => {
+      const label = fl.fuelType === 'custom' && fl.customFuelTypeName
+        ? fl.customFuelTypeName
+        : fl.fuelType === 'off_road_diesel' ? 'Off-Road Diesel'
+        : fl.fuelType === 'on_road_diesel' ? 'On-Road Diesel'
+        : fl.fuelType === 'gasoline' ? 'Gasoline' : fl.fuelType;
+      byType[label] = (byType[label] ?? 0) + fl.gallons;
+    });
+    return { totalGallons, totalDef, fillUps: monthLogs.length, byType };
+  }, [fuelLogs]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -241,6 +260,44 @@ export default function DashboardScreen() {
                 <ChevronRight color={colors.textSecondary} size={18} />
               </TouchableOpacity>
             ))}
+          </View>
+        )}
+
+        {fuelLogs.length > 0 && (
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>Fuel This Month</Text>
+              <TouchableOpacity onPress={() => router.push('/maintenance/add-fuel' as any)}>
+                <Text style={[styles.seeAllText, { color: colors.primary }]}>Log Fuel</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={[styles.fuelCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
+              <View style={styles.fuelCardHeader}>
+                <View style={[styles.fuelIconWrap, { backgroundColor: '#05966915' }]}>
+                  <Fuel color="#059669" size={20} />
+                </View>
+                <View style={styles.fuelCardStats}>
+                  <Text style={[styles.fuelCardNumber, { color: colors.text }]}>
+                    {fuelSummary.totalGallons.toFixed(1)} gal
+                  </Text>
+                  <Text style={[styles.fuelCardSub, { color: colors.textSecondary }]}>
+                    {fuelSummary.fillUps} fill-up{fuelSummary.fillUps !== 1 ? 's' : ''}
+                    {fuelSummary.totalDef > 0 ? ` • ${fuelSummary.totalDef.toFixed(1)} gal DEF` : ''}
+                  </Text>
+                </View>
+              </View>
+              {Object.keys(fuelSummary.byType).length > 0 && (
+                <View style={styles.fuelBreakdown}>
+                  {Object.entries(fuelSummary.byType).map(([typeName, gal]) => (
+                    <View key={typeName} style={styles.fuelBreakdownRow}>
+                      <View style={[styles.fuelDot, { backgroundColor: '#059669' }]} />
+                      <Text style={[styles.fuelBreakdownLabel, { color: colors.textSecondary }]}>{typeName}</Text>
+                      <Text style={[styles.fuelBreakdownValue, { color: colors.text }]}>{gal.toFixed(1)} gal</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
           </View>
         )}
 
@@ -622,5 +679,61 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 8,
     lineHeight: 20,
+  },
+  fuelCard: {
+    borderRadius: 14,
+    padding: 16,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  fuelCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  fuelIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fuelCardStats: {
+    flex: 1,
+  },
+  fuelCardNumber: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+  },
+  fuelCardSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  fuelBreakdown: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.06)',
+    gap: 6,
+  },
+  fuelBreakdownRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  fuelDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  fuelBreakdownLabel: {
+    flex: 1,
+    fontSize: 12,
+  },
+  fuelBreakdownValue: {
+    fontSize: 12,
+    fontWeight: '600' as const,
   },
 });

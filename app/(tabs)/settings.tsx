@@ -56,7 +56,8 @@ import { useFarmData, DuplicateItem, FarmMember, verifyFarmPasswordForId, checkF
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
 import { trpc } from '@/lib/trpc';
-import { Equipment, Consumable, ServiceRoutine, InspectionRoutine } from '@/types/equipment';
+import { Equipment, Consumable, ServiceRoutine, InspectionRoutine, BUILT_IN_FUEL_TYPES, FuelLog } from '@/types/equipment';
+import { Fuel } from 'lucide-react-native';
 import { User } from 'lucide-react-native';
 
 export default function SettingsScreen() {
@@ -100,6 +101,10 @@ export default function SettingsScreen() {
     isCreatingFarm,
     employees,
     updateEmployee,
+    fuelLogs,
+    customFuelTypes,
+    addCustomFuelType,
+    deleteCustomFuelType,
   } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
 
@@ -160,6 +165,14 @@ export default function SettingsScreen() {
   const [feedbackSubject, setFeedbackSubject] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState('');
   const [feedbackEmail, setFeedbackEmail] = useState('');
+  const [isExportingFuel, setIsExportingFuel] = useState(false);
+  const [showFuelExportModal, setShowFuelExportModal] = useState(false);
+  const [fuelExportEquipmentId, setFuelExportEquipmentId] = useState<string>('all');
+  const [fuelExportRange, setFuelExportRange] = useState<'ytd' | 'lifetime' | 'custom'>('ytd');
+  const [fuelExportStartDate, setFuelExportStartDate] = useState('');
+  const [fuelExportEndDate, setFuelExportEndDate] = useState('');
+  const [showManageFuelTypesModal, setShowManageFuelTypesModal] = useState(false);
+  const [newCustomFuelName, setNewCustomFuelName] = useState('');
 
   const SUPER_ADMIN_PIN = '9173';
   const DEBUG_PIN = '1847';
@@ -887,6 +900,142 @@ export default function SettingsScreen() {
     );
   };
 
+  const handleExportFuelData = async () => {
+    try {
+      setIsExportingFuel(true);
+      let logsToExport = [...fuelLogs];
+
+      if (fuelExportEquipmentId !== 'all') {
+        logsToExport = logsToExport.filter(fl => fl.equipmentId === fuelExportEquipmentId);
+      }
+
+      const now = new Date();
+      if (fuelExportRange === 'ytd') {
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+        logsToExport = logsToExport.filter(fl => new Date(fl.date) >= startOfYear);
+      } else if (fuelExportRange === 'custom') {
+        if (fuelExportStartDate) {
+          logsToExport = logsToExport.filter(fl => fl.date >= fuelExportStartDate);
+        }
+        if (fuelExportEndDate) {
+          logsToExport = logsToExport.filter(fl => fl.date <= fuelExportEndDate);
+        }
+      }
+
+      if (logsToExport.length === 0) {
+        Alert.alert('No Data', 'No fuel logs match the selected filters.');
+        setIsExportingFuel(false);
+        return;
+      }
+
+      logsToExport.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+      const getFuelTypeName = (fl: FuelLog) => {
+        if (fl.fuelType === 'custom' && fl.customFuelTypeName) return fl.customFuelTypeName;
+        const built = BUILT_IN_FUEL_TYPES.find(bt => bt.value === fl.fuelType);
+        return built?.label ?? fl.fuelType;
+      };
+
+      const worksheetData = [
+        ['Date', 'Equipment', 'Fuel Type', 'Gallons', 'DEF Gallons', 'Hours/Miles', 'Filled By', 'Notes'],
+        ...logsToExport.map(fl => [
+          fl.date,
+          equipment.find(e => e.id === fl.equipmentId)?.name ?? 'Unknown',
+          getFuelTypeName(fl),
+          fl.gallons,
+          fl.defGallons ?? '',
+          fl.hoursAtFillUp,
+          fl.filledBy + (fl.filledByName ? ` - ${fl.filledByName}` : ''),
+          fl.notes ?? '',
+        ]),
+      ];
+
+      const totalGallons = logsToExport.reduce((s, fl) => s + fl.gallons, 0);
+      const totalDef = logsToExport.reduce((s, fl) => s + (fl.defGallons ?? 0), 0);
+      worksheetData.push([]);
+      worksheetData.push(['Total Fuel (gal)', '', '', totalGallons, totalDef > 0 ? totalDef : '', '', '', '']);
+
+      const worksheet = XLSX.utils.aoa_to_sheet(worksheetData as unknown[][]);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Fuel Usage');
+
+      const wbout = XLSX.write(workbook, { type: 'base64', bookType: 'xlsx' });
+      const eqName = fuelExportEquipmentId === 'all' ? 'All_Equipment' : (equipment.find(e => e.id === fuelExportEquipmentId)?.name ?? 'Equipment').replace(/\s/g, '_');
+      const fileName = `Fuel_Usage_${eqName}_${fuelExportRange}_${new Date().toISOString().split('T')[0]}.xlsx`;
+      const fileUri = FileSystem.cacheDirectory + fileName;
+
+      await FileSystem.writeAsStringAsync(fileUri, wbout, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob(
+          [Uint8Array.from(atob(wbout), c => c.charCodeAt(0))],
+          { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+        );
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        link.click();
+        URL.revokeObjectURL(url);
+        Alert.alert('Success', `Exported ${logsToExport.length} fuel log${logsToExport.length !== 1 ? 's' : ''}.`);
+      } else {
+        const canShare = await Sharing.isAvailableAsync();
+        if (canShare) {
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            dialogTitle: 'Export Fuel Data',
+            UTI: 'com.microsoft.excel.xlsx',
+          });
+        } else {
+          Alert.alert('Success', `Exported ${logsToExport.length} fuel log${logsToExport.length !== 1 ? 's' : ''}.`);
+        }
+      }
+
+      setShowFuelExportModal(false);
+    } catch (error) {
+      console.error('Error exporting fuel data:', error);
+      Alert.alert('Error', 'Failed to export fuel data. Please try again.');
+    } finally {
+      setIsExportingFuel(false);
+    }
+  };
+
+  const handleAddCustomFuelType = async () => {
+    const trimmed = newCustomFuelName.trim();
+    if (!trimmed) return;
+    try {
+      await addCustomFuelType(trimmed);
+      setNewCustomFuelName('');
+    } catch (error) {
+      console.error('Error adding custom fuel type:', error);
+      Alert.alert('Error', 'Failed to add custom fuel type.');
+    }
+  };
+
+  const handleDeleteCustomFuelType = (id: string, name: string) => {
+    Alert.alert(
+      'Delete Fuel Type',
+      `Remove "${name}" from your custom fuel types?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteCustomFuelType(id);
+            } catch (error) {
+              console.error('Error deleting custom fuel type:', error);
+              Alert.alert('Error', 'Failed to delete fuel type.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleExportLowStockParts = async () => {
     try {
       setIsExporting(true);
@@ -1377,6 +1526,55 @@ export default function SettingsScreen() {
                 Clear All Data
               </Text>
               <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Delete all equipment and logs</Text>
+            </View>
+          </View>
+          <ChevronRight color={colors.textSecondary} size={20} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Fuel Tracking</Text>
+
+        <TouchableOpacity
+          style={[styles.settingRow, { backgroundColor: colors.surface }]}
+          onPress={() => {
+            setFuelExportEquipmentId('all');
+            setFuelExportRange('ytd');
+            setFuelExportStartDate('');
+            setFuelExportEndDate('');
+            setShowFuelExportModal(true);
+          }}
+        >
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: '#059669' + '15' }]}>
+              <Fuel color="#059669" size={20} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Export Fuel Data</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                {fuelLogs.length} fuel log{fuelLogs.length !== 1 ? 's' : ''} recorded
+              </Text>
+            </View>
+          </View>
+          <ChevronRight color={colors.textSecondary} size={20} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.settingRow, { backgroundColor: colors.surface }]}
+          onPress={() => {
+            setNewCustomFuelName('');
+            setShowManageFuelTypesModal(true);
+          }}
+        >
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: colors.secondary + '15' }]}>
+              <Fuel color={colors.secondary} size={20} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Manage Fuel Types</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                {BUILT_IN_FUEL_TYPES.length + customFuelTypes.length} fuel type{BUILT_IN_FUEL_TYPES.length + customFuelTypes.length !== 1 ? 's' : ''}
+              </Text>
             </View>
           </View>
           <ChevronRight color={colors.textSecondary} size={20} />
@@ -2402,6 +2600,172 @@ export default function SettingsScreen() {
                 </>
               )}
             </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showFuelExportModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowFuelExportModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowFuelExportModal(false); }} />
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '80%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Export Fuel Data</Text>
+              <TouchableOpacity onPress={() => setShowFuelExportModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              Choose equipment and date range to export fuel usage as an Excel file.
+            </Text>
+
+            <Text style={[{ fontSize: 13, fontWeight: '600' as const, marginBottom: 8 }, { color: colors.text }]}>Equipment</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.feedbackCategoryChip, { borderColor: colors.border }, fuelExportEquipmentId === 'all' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                  onPress={() => setFuelExportEquipmentId('all')}
+                >
+                  <Text style={[styles.feedbackCategoryChipText, { color: colors.text }, fuelExportEquipmentId === 'all' && { color: '#fff' }]}>All Equipment</Text>
+                </TouchableOpacity>
+                {equipment.map(eq => (
+                  <TouchableOpacity
+                    key={eq.id}
+                    style={[styles.feedbackCategoryChip, { borderColor: colors.border }, fuelExportEquipmentId === eq.id && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    onPress={() => setFuelExportEquipmentId(eq.id)}
+                  >
+                    <Text style={[styles.feedbackCategoryChipText, { color: colors.text }, fuelExportEquipmentId === eq.id && { color: '#fff' }]} numberOfLines={1}>{eq.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            <Text style={[{ fontSize: 13, fontWeight: '600' as const, marginBottom: 8 }, { color: colors.text }]}>Date Range</Text>
+            <View style={[styles.feedbackCategoryRow, { marginBottom: 16 }]}>
+              {([['ytd', 'Year to Date'], ['lifetime', 'Lifetime'], ['custom', 'Custom']] as const).map(([val, lbl]) => (
+                <TouchableOpacity
+                  key={val}
+                  style={[styles.feedbackCategoryChip, { borderColor: colors.border }, fuelExportRange === val && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                  onPress={() => setFuelExportRange(val)}
+                >
+                  <Text style={[styles.feedbackCategoryChipText, { color: colors.text }, fuelExportRange === val && { color: '#fff' }]}>{lbl}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {fuelExportRange === 'custom' && (
+              <View style={{ gap: 8, marginBottom: 16 }}>
+                <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, marginBottom: 0 }]}>
+                  <TextInput
+                    style={[styles.joinInputText, { color: colors.text }]}
+                    placeholder="Start date (YYYY-MM-DD)"
+                    placeholderTextColor={colors.textSecondary}
+                    value={fuelExportStartDate}
+                    onChangeText={setFuelExportStartDate}
+                  />
+                </View>
+                <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, marginBottom: 0 }]}>
+                  <TextInput
+                    style={[styles.joinInputText, { color: colors.text }]}
+                    placeholder="End date (YYYY-MM-DD)"
+                    placeholderTextColor={colors.textSecondary}
+                    value={fuelExportEndDate}
+                    onChangeText={setFuelExportEndDate}
+                  />
+                </View>
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={[styles.joinButton, { backgroundColor: '#059669', flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: isExportingFuel ? 0.7 : 1 }]}
+              onPress={handleExportFuelData}
+              disabled={isExportingFuel}
+            >
+              {isExportingFuel ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Download color="#fff" size={18} />
+                  <Text style={styles.joinButtonText}>Export Fuel Data</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showManageFuelTypesModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowManageFuelTypesModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowManageFuelTypesModal(false); }} />
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Manage Fuel Types</Text>
+              <TouchableOpacity onPress={() => setShowManageFuelTypesModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[{ fontSize: 13, fontWeight: '600' as const, color: colors.textSecondary, marginBottom: 8 }]}>Built-in Types</Text>
+            {BUILT_IN_FUEL_TYPES.map(ft => (
+              <View key={ft.value} style={[styles.memberRow, { backgroundColor: colors.background, marginBottom: 4 }]}>
+                <Text style={[{ fontSize: 14, fontWeight: '500' as const }, { color: colors.text }]}>{ft.label}</Text>
+              </View>
+            ))}
+
+            {customFuelTypes.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                <Text style={[{ fontSize: 13, fontWeight: '600' as const, color: colors.textSecondary, marginBottom: 8 }]}>Custom Types</Text>
+                {customFuelTypes.map(ct => (
+                  <View key={ct.id} style={[styles.memberRow, { backgroundColor: colors.background, marginBottom: 4 }]}>
+                    <Text style={[{ fontSize: 14, fontWeight: '500' as const, flex: 1 }, { color: colors.text }]}>{ct.name}</Text>
+                    <TouchableOpacity
+                      style={[styles.removeMemberBtn, { backgroundColor: colors.statusOverdue + '15' }]}
+                      onPress={() => handleDeleteCustomFuelType(ct.id, ct.name)}
+                    >
+                      <X color={colors.statusOverdue} size={14} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            <View style={{ marginTop: 16 }}>
+              <Text style={[{ fontSize: 13, fontWeight: '600' as const, color: colors.textSecondary, marginBottom: 8 }]}>Add Custom Fuel Type</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, flex: 1, marginBottom: 0 }]}>
+                  <TextInput
+                    style={[styles.joinInputText, { color: colors.text }]}
+                    placeholder="e.g., Propane, E85"
+                    placeholderTextColor={colors.textSecondary}
+                    value={newCustomFuelName}
+                    onChangeText={setNewCustomFuelName}
+                  />
+                </View>
+                <TouchableOpacity
+                  style={[styles.joinButton, { paddingHorizontal: 20, backgroundColor: '#059669', opacity: !newCustomFuelName.trim() ? 0.5 : 1 }]}
+                  onPress={handleAddCustomFuelType}
+                  disabled={!newCustomFuelName.trim()}
+                >
+                  <Text style={[styles.joinButtonText, { fontSize: 14 }]}>Add</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>

@@ -66,6 +66,13 @@ function RootLayoutNav() {
         }}
       />
       <Stack.Screen
+        name="maintenance/add-fuel"
+        options={{
+          title: "Log Fuel Fill-Up",
+          presentation: "modal",
+        }}
+      />
+      <Stack.Screen
         name="inventory/add"
         options={{
           title: "Add Part",

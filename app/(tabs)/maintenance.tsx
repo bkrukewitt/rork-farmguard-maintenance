@@ -24,15 +24,16 @@ import {
   Search,
   FileText,
   ChevronDown,
+  Fuel,
 } from 'lucide-react-native';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { formatDate, formatHours } from '@/utils/helpers';
 
-type FilterType = 'all' | 'routine' | 'repair' | 'inspection' | 'workorder';
+type FilterType = 'all' | 'routine' | 'repair' | 'inspection' | 'workorder' | 'fuel';
 interface CombinedLogItem {
   id: string;
-  type: 'log' | 'workorder';
+  type: 'log' | 'workorder' | 'fuel';
   date: string;
   title: string;
   subtitle: string;
@@ -41,11 +42,13 @@ interface CombinedLogItem {
   hoursAtService?: number;
   priority?: string;
   status?: string;
+  gallons?: number;
+  defGallons?: number;
 }
 
 export default function MaintenanceScreen() {
   const router = useRouter();
-  const { maintenanceLogs, workOrders, equipment, isLoading, refreshData } = useFarmData();
+  const { maintenanceLogs, workOrders, equipment, fuelLogs, isLoading, refreshData } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
@@ -90,11 +93,33 @@ export default function MaintenanceScreen() {
         status: wo.status,
       }));
 
-    let items = [...logItems, ...completedWorkOrders];
+    const fuelItems: CombinedLogItem[] = fuelLogs.map(fl => {
+      const fuelTypeName = fl.fuelType === 'custom' && fl.customFuelTypeName
+        ? fl.customFuelTypeName
+        : fl.fuelType === 'off_road_diesel' ? 'Off-Road Diesel'
+        : fl.fuelType === 'on_road_diesel' ? 'On-Road Diesel'
+        : fl.fuelType === 'gasoline' ? 'Gasoline' : fl.fuelType;
+      return {
+        id: fl.id,
+        type: 'fuel' as const,
+        date: fl.date,
+        title: `${fl.gallons} gal ${fuelTypeName}${fl.defGallons ? ` + ${fl.defGallons} gal DEF` : ''}`,
+        subtitle: equipment.find(e => e.id === fl.equipmentId)?.name ?? 'Unknown Equipment',
+        logType: 'fuel',
+        equipmentId: fl.equipmentId,
+        hoursAtService: fl.hoursAtFillUp,
+        gallons: fl.gallons,
+        defGallons: fl.defGallons,
+      };
+    });
+
+    let items = [...logItems, ...completedWorkOrders, ...fuelItems];
 
     if (filterType !== 'all') {
       if (filterType === 'workorder') {
         items = items.filter(item => item.type === 'workorder');
+      } else if (filterType === 'fuel') {
+        items = items.filter(item => item.type === 'fuel');
       } else {
         items = items.filter(item => item.type === 'log' && item.logType === filterType);
       }
@@ -119,7 +144,7 @@ export default function MaintenanceScreen() {
     });
 
     return items;
-  }, [maintenanceLogs, workOrders, equipment, filterType, sortType, searchQuery, selectedEquipmentFilter]);
+  }, [maintenanceLogs, workOrders, fuelLogs, equipment, filterType, sortType, searchQuery, selectedEquipmentFilter]);
 
   const groupedItems = useMemo(() => {
     const groups: { [key: string]: CombinedLogItem[] } = {};
@@ -138,6 +163,7 @@ export default function MaintenanceScreen() {
 
   const getTypeIcon = (item: CombinedLogItem) => {
     if (item.type === 'workorder') return FileText;
+    if (item.type === 'fuel') return Fuel;
     switch (item.logType) {
       case 'repair':
         return AlertCircle;
@@ -150,6 +176,7 @@ export default function MaintenanceScreen() {
 
   const getTypeColor = (item: CombinedLogItem) => {
     if (item.type === 'workorder') return '#3B82F6';
+    if (item.type === 'fuel') return '#059669';
     switch (item.logType) {
       case 'repair':
         return colors.statusOverdue;
@@ -162,6 +189,7 @@ export default function MaintenanceScreen() {
 
   const getTypeLabel = (item: CombinedLogItem) => {
     if (item.type === 'workorder') return 'Work Order';
+    if (item.type === 'fuel') return 'Fuel';
     return item.logType.charAt(0).toUpperCase() + item.logType.slice(1);
   };
 
@@ -258,14 +286,14 @@ export default function MaintenanceScreen() {
 
       <View style={[styles.filterContainer, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
         <Filter color={colors.textSecondary} size={16} />
-        {(['all', 'routine', 'repair', 'inspection', 'workorder'] as FilterType[]).map(type => (
+        {(['all', 'routine', 'repair', 'inspection', 'fuel', 'workorder'] as FilterType[]).map(type => (
           <TouchableOpacity
             key={type}
             style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === type && { backgroundColor: colors.primary }]}
             onPress={() => setFilterType(type)}
           >
             <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === type && { color: colors.textOnPrimary }]}>
-              {type === 'all' ? 'All' : type === 'workorder' ? 'Orders' : type.charAt(0).toUpperCase() + type.slice(1)}
+              {type === 'all' ? 'All' : type === 'workorder' ? 'Orders' : type === 'fuel' ? 'Fuel' : type.charAt(0).toUpperCase() + type.slice(1)}
             </Text>
           </TouchableOpacity>
         ))}
@@ -378,6 +406,22 @@ export default function MaintenanceScreen() {
               <View style={styles.menuItemContent}>
                 <Text style={[styles.menuItemTitle, { color: colors.text }]}>Inspection Routines</Text>
                 <Text style={[styles.menuItemSubtitle, { color: colors.textSecondary }]}>Manage inspection checklists</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.menuItem, { borderBottomColor: colors.borderLight }]}
+              onPress={() => {
+                setShowAddMenu(false);
+                router.push('/maintenance/add-fuel' as any);
+              }}
+            >
+              <View style={[styles.menuIconContainer, { backgroundColor: '#059669' + '15' }]}>
+                <Fuel color="#059669" size={22} />
+              </View>
+              <View style={styles.menuItemContent}>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Log Fuel Fill-Up</Text>
+                <Text style={[styles.menuItemSubtitle, { color: colors.textSecondary }]}>Record fuel and DEF usage</Text>
               </View>
             </TouchableOpacity>
 

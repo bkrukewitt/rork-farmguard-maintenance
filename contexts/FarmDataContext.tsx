@@ -2059,6 +2059,13 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     updateEmployee: updateEmployeeMutation.mutateAsync,
     deleteEmployee: deleteEmployeeMutation.mutateAsync,
     getEmployeeById,
+    fuelLogs,
+    customFuelTypes,
+    addFuelLog: addFuelLogMutation.mutateAsync,
+    deleteFuelLog: deleteFuelLogMutation.mutateAsync,
+    getFuelLogsForEquipment,
+    addCustomFuelType: addCustomFuelTypeMutation.mutateAsync,
+    deleteCustomFuelType: deleteCustomFuelTypeMutation.mutateAsync,
     manualSync,
     refreshData,
     refreshFarmMembers,
@@ -2088,6 +2095,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     workOrders, employees,
     addWorkOrderMutation.mutateAsync, updateWorkOrderMutation.mutateAsync, deleteWorkOrderMutation.mutateAsync, getWorkOrderById,
     addEmployeeMutation.mutateAsync, updateEmployeeMutation.mutateAsync, deleteEmployeeMutation.mutateAsync, getEmployeeById,
+    fuelLogs, customFuelTypes,
+    addFuelLogMutation.mutateAsync, deleteFuelLogMutation.mutateAsync, getFuelLogsForEquipment,
+    addCustomFuelTypeMutation.mutateAsync, deleteCustomFuelTypeMutation.mutateAsync,
     manualSync, refreshData, refreshFarmMembers,
   ]);
 });

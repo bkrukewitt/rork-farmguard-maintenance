@@ -41,6 +41,7 @@ import {
   Eye,
   Droplet,
   CarFront,
+  Fuel,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -67,6 +68,7 @@ export default function EquipmentDetailScreen() {
     getEquipmentById, 
     getLogsForEquipment, 
     getIntervalsForEquipment,
+    getFuelLogsForEquipment,
     deleteEquipment,
     updateEquipment,
     isLoading,
@@ -75,6 +77,7 @@ export default function EquipmentDetailScreen() {
   const equipment = getEquipmentById(id ?? '');
   const logs = getLogsForEquipment(id ?? '');
   const intervals = getIntervalsForEquipment(id ?? '');
+  const fuelLogs = getFuelLogsForEquipment(id ?? '');
 
   const [showAttachmentModal, setShowAttachmentModal] = useState(false);
   const [attachmentLabel, setAttachmentLabel] = useState('');
@@ -478,6 +481,82 @@ export default function EquipmentDetailScreen() {
                 </View>
               );
             })
+          )}
+        </View>
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>Fuel History</Text>
+            <TouchableOpacity
+              style={styles.addAttachmentButton}
+              onPress={() => router.push(`/maintenance/add-fuel?equipmentId=${equipment.id}` as any)}
+            >
+              <Plus color={Colors.primary} size={18} />
+              <Text style={styles.addAttachmentText}>Log Fuel</Text>
+            </TouchableOpacity>
+          </View>
+          {fuelLogs.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Fuel color={Colors.textSecondary} size={32} />
+              <Text style={styles.emptyText}>No fuel records yet</Text>
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={() => router.push(`/maintenance/add-fuel?equipmentId=${equipment.id}` as any)}
+              >
+                <Text style={styles.emptyButtonText}>Log First Fill-Up</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              <View style={styles.fuelSummaryCard}>
+                <View style={styles.fuelSummaryRow}>
+                  <View style={styles.fuelSummaryStat}>
+                    <Text style={styles.fuelSummaryNumber}>
+                      {fuelLogs.reduce((sum, fl) => sum + fl.gallons, 0).toFixed(1)}
+                    </Text>
+                    <Text style={styles.fuelSummaryLabel}>Total Gal</Text>
+                  </View>
+                  {fuelLogs.some(fl => fl.defGallons && fl.defGallons > 0) && (
+                    <View style={styles.fuelSummaryStat}>
+                      <Text style={styles.fuelSummaryNumber}>
+                        {fuelLogs.reduce((sum, fl) => sum + (fl.defGallons ?? 0), 0).toFixed(1)}
+                      </Text>
+                      <Text style={styles.fuelSummaryLabel}>DEF Gal</Text>
+                    </View>
+                  )}
+                  <View style={styles.fuelSummaryStat}>
+                    <Text style={styles.fuelSummaryNumber}>{fuelLogs.length}</Text>
+                    <Text style={styles.fuelSummaryLabel}>Fill-Ups</Text>
+                  </View>
+                </View>
+              </View>
+              {fuelLogs.slice(0, 5).map(fl => {
+                const fuelTypeName = fl.fuelType === 'custom' && fl.customFuelTypeName
+                  ? fl.customFuelTypeName
+                  : fl.fuelType === 'off_road_diesel' ? 'Off-Road Diesel'
+                  : fl.fuelType === 'on_road_diesel' ? 'On-Road Diesel'
+                  : fl.fuelType === 'gasoline' ? 'Gasoline' : fl.fuelType;
+                return (
+                  <View key={fl.id} style={styles.logCard}>
+                    <View style={styles.logHeader}>
+                      <Text style={styles.logDate}>{formatDate(fl.date)}</Text>
+                      <Text style={[styles.logType, { color: '#059669' }]}>{fuelTypeName}</Text>
+                    </View>
+                    <Text style={styles.logDescription}>
+                      {fl.gallons} gal{fl.defGallons ? ` + ${fl.defGallons} gal DEF` : ''}
+                    </Text>
+                    <View style={styles.logMeta}>
+                      <Text style={styles.logMetaText}>@ {formatMetric(fl.hoursAtFillUp, equipment.metric)}</Text>
+                    </View>
+                  </View>
+                );
+              })}
+              {fuelLogs.length > 5 && (
+                <Text style={styles.viewAllText}>
+                  + {fuelLogs.length - 5} more fill-ups
+                </Text>
+              )}
+            </>
           )}
         </View>
 
@@ -1024,5 +1103,35 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: '#fff',
+  },
+  fuelSummaryCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+  },
+  fuelSummaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  fuelSummaryStat: {
+    alignItems: 'center',
+  },
+  fuelSummaryNumber: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    color: Colors.text,
+  },
+  fuelSummaryLabel: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  viewAllText: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '500' as const,
+    textAlign: 'center',
+    paddingVertical: 8,
   },
 });
