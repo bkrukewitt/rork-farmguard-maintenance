@@ -15,6 +15,7 @@ import {
   RefreshControl,
   Keyboard,
   Pressable,
+  Linking,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { useRouter } from 'expo-router';
@@ -165,7 +166,6 @@ export default function SettingsScreen() {
   const [feedbackCategory, setFeedbackCategory] = useState<'bug' | 'feature' | 'question' | 'other'>('bug');
   const [feedbackSubject, setFeedbackSubject] = useState('');
   const [feedbackMessage, setFeedbackMessage] = useState('');
-  const [feedbackEmail, setFeedbackEmail] = useState('');
   const [isExportingFuel, setIsExportingFuel] = useState(false);
   const [showFuelExportModal, setShowFuelExportModal] = useState(false);
   const [fuelExportEquipmentId, setFuelExportEquipmentId] = useState<string>('all');
@@ -816,34 +816,50 @@ export default function SettingsScreen() {
     { key: 'other', label: 'Other' },
   ];
 
-  const submitFeedbackMutation = trpc.farm.submitFeedback.useMutation({
-    onSuccess: () => {
-      console.log('[Settings] Feedback submitted successfully');
-      setShowFeedbackModal(false);
-      setFeedbackSubject('');
-      setFeedbackMessage('');
-      setFeedbackEmail('');
-      setFeedbackCategory('bug');
-      Alert.alert('Thank You!', 'Your feedback has been submitted successfully. We appreciate your input!');
-    },
-    onError: (error) => {
-      console.error('[Settings] Error submitting feedback:', error);
-      Alert.alert('Error', 'Could not submit feedback. Please try again.');
-    },
-  });
+  const SUPPORT_EMAIL = 'farmguardmaintain@gmail.com';
 
   const handleSendFeedback = async () => {
+    if (!feedbackMessage.trim()) return;
     const appVersion = Constants.expoConfig?.version ?? '1.0.0';
-    submitFeedbackMutation.mutate({
-      email: feedbackEmail.trim(),
-      category: feedbackCategory,
-      subject: feedbackSubject.trim() || undefined,
-      message: feedbackMessage.trim(),
-      farmId: farmId || undefined,
-      deviceId: deviceId?.slice(0, 12) || undefined,
-      platform: Platform.OS,
-      appVersion,
-    });
+    const categoryLabel = feedbackCategories.find(c => c.key === feedbackCategory)?.label ?? feedbackCategory;
+    const subject = feedbackSubject.trim()
+      ? `[FarmGuard ${categoryLabel}] ${feedbackSubject.trim()}`
+      : `[FarmGuard ${categoryLabel}]`;
+    const body = [
+      feedbackMessage.trim(),
+      '',
+      '---',
+      `Category: ${categoryLabel}`,
+      `App Version: ${appVersion}`,
+      `Platform: ${Platform.OS}`,
+      farmId ? `Farm ID: ${farmId}` : '',
+      deviceId ? `Device ID: ${deviceId.slice(0, 12)}` : '',
+    ].filter(Boolean).join('\n');
+
+    const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    try {
+      const supported = await Linking.canOpenURL(mailtoUrl);
+      if (supported) {
+        await Linking.openURL(mailtoUrl);
+        setShowFeedbackModal(false);
+        setFeedbackSubject('');
+        setFeedbackMessage('');
+        setFeedbackCategory('bug');
+      } else {
+        Alert.alert(
+          'No Email App Found',
+          `No email app is configured on this device. Please email us directly at ${SUPPORT_EMAIL}`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('[Settings] Error opening email client:', error);
+      Alert.alert(
+        'Could Not Open Email',
+        `Please email your feedback directly to ${SUPPORT_EMAIL}`,
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const handleManualSync = async () => {
@@ -1584,7 +1600,6 @@ export default function SettingsScreen() {
           onPress={() => {
             setFeedbackSubject('');
             setFeedbackMessage('');
-            setFeedbackEmail('');
             setFeedbackCategory('bug');
             setShowFeedbackModal(true);
           }}
@@ -2517,22 +2532,8 @@ export default function SettingsScreen() {
             </View>
 
             <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
-              Choose a category and describe your feedback below.
+              Choose a category and describe your feedback. Tapping "Send" will open your email app.
             </Text>
-
-            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <TextInput
-                style={[styles.joinInputText, { color: colors.text }]}
-                placeholder="Your email address *"
-                placeholderTextColor={colors.textSecondary}
-                value={feedbackEmail}
-                onChangeText={setFeedbackEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-                maxLength={120}
-              />
-            </View>
 
             <View style={styles.feedbackCategoryRow}>
               {feedbackCategories.map((cat) => (
@@ -2582,18 +2583,12 @@ export default function SettingsScreen() {
             </View>
 
             <TouchableOpacity
-              style={[styles.joinButton, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: (!feedbackMessage.trim() || !feedbackEmail.trim()) ? 0.5 : 1 }]}
+              style={[styles.joinButton, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: !feedbackMessage.trim() ? 0.5 : 1 }]}
               onPress={handleSendFeedback}
-              disabled={!feedbackMessage.trim() || !feedbackEmail.trim() || submitFeedbackMutation.isPending}
+              disabled={!feedbackMessage.trim()}
             >
-              {submitFeedbackMutation.isPending ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Send color="#fff" size={18} />
-                  <Text style={styles.joinButtonText}>Send Feedback</Text>
-                </>
-              )}
+              <Send color="#fff" size={18} />
+              <Text style={styles.joinButtonText}>Open Email App</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
