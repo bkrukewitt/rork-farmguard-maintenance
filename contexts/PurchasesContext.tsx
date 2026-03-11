@@ -163,8 +163,10 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   const [isTrial, setIsTrial] = useState(false);
   const [trialDaysRemaining, setTrialDaysRemaining] = useState(0);
   const [rcUserId, setRcUserId] = useState<string | null>(null);
+  // Session-only admin override — not persisted, clears on app close
+  const [adminOverride, setAdminOverride] = useState(false);
 
-  const isSubscribed = hasActiveEntitlement || isGrandfathered;
+  const isSubscribed = hasActiveEntitlement || isGrandfathered || adminOverride;
 
   if (isGrandfathered) {
     console.log('[Purchases] User is grandfathered — full access granted');
@@ -248,6 +250,8 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   return useMemo(() => ({
     isSubscribed,
     isGrandfathered,
+    adminOverride,
+    setAdminOverride,
     isTrial,
     trialDaysRemaining,
     rcUserId,
@@ -268,6 +272,8 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   }), [
     isSubscribed,
     isGrandfathered,
+    adminOverride,
+    setAdminOverride,
     isTrial,
     trialDaysRemaining,
     rcUserId,

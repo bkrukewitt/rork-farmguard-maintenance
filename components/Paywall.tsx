@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,13 +8,19 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Modal,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Shield, Check, Tractor, Wrench, Package, ClipboardList, Star, RefreshCw, X } from 'lucide-react-native';
+import { Shield, Check, Tractor, Wrench, Package, ClipboardList, Star, RefreshCw, X, Eye } from 'lucide-react-native';
 import { PurchasesPackage } from 'react-native-purchases';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import { useFarmData } from '@/contexts/FarmDataContext';
-import { Eye } from 'lucide-react-native';
+
+const ADMIN_PIN = '7743';
+const REQUIRED_TAPS = 7;
 
 const FEATURES = [
   { icon: Tractor, text: 'Unlimited equipment tracking' },
@@ -39,9 +45,47 @@ export default function Paywall({ onDismiss }: PaywallProps) {
     restorePurchases,
     isRestoring,
     startTrial,
+    setAdminOverride,
   } = usePurchases();
 
   const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
+
+  // Secret admin override: tap "FarmGuard" text 7 times
+  const tapCountRef = useRef(0);
+  const tapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinInput, setPinInput] = useState('');
+  const [pinError, setPinError] = useState('');
+
+  const handleAppNameTap = useCallback(() => {
+    tapCountRef.current += 1;
+    if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+    tapTimerRef.current = setTimeout(() => {
+      tapCountRef.current = 0;
+    }, 3000);
+
+    if (tapCountRef.current >= REQUIRED_TAPS) {
+      tapCountRef.current = 0;
+      if (tapTimerRef.current) clearTimeout(tapTimerRef.current);
+      setPinInput('');
+      setPinError('');
+      setShowPinModal(true);
+    }
+  }, []);
+
+  const handlePinSubmit = useCallback(() => {
+    if (pinInput === ADMIN_PIN) {
+      setShowPinModal(false);
+      setPinInput('');
+      setPinError('');
+      setAdminOverride(true);
+      console.log('[Paywall] Admin override activated for this session');
+      onDismiss?.();
+    } else {
+      setPinError('Incorrect PIN. Please try again.');
+      setPinInput('');
+    }
+  }, [pinInput, setAdminOverride, onDismiss]);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(40)).current;
@@ -158,7 +202,9 @@ export default function Paywall({ onDismiss }: PaywallProps) {
           <View style={styles.iconRing}>
             <Shield size={36} color="#FFFFFF" strokeWidth={1.5} />
           </View>
-          <Text style={styles.appName}>FarmGuard</Text>
+          <TouchableOpacity onPress={handleAppNameTap} activeOpacity={1} hitSlop={{ top: 10, bottom: 10, left: 20, right: 20 }}>
+            <Text style={styles.appName}>FarmGuard</Text>
+          </TouchableOpacity>
           <Text style={styles.headline}>Keep Every Machine{'\n'}Running at Peak.</Text>
           <Text style={styles.subheadline}>
             Full access to equipment tracking, maintenance logs, inventory, and more.
@@ -309,6 +355,51 @@ export default function Paywall({ onDismiss }: PaywallProps) {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Hidden admin PIN modal */}
+      <Modal
+        visible={showPinModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPinModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.pinOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.pinModal}>
+            <Text style={styles.pinTitle}>Enter PIN</Text>
+            <TextInput
+              style={styles.pinInput}
+              value={pinInput}
+              onChangeText={(t) => { setPinInput(t); setPinError(''); }}
+              keyboardType="number-pad"
+              secureTextEntry
+              maxLength={6}
+              autoFocus
+              placeholder="••••"
+              placeholderTextColor="#999"
+              onSubmitEditing={handlePinSubmit}
+            />
+            {pinError ? <Text style={styles.pinError}>{pinError}</Text> : null}
+            <View style={styles.pinButtons}>
+              <TouchableOpacity
+                style={styles.pinCancelBtn}
+                onPress={() => { setShowPinModal(false); setPinInput(''); setPinError(''); }}
+              >
+                <Text style={styles.pinCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.pinSubmitBtn, !pinInput && styles.pinSubmitDisabled]}
+                onPress={handlePinSubmit}
+                disabled={!pinInput}
+              >
+                <Text style={styles.pinSubmitText}>Unlock</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -565,5 +656,79 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.6)',
     textDecorationLine: 'underline' as const,
+  },
+  pinOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  pinModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 28,
+    width: '100%',
+    maxWidth: 320,
+    alignItems: 'center',
+  },
+  pinTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    color: '#1A2E10',
+    marginBottom: 20,
+  },
+  pinInput: {
+    width: '100%',
+    borderWidth: 2,
+    borderColor: '#D5CFC5',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 24,
+    textAlign: 'center',
+    color: '#1A1A1A',
+    letterSpacing: 8,
+    marginBottom: 8,
+  },
+  pinError: {
+    fontSize: 13,
+    color: '#E74C3C',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  pinButtons: {
+    flexDirection: 'row' as const,
+    gap: 12,
+    marginTop: 12,
+    width: '100%',
+  },
+  pinCancelBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#D5CFC5',
+    alignItems: 'center' as const,
+  },
+  pinCancelText: {
+    fontSize: 15,
+    color: '#666',
+    fontWeight: '500' as const,
+  },
+  pinSubmitBtn: {
+    flex: 1,
+    paddingVertical: 13,
+    borderRadius: 12,
+    backgroundColor: '#367C2B',
+    alignItems: 'center' as const,
+  },
+  pinSubmitDisabled: {
+    opacity: 0.4,
+  },
+  pinSubmitText: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '700' as const,
   },
 });
