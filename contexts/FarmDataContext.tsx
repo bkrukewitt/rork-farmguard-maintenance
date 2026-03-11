@@ -1794,6 +1794,63 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
   });
 
+  // Leave Farm: removes this device from farm_members, optionally transfers admin
+  const leaveFarmMutation = useMutation({
+    mutationFn: async ({ transferToDeviceId }: { transferToDeviceId?: string }) => {
+      if (!farmId || !deviceId) throw new Error('Not in a farm.');
+
+      // Transfer admin role before leaving if requested
+      if (transferToDeviceId) {
+        const { error: transferError } = await supabase
+          .from('farm_members')
+          .update({ role: 'admin' })
+          .eq('farm_id', farmId)
+          .eq('device_id', transferToDeviceId);
+        if (transferError) throw transferError;
+        console.log(`[LeaveFarm] Transferred admin to ${transferToDeviceId}`);
+      }
+
+      // Remove self from farm_members
+      const { error } = await supabase
+        .from('farm_members')
+        .delete()
+        .eq('farm_id', farmId)
+        .eq('device_id', deviceId);
+      if (error) throw error;
+
+      console.log(`[LeaveFarm] Left farm ${farmId}`);
+    },
+    onSuccess: async () => {
+      // Clear all local farm-related state
+      await AsyncStorage.multiRemove([
+        STORAGE_KEYS.FARM_ID,
+        STORAGE_KEYS.DEVICE_ID,
+        STORAGE_KEYS.IS_FARM_CREATOR,
+        STORAGE_KEYS.DISPLAY_NAME,
+        STORAGE_KEYS.FARM_PASSWORD,
+        'farmguard_equipment',
+        'farmguard_maintenance_logs',
+        'farmguard_intervals',
+        'farmguard_consumables',
+        'farmguard_service_routines',
+        'farmguard_inspection_routines',
+        'farmguard_work_orders',
+        'farmguard_fuel_logs',
+        'farmguard_custom_fuel_types',
+        'farmguard_deleted_ids',
+        'farmguard_employees',
+        'farmguard_trial_active',
+      ]);
+      await SecureStore.deleteItemAsync('farmguard_farm_password').catch(() => {});
+      queryClient.clear();
+      setFarmId('');
+      setDeviceId('');
+      setDisplayName('');
+      setJoinPassword(null);
+      console.log('[LeaveFarm] Local data cleared, farm state reset');
+    },
+  });
+
   const deleteFarmFromServerMutation = useMutation({
     mutationFn: async (targetFarmId: string) => {
       console.log(`[SuperAdmin] Deleting farm from server: ${targetFarmId}`);
@@ -1996,6 +2053,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     isAdmin,
     farmMembers,
     removeMember: removeMemberMutation.mutateAsync,
+    leaveFarm: leaveFarmMutation.mutateAsync,
+    isLeavingFarm: leaveFarmMutation.isPending,
     deleteFarmFromServer: deleteFarmFromServerMutation.mutateAsync,
     isDeletingFarm: deleteFarmFromServerMutation.isPending,
     forceDeleteEquipment: forceDeleteEquipmentMutation.mutateAsync,
@@ -2072,7 +2131,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   }), [
     farmId, deviceId, setFarmIdAndSync, isSyncing, lastSyncTime, syncToServer,
     farmMembers, isAdmin, joinPassword, displayName,
-    removeMemberMutation.mutateAsync, deleteFarmFromServerMutation.mutateAsync, deleteFarmFromServerMutation.isPending,
+    removeMemberMutation.mutateAsync, leaveFarmMutation.mutateAsync, leaveFarmMutation.isPending,
+    deleteFarmFromServerMutation.mutateAsync, deleteFarmFromServerMutation.isPending,
     forceDeleteEquipmentMutation.mutateAsync, forceDeleteConsumableMutation.mutateAsync,
     purgeAndResyncMutation.mutateAsync, purgeAndResyncMutation.isPending,
     setJoinPasswordMutation.mutateAsync, setJoinPasswordMutation.isPending,

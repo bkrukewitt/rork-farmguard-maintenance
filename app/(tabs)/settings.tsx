@@ -82,6 +82,8 @@ export default function SettingsScreen() {
     isAdmin,
     farmMembers,
     removeMember,
+    leaveFarm,
+    isLeavingFarm,
     updateFarmId,
     isUpdatingFarmId,
     displayName,
@@ -157,6 +159,8 @@ export default function SettingsScreen() {
   const [joinPasswordError, setJoinPasswordError] = useState('');
 
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
+  const [showLeaveFarmModal, setShowLeaveFarmModal] = useState(false);
+  const [selectedAdminTransfer, setSelectedAdminTransfer] = useState<string | null>(null);
   const [newJoinPassword, setNewJoinPassword] = useState('');
   const [newJoinPasswordConfirm, setNewJoinPasswordConfirm] = useState('');
   const [joinPasswordSetError, setJoinPasswordSetError] = useState('');
@@ -584,6 +588,48 @@ export default function SettingsScreen() {
       setFarmIdError('Spaces are not allowed in Farm IDs.');
     } else {
       setFarmIdError('');
+    }
+  };
+
+  const otherMembers = farmMembers.filter(m => m.device_id !== deviceId);
+  const oldestOtherMember = otherMembers[0] ?? null;
+
+  const handleLeaveFarm = async (transferToDeviceId?: string) => {
+    try {
+      await leaveFarm({ transferToDeviceId });
+      setShowLeaveFarmModal(false);
+      setShowEditFarmIdModal(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to leave farm. Please try again.';
+      Alert.alert('Error', message);
+    }
+  };
+
+  const handleLeaveFarmPress = () => {
+    if (isAdmin && otherMembers.length > 0) {
+      // Show admin transfer modal
+      setSelectedAdminTransfer(oldestOtherMember?.device_id ?? null);
+      setShowLeaveFarmModal(true);
+    } else if (isAdmin && otherMembers.length === 0) {
+      // Last member — leaving dissolves the farm
+      Alert.alert(
+        'Leave Farm',
+        'You are the only member. Leaving will dissolve this farm organization and all synced data will remain on your device. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Leave & Dissolve', style: 'destructive', onPress: () => handleLeaveFarm() },
+        ]
+      );
+    } else {
+      // Regular member
+      Alert.alert(
+        'Leave Farm',
+        `Are you sure you want to leave the farm "${farmId}"? You will lose access to the shared data.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Leave Farm', style: 'destructive', onPress: () => handleLeaveFarm() },
+        ]
+      );
     }
   };
 
@@ -2161,6 +2207,104 @@ export default function SettingsScreen() {
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
                 <Text style={styles.joinButtonText}>Save Farm ID</Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.joinButton, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.statusOverdue, marginTop: 8, opacity: isLeavingFarm ? 0.6 : 1 }]}
+              onPress={handleLeaveFarmPress}
+              disabled={isLeavingFarm}
+            >
+              {isLeavingFarm ? (
+                <ActivityIndicator size="small" color={colors.statusOverdue} />
+              ) : (
+                <Text style={[styles.joinButtonText, { color: colors.statusOverdue }]}>Leave Farm Organization</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Admin Transfer Modal — shown when admin leaves and other members exist */}
+      <Modal
+        visible={showLeaveFarmModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowLeaveFarmModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => setShowLeaveFarmModal(false)} />
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Transfer Admin Role</Text>
+              <TouchableOpacity onPress={() => setShowLeaveFarmModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              You are the admin. Before leaving, choose who should become the new admin. The oldest member is pre-selected.
+            </Text>
+
+            <View style={{ gap: 8, marginBottom: 16 }}>
+              {otherMembers.map((member) => (
+                <TouchableOpacity
+                  key={member.device_id}
+                  style={[
+                    styles.settingRow,
+                    { backgroundColor: colors.background, borderColor: colors.border, borderWidth: 1, borderRadius: 10 },
+                    selectedAdminTransfer === member.device_id && { borderColor: colors.primary, backgroundColor: colors.primary + '10' },
+                  ]}
+                  onPress={() => setSelectedAdminTransfer(member.device_id)}
+                >
+                  <View style={styles.settingLeft}>
+                    <View style={[styles.memberAvatar, { backgroundColor: colors.primary + '20' }]}>
+                      <Text style={[styles.memberAvatarText, { color: colors.primary }]}>
+                        {(member.display_name || member.device_id).charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View>
+                      <Text style={[styles.settingLabel, { color: colors.text }]}>
+                        {member.display_name || member.device_id.slice(0, 12)}
+                      </Text>
+                      <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                        {member.role === 'admin' ? 'Admin' : 'Member'} · Joined {new Date(member.joined_at).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  </View>
+                  {selectedAdminTransfer === member.device_id && (
+                    <Check color={colors.primary} size={20} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              style={[styles.joinButton, { backgroundColor: colors.statusOverdue, opacity: (!selectedAdminTransfer || isLeavingFarm) ? 0.6 : 1 }]}
+              onPress={() => {
+                if (!selectedAdminTransfer) return;
+                Alert.alert(
+                  'Confirm Leave',
+                  `Transfer admin to the selected member and leave the farm?`,
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Transfer & Leave',
+                      style: 'destructive',
+                      onPress: () => handleLeaveFarm(selectedAdminTransfer),
+                    },
+                  ]
+                );
+              }}
+              disabled={!selectedAdminTransfer || isLeavingFarm}
+            >
+              {isLeavingFarm ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.joinButtonText}>Transfer Admin & Leave</Text>
               )}
             </TouchableOpacity>
           </View>
