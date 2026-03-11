@@ -594,42 +594,77 @@ export default function SettingsScreen() {
   const otherMembers = farmMembers.filter(m => m.device_id !== deviceId);
   const oldestOtherMember = otherMembers[0] ?? null;
 
-  const handleLeaveFarm = async (transferToDeviceId?: string) => {
-    try {
-      await leaveFarm({ transferToDeviceId });
-      setShowLeaveFarmModal(false);
-      setShowEditFarmIdModal(false);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to leave farm. Please try again.';
-      Alert.alert('Error', message);
-    }
+  const confirmLeaveFarm = (transferToDeviceId?: string) => {
+    Alert.alert(
+      'Keep Local Data?',
+      'Do you want to keep your equipment and maintenance data on this device, or clear it all?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Keep Data',
+          onPress: async () => {
+            try {
+              await leaveFarm({ transferToDeviceId, clearLocalData: false });
+              setShowLeaveFarmModal(false);
+              setShowEditFarmIdModal(false);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Failed to leave farm. Please try again.';
+              Alert.alert('Error', message);
+            }
+          },
+        },
+        {
+          text: 'Clear All Data',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await leaveFarm({ transferToDeviceId, clearLocalData: true });
+              setShowLeaveFarmModal(false);
+              setShowEditFarmIdModal(false);
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Failed to leave farm. Please try again.';
+              Alert.alert('Error', message);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const handleLeaveFarmPress = () => {
     if (isAdmin && otherMembers.length > 0) {
-      // Show admin transfer modal
+      // Show admin transfer modal first, then data choice
       setSelectedAdminTransfer(oldestOtherMember?.device_id ?? null);
       setShowLeaveFarmModal(true);
     } else if (isAdmin && otherMembers.length === 0) {
-      // Last member — leaving dissolves the farm
+      // Last member — confirm dissolve, then ask about data
       Alert.alert(
-        'Leave Farm',
-        'You are the only member. Leaving will dissolve this farm organization and all synced data will remain on your device. Continue?',
+        'Leave & Dissolve Farm',
+        'You are the only member. This will dissolve the farm organization. Would you like to keep your local data?',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Leave & Dissolve', style: 'destructive', onPress: () => handleLeaveFarm() },
+          {
+            text: 'Keep Data',
+            onPress: () => confirmLeaveFarm(),
+          },
+          {
+            text: 'Leave & Clear All',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await leaveFarm({ clearLocalData: true });
+                setShowEditFarmIdModal(false);
+              } catch (err) {
+                const message = err instanceof Error ? err.message : 'Failed to leave farm. Please try again.';
+                Alert.alert('Error', message);
+              }
+            },
+          },
         ]
       );
     } else {
-      // Regular member
-      Alert.alert(
-        'Leave Farm',
-        `Are you sure you want to leave the farm "${farmId}"? You will lose access to the shared data.`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Leave Farm', style: 'destructive', onPress: () => handleLeaveFarm() },
-        ]
-      );
+      // Regular member — ask about data first
+      confirmLeaveFarm();
     }
   };
 
@@ -2286,25 +2321,15 @@ export default function SettingsScreen() {
               style={[styles.joinButton, { backgroundColor: colors.statusOverdue, opacity: (!selectedAdminTransfer || isLeavingFarm) ? 0.6 : 1 }]}
               onPress={() => {
                 if (!selectedAdminTransfer) return;
-                Alert.alert(
-                  'Confirm Leave',
-                  `Transfer admin to the selected member and leave the farm?`,
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'Transfer & Leave',
-                      style: 'destructive',
-                      onPress: () => handleLeaveFarm(selectedAdminTransfer),
-                    },
-                  ]
-                );
+                setShowLeaveFarmModal(false);
+                confirmLeaveFarm(selectedAdminTransfer);
               }}
               disabled={!selectedAdminTransfer || isLeavingFarm}
             >
               {isLeavingFarm ? (
                 <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <Text style={styles.joinButtonText}>Transfer Admin & Leave</Text>
+                <Text style={styles.joinButtonText}>Select Admin & Continue</Text>
               )}
             </TouchableOpacity>
           </View>

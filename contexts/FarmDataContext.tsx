@@ -1796,7 +1796,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   // Leave Farm: removes this device from farm_members, optionally transfers admin
   const leaveFarmMutation = useMutation({
-    mutationFn: async ({ transferToDeviceId }: { transferToDeviceId?: string }) => {
+    mutationFn: async ({ transferToDeviceId, clearLocalData }: { transferToDeviceId?: string; clearLocalData: boolean }) => {
       if (!farmId || !deviceId) throw new Error('Not in a farm.');
 
       // Transfer admin role before leaving if requested
@@ -1819,35 +1819,49 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       if (error) throw error;
 
       console.log(`[LeaveFarm] Left farm ${farmId}`);
+      return { clearLocalData };
     },
-    onSuccess: async () => {
-      // Clear all local farm-related state
-      await AsyncStorage.multiRemove([
-        STORAGE_KEYS.FARM_ID,
-        STORAGE_KEYS.DEVICE_ID,
-        STORAGE_KEYS.IS_FARM_CREATOR,
-        STORAGE_KEYS.DISPLAY_NAME,
-        STORAGE_KEYS.FARM_PASSWORD,
-        'farmguard_equipment',
-        'farmguard_maintenance_logs',
-        'farmguard_intervals',
-        'farmguard_consumables',
-        'farmguard_service_routines',
-        'farmguard_inspection_routines',
-        'farmguard_work_orders',
-        'farmguard_fuel_logs',
-        'farmguard_custom_fuel_types',
-        'farmguard_deleted_ids',
-        'farmguard_employees',
-        'farmguard_trial_active',
-      ]);
-      await SecureStore.deleteItemAsync('farmguard_farm_password').catch(() => {});
-      queryClient.clear();
+    onSuccess: async (result) => {
+      if (result.clearLocalData) {
+        // Clear all local farm data
+        await AsyncStorage.multiRemove([
+          STORAGE_KEYS.FARM_ID,
+          STORAGE_KEYS.DEVICE_ID,
+          STORAGE_KEYS.IS_FARM_CREATOR,
+          STORAGE_KEYS.DISPLAY_NAME,
+          STORAGE_KEYS.FARM_PASSWORD,
+          'farmguard_equipment',
+          'farmguard_maintenance_logs',
+          'farmguard_intervals',
+          'farmguard_consumables',
+          'farmguard_service_routines',
+          'farmguard_inspection_routines',
+          'farmguard_work_orders',
+          'farmguard_fuel_logs',
+          'farmguard_custom_fuel_types',
+          'farmguard_deleted_ids',
+          'farmguard_employees',
+          'farmguard_trial_active',
+        ]);
+        await SecureStore.deleteItemAsync('farmguard_farm_password').catch(() => {});
+        queryClient.clear();
+        console.log('[LeaveFarm] Local data cleared');
+      } else {
+        // Keep local data but clear farm connection keys only
+        await AsyncStorage.multiRemove([
+          STORAGE_KEYS.FARM_ID,
+          STORAGE_KEYS.DEVICE_ID,
+          STORAGE_KEYS.IS_FARM_CREATOR,
+          STORAGE_KEYS.FARM_PASSWORD,
+        ]);
+        await SecureStore.deleteItemAsync('farmguard_farm_password').catch(() => {});
+        void queryClient.invalidateQueries();
+        console.log('[LeaveFarm] Farm connection cleared, local data kept');
+      }
       setFarmId('');
       setDeviceId('');
       setDisplayName('');
       setJoinPassword(null);
-      console.log('[LeaveFarm] Local data cleared, farm state reset');
     },
   });
 
