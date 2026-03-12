@@ -37,6 +37,7 @@ import { useFarmData } from '@/contexts/FarmDataContext';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import Paywall from '@/components/Paywall';
 import { MaintenanceLog, Consumable, ServiceRoutine, ChecklistItem, EquipmentAttachment, ConsumableCategory, CONSUMABLE_CATEGORIES } from '@/types/equipment';
+import { uploadAttachment } from '@/utils/attachmentUpload';
 import { generateId } from '@/utils/helpers';
 
 const SERVICE_TYPES: { value: MaintenanceLog['type']; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
@@ -54,7 +55,7 @@ const PERFORMER_OPTIONS: { value: MaintenanceLog['performedBy']; label: string }
 export default function AddMaintenanceScreen() {
   const router = useRouter();
   const { equipmentId: preselectedEquipmentId } = useLocalSearchParams<{ equipmentId?: string }>();
-  const { equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines, updateEquipment, addConsumable } = useFarmData();
+  const { farmId, equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines, updateEquipment, addConsumable } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
 
   if (isTrial && !isSubscribed) {
@@ -220,7 +221,7 @@ export default function AddMaintenanceScreen() {
     setAttachments(prev => prev.filter(a => a.id !== attachmentId));
   };
 
-  const saveAttachmentFiles = async (_logId: string): Promise<EquipmentAttachment[]> => {
+  const saveAttachmentFiles = async (logId: string): Promise<EquipmentAttachment[]> => {
     const savedAttachments: EquipmentAttachment[] = [];
 
     for (const attachment of attachments) {
@@ -239,6 +240,25 @@ export default function AddMaintenanceScreen() {
           from: attachment.uri,
           to: newUri,
         });
+
+        // Upload to Supabase Storage so attachments are shared across farm devices
+        if (farmId) {
+          const remotePath = `${farmId}/maintenance/${logId}/${attachment.id}.${fileExtension}`;
+          try {
+            await uploadAttachment(newUri, remotePath, attachment.fileName);
+            savedAttachments.push({
+              id: attachment.id,
+              label: attachment.label,
+              fileName: attachment.fileName,
+              fileUri: newUri,
+              remotePath,
+              createdAt: new Date().toISOString(),
+            });
+            continue;
+          } catch (error) {
+            console.log('Error uploading attachment to Supabase, keeping local only:', error);
+          }
+        }
 
         savedAttachments.push({
           id: attachment.id,

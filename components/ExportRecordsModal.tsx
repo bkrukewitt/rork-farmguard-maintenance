@@ -27,6 +27,7 @@ import {
 } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { supabase } from '@/lib/supabase';
 import { Equipment, MaintenanceLog, FuelLog, Consumable } from '@/types/equipment';
 import {
   generateMaintenancePdf,
@@ -55,7 +56,7 @@ interface ExportRecordsModalProps {
 
 export default function ExportRecordsModal({ visible, onDismiss }: ExportRecordsModalProps) {
   const { colors, currentScheme } = useTheme();
-  const { equipment, maintenanceLogs, fuelLogs, consumables } = useFarmData();
+  const { equipment, maintenanceLogs, fuelLogs, consumables, farmId } = useFarmData();
 
   // Step tracking
   const [step, setStep] = useState<'mode' | 'options' | 'preview'>('mode');
@@ -212,11 +213,27 @@ export default function ExportRecordsModal({ visible, onDismiss }: ExportRecords
               dateRange.start, dateRange.end,
             )
           : [];
+        let farmDisplayName: string | null | undefined;
+        if (farmId) {
+          try {
+            const { data } = await supabase
+              .from('farms')
+              .select('display_name')
+              .eq('id', farmId)
+              .maybeSingle();
+            farmDisplayName = data?.display_name ?? null;
+          } catch {
+            farmDisplayName = undefined;
+          }
+        }
+
         html = generateMaintenancePdfHtml({
           equipment: targetEquip, maintenanceLogs: filteredMaint,
           fuelLogs: filteredFuel, consumables, colorScheme: currentScheme,
           dateRange, includeFuel, includeNotes, includeAttachments,
           isBatchSummary: targetEquip.length > 1, generationDate,
+          farmId,
+          farmDisplayName,
         });
       }
       setPreviewHtml(html);
@@ -273,6 +290,7 @@ export default function ExportRecordsModal({ visible, onDismiss }: ExportRecords
               equipment: [equip], maintenanceLogs, fuelLogs, consumables,
               colorScheme: currentScheme, dateRange, includeFuel,
               includeNotes, includeAttachments, isBatchSummary: false,
+              farmId,
             });
             const name = getExportFileName({
               equipmentNames: [equip.name], exportType: 'maintenance',
@@ -296,6 +314,7 @@ export default function ExportRecordsModal({ visible, onDismiss }: ExportRecords
             colorScheme: currentScheme, dateRange, includeFuel,
             includeNotes, includeAttachments,
             isBatchSummary: targetEquip.length > 1,
+            farmId,
           });
           const fileName = getExportFileName({
             equipmentNames: equipNames, exportType: 'maintenance',

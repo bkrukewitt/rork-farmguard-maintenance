@@ -47,6 +47,7 @@ import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { EquipmentType, EquipmentAttachment } from '@/types/equipment';
+import { uploadAttachment, getAttachmentPublicUrl } from '@/utils/attachmentUpload';
 import { formatDate, formatMetric, getMaintenanceStatus, generateId } from '@/utils/helpers';
 import { generateMaintenancePdf, shareFile, getDateRangeForPreset } from '@/utils/exportHelpers';
 import { Download } from 'lucide-react-native';
@@ -67,7 +68,8 @@ const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string
 export default function EquipmentDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { 
+  const {
+    farmId,
     getEquipmentById, 
     getLogsForEquipment, 
     getIntervalsForEquipment,
@@ -107,6 +109,7 @@ export default function EquipmentDetailScreen() {
         includeNotes: true,
         includeAttachments: true,
         isBatchSummary: false,
+        farmId,
       });
       await shareFile(uri, 'application/pdf');
     } catch (error) {
@@ -196,11 +199,23 @@ export default function EquipmentDetailScreen() {
         to: newUri,
       });
 
+      let remotePath: string | undefined;
+      if (farmId && equipment) {
+        remotePath = `${farmId}/equipment/${equipment.id}/${fileId}.${fileExtension}`;
+        try {
+          await uploadAttachment(newUri, remotePath, pendingFile.name);
+        } catch (error) {
+          console.log('Error uploading equipment attachment to Supabase, keeping local only:', error);
+          remotePath = undefined;
+        }
+      }
+
       const newAttachment: EquipmentAttachment = {
         id: fileId,
         label: attachmentLabel.trim(),
         fileName: pendingFile.name,
         fileUri: newUri,
+        remotePath,
         createdAt: new Date().toISOString(),
       };
 
@@ -223,7 +238,28 @@ export default function EquipmentDetailScreen() {
 
   const handleViewAttachment = async (attachment: EquipmentAttachment) => {
     try {
-      const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
+      let localUri = attachment.fileUri;
+      let fileInfo = await FileSystem.getInfoAsync(localUri);
+
+      if (!fileInfo.exists && attachment.remotePath) {
+        // Try to download from Supabase Storage if this device doesn't have a local copy yet
+        try {
+          const publicUrl = getAttachmentPublicUrl(attachment.remotePath);
+          const cacheDir = `${FileSystem.cacheDirectory}attachments/`;
+          const dirInfo = await FileSystem.getInfoAsync(cacheDir);
+          if (!dirInfo.exists) {
+            await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
+          }
+          const fileExtension = attachment.fileName.split('.').pop() || 'file';
+          const downloadUri = `${cacheDir}${attachment.id}.${fileExtension}`;
+          const downloadResult = await FileSystem.downloadAsync(publicUrl, downloadUri);
+          localUri = downloadResult.uri;
+          fileInfo = await FileSystem.getInfoAsync(localUri);
+        } catch (error) {
+          console.log('Error downloading equipment attachment from Supabase:', error);
+        }
+      }
+
       if (!fileInfo.exists) {
         Alert.alert('File Not Found', 'This file may have been deleted. Please remove it and upload again.');
         return;
@@ -231,8 +267,7 @@ export default function EquipmentDetailScreen() {
 
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
-        await Sharing.shareAsync(attachment.fileUri, {
-          mimeType: 'application/pdf',
+        await Sharing.shareAsync(localUri, {
           dialogTitle: attachment.label,
         });
       } else {

@@ -73,6 +73,7 @@ export default function SettingsScreen() {
     inspectionRoutines, 
     getLowStockConsumables,
     farmId,
+    farmName,
     deviceId,
     setFarmId: _setFarmId,
     isSyncing,
@@ -88,6 +89,7 @@ export default function SettingsScreen() {
     isUpdatingFarmId,
     displayName,
     updateDisplayName,
+    updateFarmName,
     isUpdatingDisplayName,
     checkForDuplicatesOnJoin,
     applyDuplicateResolutions,
@@ -136,6 +138,7 @@ export default function SettingsScreen() {
   const [showEditFarmIdModal, setShowEditFarmIdModal] = useState(false);
   const [newFarmId, setNewFarmId] = useState('');
   const [farmIdError, setFarmIdError] = useState('');
+  const [editFarmName, setEditFarmName] = useState('');
   const [showDisplayNameModal, setShowDisplayNameModal] = useState(false);
   const [editDisplayName, setEditDisplayName] = useState('');
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
@@ -148,6 +151,7 @@ export default function SettingsScreen() {
   const footerTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showCreateFarmModal, setShowCreateFarmModal] = useState(false);
   const [newFarmIdToCreate, setNewFarmIdToCreate] = useState<string>('');
+  const [newFarmNameToCreate, setNewFarmNameToCreate] = useState<string>('');
   const [createFarmError, setCreateFarmError] = useState<string>('');
   const [adminFarmIdLookup, setAdminFarmIdLookup] = useState<string>('');
   const [adminFarmMembers, setAdminFarmMembers] = useState<FarmMember[]>([]);
@@ -231,9 +235,10 @@ export default function SettingsScreen() {
       return;
     }
     try {
-      await createFarm(trimmed);
+      await createFarm({ customId: trimmed, farmName: newFarmNameToCreate.trim() || undefined });
       setShowCreateFarmModal(false);
       setNewFarmIdToCreate('');
+      setNewFarmNameToCreate('');
       setCreateFarmError('');
       Alert.alert('Farm Created', `Farm ID "${trimmed}" is ready. Share it with your team to sync data across devices.`);
     } catch (err) {
@@ -244,8 +249,10 @@ export default function SettingsScreen() {
 
   const handleGenerateAndCreateFarm = async () => {
     try {
-      const result = await createFarm(undefined);
+      const result = await createFarm({ customId: undefined, farmName: newFarmNameToCreate.trim() || undefined });
       setShowCreateFarmModal(false);
+      setNewFarmIdToCreate('');
+      setNewFarmNameToCreate('');
       Alert.alert('Farm Created', `Your Farm ID is ready. Share it with your team to sync across devices.`);
       console.log('[Settings] Farm created:', result);
     } catch (err) {
@@ -577,6 +584,7 @@ export default function SettingsScreen() {
 
   const handleEditFarmId = () => {
     setNewFarmId(farmId);
+    setEditFarmName(farmName || '');
     setFarmIdError('');
     setShowEditFarmIdModal(true);
   };
@@ -685,8 +693,10 @@ export default function SettingsScreen() {
           onPress: async () => {
             try {
               await updateFarmId(newFarmId.trim());
+              await updateFarmName(editFarmName.trim() || null);
               setShowEditFarmIdModal(false);
               setNewFarmId('');
+              setEditFarmName('');
               setFarmIdError('');
               Alert.alert('Success', 'Farm ID has been updated. Share the new ID with your team members.');
             } catch (err: unknown) {
@@ -1233,6 +1243,11 @@ export default function SettingsScreen() {
               <Text style={[styles.syncId, { color: farmId ? colors.textSecondary : colors.statusDue }]} numberOfLines={1}>
                 {farmId || 'Not configured'}
               </Text>
+              {farmName ? (
+                <Text style={[styles.syncId, { color: colors.textSecondary }]} numberOfLines={1}>
+                  {farmName}
+                </Text>
+              ) : null}
             </View>
             <View style={styles.farmIdActions}>
               {isAdmin && (
@@ -2227,6 +2242,22 @@ export default function SettingsScreen() {
               />
             </View>
 
+            <View style={[
+              styles.joinInput,
+              { backgroundColor: colors.background, borderColor: colors.border, marginTop: 12 }
+            ]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Optional farm name (e.g., Smith Family Farm)"
+                placeholderTextColor={colors.textSecondary}
+                value={editFarmName}
+                onChangeText={setEditFarmName}
+                autoCapitalize="words"
+                autoCorrect={false}
+                maxLength={120}
+              />
+            </View>
+
             {farmIdError ? (
               <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>
                 {farmIdError}
@@ -2514,6 +2545,18 @@ export default function SettingsScreen() {
                 onChangeText={(t) => { setNewFarmIdToCreate(t.replace(/\s/g, '')); setCreateFarmError(''); }}
                 autoCapitalize="none"
                 autoCorrect={false}
+              />
+            </View>
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, marginTop: 12 }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Optional farm name (e.g., Smith Family Farm)"
+                placeholderTextColor={colors.textSecondary}
+                value={newFarmNameToCreate}
+                onChangeText={setNewFarmNameToCreate}
+                autoCapitalize="words"
+                autoCorrect={false}
+                maxLength={120}
               />
             </View>
             {createFarmError ? (

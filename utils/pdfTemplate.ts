@@ -34,6 +34,13 @@ function getMetricLabel(equipment: Equipment): string {
   return equipment.metric === 'miles' ? 'Miles' : 'Hours';
 }
 
+export interface AttachmentPage {
+  logId: string;
+  label: string;
+  dataUri: string;
+  mimeType: 'image/jpeg' | 'image/png' | 'application/pdf';
+}
+
 export interface MaintenancePdfOptions {
   equipment: Equipment[];
   maintenanceLogs: MaintenanceLog[];
@@ -46,6 +53,9 @@ export interface MaintenancePdfOptions {
   includeAttachments: boolean;
   isBatchSummary: boolean;
   generationDate: string;
+  attachmentPages?: AttachmentPage[];
+  farmId?: string;
+  farmDisplayName?: string | null;
 }
 
 export interface FuelPdfOptions {
@@ -300,6 +310,9 @@ function getBaseStyles(primaryColor: string, contrastText: string): string {
         color: #555;
       }
       .attachments-text { font-size: 8pt; color: #888; }
+      .attachment-page { page-break-before: always; text-align: center; }
+      .attachment-page-label { font-size: 10pt; margin-bottom: 8px; color: #555; }
+      .attachment-page img, .attachment-page object { max-width: 100%; max-height: 9.5in; }
     </style>`;
 }
 
@@ -310,7 +323,15 @@ function renderHeader(
   subtitle: string,
   generationDate: string,
   dateRangeLabel: string,
+  farmId?: string,
+  farmDisplayName?: string | null,
 ): string {
+  const farmLine = farmDisplayName
+    ? `Farm: ${farmDisplayName}`
+    : farmId
+      ? `Farm ID: ${farmId}`
+      : '';
+
   return `
     <div class="page-header">
       <div class="page-header-left">
@@ -323,6 +344,7 @@ function renderHeader(
       <div class="page-header-right">
         <div>Generated: ${generationDate}</div>
         <div>Date Range: ${dateRangeLabel}</div>
+        ${farmLine ? `<div>${farmLine}</div>` : ''}
       </div>
     </div>`;
 }
@@ -365,15 +387,34 @@ export function generateMaintenancePdfHtml(options: MaintenancePdfOptions): stri
     includeAttachments,
     isBatchSummary,
     generationDate,
+    attachmentPages = [],
+    farmId,
+    farmDisplayName,
   } = options;
 
   const primaryColor = getPdfPrimaryColor(colorScheme);
   const contrastText = getContrastTextColor(primaryColor);
   const logoSrc = `data:image/jpeg;base64,${LOGO_BASE64}`;
 
+  const pagesByLogId = new Map<string, AttachmentPage[]>();
+  for (const page of attachmentPages) {
+    const existing = pagesByLogId.get(page.logId) ?? [];
+    existing.push(page);
+    pagesByLogId.set(page.logId, existing);
+  }
+
   let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Equipment Service Report</title>${getBaseStyles(primaryColor, contrastText)}</head><body>`;
 
-  html += renderHeader(logoSrc, primaryColor, contrastText, 'Equipment Service Report', generationDate, dateRange.label);
+  html += renderHeader(
+    logoSrc,
+    primaryColor,
+    contrastText,
+    'Equipment Service Report',
+    generationDate,
+    dateRange.label,
+    farmId,
+    farmDisplayName,
+  );
 
   if (isBatchSummary && equipment.length > 1) {
     html += `<div class="section-title">Equipment Summary</div>`;
@@ -457,6 +498,18 @@ export function generateMaintenancePdfHtml(options: MaintenancePdfOptions): stri
         }
 
         html += `</div></div>`;
+
+        const pagesForLog = pagesByLogId.get(log.id) ?? [];
+        for (const page of pagesForLog) {
+          html += `<div class="attachment-page">`;
+          html += `<div class="attachment-page-label">${page.label || 'Attachment'}</div>`;
+          if (page.mimeType === 'application/pdf') {
+            html += `<object data="${page.dataUri}" type="application/pdf" width="100%" height="100%"></object>`;
+          } else {
+            html += `<img src="${page.dataUri}" alt="${page.label || 'Attachment'}" />`;
+          }
+          html += `</div>`;
+        }
       }
     }
 
@@ -528,7 +581,14 @@ export function generateFuelOnlyPdfHtml(options: FuelPdfOptions): string {
 
   let html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fuel Usage Report</title>${getBaseStyles(primaryColor, contrastText)}</head><body>`;
 
-  html += renderHeader(logoSrc, primaryColor, contrastText, 'Fuel Usage Report', generationDate, dateRange.label);
+  html += renderHeader(
+    logoSrc,
+    primaryColor,
+    contrastText,
+    'Fuel Usage Report',
+    generationDate,
+    dateRange.label,
+  );
 
   let farmTotalGallons = 0;
   let farmTotalDef = 0;

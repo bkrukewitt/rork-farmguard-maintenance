@@ -10,6 +10,7 @@ import {
   generateFuelOnlyPdfHtml,
   sanitizeFileName,
   formatDateForFileName,
+  AttachmentPage,
 } from '@/utils/pdfTemplate';
 import {
   Equipment,
@@ -20,6 +21,7 @@ import {
   BUILT_IN_FUEL_TYPES,
 } from '@/types/equipment';
 import { ColorScheme } from '@/contexts/ThemeContext';
+import { supabase } from '@/lib/supabase';
 
 // ---------------------------------------------------------------------------
 // Option interfaces
@@ -36,6 +38,8 @@ export interface GeneratePdfOptions {
   includeNotes: boolean;
   includeAttachments: boolean;
   isBatchSummary: boolean;
+  farmId?: string;
+  farmDisplayName?: string | null;
 }
 
 export interface GenerateFuelPdfOptions {
@@ -69,6 +73,108 @@ function getFuelTypeLabel(fuelType: FuelType, customFuelTypeName?: string): stri
   }
   const builtIn = BUILT_IN_FUEL_TYPES.find((t) => t.value === fuelType);
   return builtIn?.label ?? fuelType;
+}
+
+function getAttachmentMimeType(fileName: string): 'image/jpeg' | 'image/png' | 'application/pdf' | null {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  return null;
+}
+
+async function buildAttachmentPages(
+  maintenanceLogs: MaintenanceLog[],
+  maxPerLog: number,
+  maxTotal: number,
+): Promise<AttachmentPage[]> {
+  const pages: AttachmentPage[] = [];
+  let total = 0;
+
+  for (const log of maintenanceLogs) {
+    if (!log.attachments || log.attachments.length === 0) continue;
+    let perLog = 0;
+
+    for (const attachment of log.attachments) {
+      if (total >= maxTotal || perLog >= maxPerLog) break;
+
+      const mimeType = getAttachmentMimeType(attachment.fileName);
+      if (!mimeType) continue;
+
+      try {
+        let localUri = attachment.fileUri;
+        let info = await FileSystem.getInfoAsync(localUri);
+
+        if (!info.exists && attachment.remotePath) {
+          const cacheDir = `${FileSystem.cacheDirectory}export_attachments/`;
+          const dirInfo = await FileSystem.getInfoAsync(cacheDir);
+          if (!dirInfo.exists) {
+            await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
+          }
+          const ext = attachment.fileName.split('.').pop() || (mimeType === 'application/pdf' ? 'pdf' : 'bin');
+          const downloadUri = `${cacheDir}${attachment.id}.${ext}`;
+
+          const { getAttachmentPublicUrl } = await import('@/utils/attachmentUpload');
+          const publicUrl = getAttachmentPublicUrl(attachment.remotePath);
+          const result = await FileSystem.downloadAsync(publicUrl, downloadUri);
+          localUri = result.uri;
+          info = await FileSystem.getInfoAsync(localUri);
+          if (!info.exists) {
+            continue;
+          }
+        }
+
+        if (!info.exists) continue;
+
+        const base64 = await FileSystem.readAsStringAsync(localUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
+        pages.push({
+          logId: log.id,
+          label: attachment.label || attachment.fileName,
+          dataUri: `data:${mimeType};base64,${base64}`,
+          mimeType,
+        });
+
+        perLog += 1;
+        total += 1;
+        if (total >= maxTotal) break;
+      } catch (error) {
+        console.error('[Export] Failed to build attachment page', error);
+      }
+    }
+
+    if (total >= maxTotal) break;
+  }
+
+  return pages;
+}
+
+async function getFarmDisplayNameFromServer(
+  farmId?: string,
+  existing?: string | null,
+): Promise<string | null | undefined> {
+  if (!farmId) return existing;
+  if (existing !== undefined) return existing;
+
+  try {
+    const { data, error } = await supabase
+      .from('farms')
+      .select('display_name')
+      .eq('id', farmId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[Export] Failed to fetch farm display_name:', error);
+      return existing;
+    }
+
+    return data?.display_name ?? null;
+  } catch (err) {
+    console.error('[Export] Error fetching farm display_name:', err);
+    return existing;
+  }
 }
 
 export function filterLogsByDateRange<T extends { date: string }>(
@@ -161,6 +267,8 @@ export async function generateMaintenancePdf(
       includeNotes,
       includeAttachments,
       isBatchSummary,
+      farmId,
+      farmDisplayName,
     } = options;
 
     const equipmentIds = equipment.map((e) => e.id);
@@ -185,6 +293,13 @@ export async function generateMaintenancePdf(
       year: 'numeric',
     });
 
+    const resolvedFarmDisplayName = await getFarmDisplayNameFromServer(farmId, farmDisplayName ?? undefined);
+
+    let attachmentPages: AttachmentPage[] = [];
+    if (includeAttachments) {
+      attachmentPages = await buildAttachmentPages(filteredMaintenance, 10, 100);
+    }
+
     const html = generateMaintenancePdfHtml({
       equipment,
       maintenanceLogs: filteredMaintenance,
@@ -197,6 +312,9 @@ export async function generateMaintenancePdf(
       includeAttachments,
       isBatchSummary,
       generationDate,
+      attachmentPages,
+      farmId,
+      farmDisplayName: resolvedFarmDisplayName ?? null,
     });
 
     const { uri } = await Print.printToFileAsync({ html });

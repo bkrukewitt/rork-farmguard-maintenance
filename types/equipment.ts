@@ -14,7 +14,14 @@ export interface EquipmentAttachment {
   id: string;
   label: string;
   fileName: string;
+  /**
+   * Local file path on the device (FileSystem.documentDirectory...)
+   */
   fileUri: string;
+  /**
+   * Path of the file in Supabase Storage (farm-attachments bucket), e.g. "farmId/equipment/equipId/attachmentId.pdf"
+   */
+  remotePath?: string;
   createdAt: string;
 }
 

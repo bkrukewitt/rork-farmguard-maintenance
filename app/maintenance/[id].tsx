@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import {
   Wrench,
@@ -29,6 +29,7 @@ import {
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { EquipmentAttachment } from '@/types/equipment';
+import { getAttachmentPublicUrl } from '@/utils/attachmentUpload';
 import { formatDate, formatHours } from '@/utils/helpers';
 
 export default function MaintenanceDetailScreen() {
@@ -47,7 +48,28 @@ export default function MaintenanceDetailScreen() {
 
   const handleViewAttachment = async (attachment: EquipmentAttachment) => {
     try {
-      const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
+      let localUri = attachment.fileUri;
+      let fileInfo = await FileSystem.getInfoAsync(localUri);
+
+      if (!fileInfo.exists && attachment.remotePath) {
+        // Try to download from Supabase Storage if this device doesn't have a local copy yet
+        try {
+          const publicUrl = getAttachmentPublicUrl(attachment.remotePath);
+          const cacheDir = `${FileSystem.cacheDirectory}attachments/`;
+          const dirInfo = await FileSystem.getInfoAsync(cacheDir);
+          if (!dirInfo.exists) {
+            await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
+          }
+          const fileExtension = attachment.fileName.split('.').pop() || 'file';
+          const downloadUri = `${cacheDir}${attachment.id}.${fileExtension}`;
+          const downloadResult = await FileSystem.downloadAsync(publicUrl, downloadUri);
+          localUri = downloadResult.uri;
+          fileInfo = await FileSystem.getInfoAsync(localUri);
+        } catch (error) {
+          console.log('Error downloading attachment from Supabase:', error);
+        }
+      }
+
       if (!fileInfo.exists) {
         Alert.alert('File Not Found', 'This file may have been deleted.');
         return;
@@ -55,7 +77,7 @@ export default function MaintenanceDetailScreen() {
 
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
-        await Sharing.shareAsync(attachment.fileUri, {
+        await Sharing.shareAsync(localUri, {
           dialogTitle: attachment.label,
         });
       } else {

@@ -32,6 +32,7 @@ import {
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { MaintenanceLog, EquipmentAttachment } from '@/types/equipment';
+import { uploadAttachment, getAttachmentPublicUrl } from '@/utils/attachmentUpload';
 import { generateId } from '@/utils/helpers';
 
 const SERVICE_TYPES: { value: MaintenanceLog['type']; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
@@ -49,7 +50,7 @@ const PERFORMER_OPTIONS: { value: MaintenanceLog['performedBy']; label: string }
 export default function EditMaintenanceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { getMaintenanceLogById, getEquipmentById, updateMaintenanceLog, isLoading } = useFarmData();
+  const { farmId, getMaintenanceLogById, getEquipmentById, updateMaintenanceLog, isLoading } = useFarmData();
 
   const log = getMaintenanceLogById(id ?? '');
   const equipment = log ? getEquipmentById(log.equipmentId) : undefined;
@@ -158,7 +159,28 @@ export default function EditMaintenanceScreen() {
 
   const handleViewAttachment = async (attachment: EquipmentAttachment) => {
     try {
-      const fileInfo = await FileSystem.getInfoAsync(attachment.fileUri);
+      let localUri = attachment.fileUri;
+      let fileInfo = await FileSystem.getInfoAsync(localUri);
+
+      if (!fileInfo.exists && attachment.remotePath) {
+        // Try to download from Supabase Storage if this device doesn't have a local copy yet
+        try {
+          const publicUrl = getAttachmentPublicUrl(attachment.remotePath);
+          const cacheDir = `${FileSystem.cacheDirectory}attachments/`;
+          const dirInfo = await FileSystem.getInfoAsync(cacheDir);
+          if (!dirInfo.exists) {
+            await FileSystem.makeDirectoryAsync(cacheDir, { intermediates: true });
+          }
+          const fileExtension = attachment.fileName.split('.').pop() || 'file';
+          const downloadUri = `${cacheDir}${attachment.id}.${fileExtension}`;
+          const downloadResult = await FileSystem.downloadAsync(publicUrl, downloadUri);
+          localUri = downloadResult.uri;
+          fileInfo = await FileSystem.getInfoAsync(localUri);
+        } catch (error) {
+          console.log('Error downloading attachment from Supabase:', error);
+        }
+      }
+
       if (!fileInfo.exists) {
         Alert.alert('File Not Found', 'This file may have been deleted.');
         return;
@@ -166,7 +188,7 @@ export default function EditMaintenanceScreen() {
 
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
-        await Sharing.shareAsync(attachment.fileUri, {
+        await Sharing.shareAsync(localUri, {
           dialogTitle: attachment.label,
         });
       } else {
@@ -197,12 +219,23 @@ export default function EditMaintenanceScreen() {
           from: attachment.uri,
           to: newUri,
         });
+        let remotePath: string | undefined;
+        if (farmId && log) {
+          remotePath = `${farmId}/maintenance/${log.id}/${attachment.id}.${fileExtension}`;
+          try {
+            await uploadAttachment(newUri, remotePath, attachment.fileName);
+          } catch (error) {
+            console.log('Error uploading attachment to Supabase, keeping local only:', error);
+            remotePath = undefined;
+          }
+        }
 
         savedAttachments.push({
           id: attachment.id,
           label: attachment.label,
           fileName: attachment.fileName,
           fileUri: newUri,
+          remotePath,
           createdAt: new Date().toISOString(),
         });
       } catch (error) {

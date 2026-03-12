@@ -200,6 +200,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
+  const [farmName, setFarmName] = useState<string | null>(null);
   const [joinPassword, setJoinPassword] = useState<string | null>(null);
   const deletedIdsRef = useRef<string[]>([]);
   const skipAutoMergeRef = useRef(false);
@@ -231,6 +232,32 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       }
     });
   }, []);
+
+  useEffect(() => {
+    if (!farmId) {
+      setFarmName(null);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('farms')
+          .select('display_name')
+          .eq('id', farmId)
+          .maybeSingle();
+
+        if (error) {
+          console.error('[Supabase] Error fetching farm display_name:', JSON.stringify(error));
+          return;
+        }
+
+        setFarmName((data?.display_name as string | null) ?? null);
+      } catch (err) {
+        console.error('[Supabase] Unexpected error fetching farm display_name:', err);
+      }
+    })();
+  }, [farmId]);
 
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
@@ -1583,7 +1610,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   }, [equipment, consumables, serviceRoutines, inspectionRoutines, maintenanceLogs, intervals, workOrders, employees, deviceId, queryClient, mergeDeletedIds]);
 
   const createFarmMutation = useMutation({
-    mutationFn: async (customId?: string) => {
+    mutationFn: async ({ customId, farmName }: { customId?: string; farmName?: string }) => {
       const newFarmId = customId?.trim() || generateId();
       if (/\s/.test(newFarmId)) throw new Error('Farm ID cannot contain spaces.');
 
@@ -1596,12 +1623,13 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
       const { error: farmError } = await supabase
         .from('farms')
-        .insert({ id: newFarmId });
+        .insert({ id: newFarmId, display_name: farmName?.trim() || null });
       if (farmError) throw new Error(`Failed to create farm: ${farmError.message}`);
 
       await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
       await AsyncStorage.setItem(STORAGE_KEYS.IS_FARM_CREATOR, 'true');
       setFarmId(newFarmId);
+      setFarmName(farmName?.trim() || null);
 
       initialMergeDoneRef.current = false;
       skipAutoMergeRef.current = false;
@@ -1775,6 +1803,27 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['farmMembers', farmId] });
       void queryClient.invalidateQueries({ queryKey: ['memberRegistration', farmId, deviceId] });
+    },
+  });
+
+  const updateFarmNameMutation = useMutation({
+    mutationFn: async (name: string | null) => {
+      if (!farmId) throw new Error('No Farm ID configured.');
+      const trimmed = name?.trim() || null;
+
+      const { error } = await supabase
+        .from('farms')
+        .update({ display_name: trimmed })
+        .eq('id', farmId);
+
+      if (error) {
+        console.error('[Supabase] Error updating farm display_name:', JSON.stringify(error));
+        throw new Error('Failed to update farm name on server.');
+      }
+
+      setFarmName(trimmed);
+      console.log('[Supabase] Farm display_name updated to:', trimmed);
+      return trimmed;
     },
   });
 
@@ -2058,6 +2107,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   return useMemo(() => ({
     farmId,
+    farmName,
     deviceId,
     setFarmId: setFarmIdAndSync,
     isSyncing,
@@ -2085,6 +2135,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     displayName,
     updateDisplayName: updateDisplayNameMutation.mutateAsync,
     isUpdatingDisplayName: updateDisplayNameMutation.isPending,
+    updateFarmName: updateFarmNameMutation.mutateAsync,
     checkForDuplicatesOnJoin,
     applyDuplicateResolutions,
     equipment,
