@@ -677,6 +677,25 @@ export default function SettingsScreen() {
   };
 
   const handleSaveFarmId = async () => {
+    const trimmedId = newFarmId.trim();
+    const idUnchanged = trimmedId === farmId;
+
+    if (idUnchanged) {
+      // Only updating farm name (Farm ID unchanged)
+      try {
+        await updateFarmName(editFarmName.trim() || null);
+        setShowEditFarmIdModal(false);
+        setNewFarmId('');
+        setEditFarmName('');
+        setFarmIdError('');
+        Alert.alert('Success', 'Farm name has been updated.');
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : 'Failed to update farm name. Please try again.';
+        setFarmIdError(message);
+      }
+      return;
+    }
+
     const error = validateFarmId(newFarmId);
     if (error) {
       setFarmIdError(error);
@@ -685,14 +704,14 @@ export default function SettingsScreen() {
 
     Alert.alert(
       'Change Farm ID',
-      `Are you sure you want to change the Farm ID to "${newFarmId.trim()}"? All connected devices will need to use the new ID.`,
+      `Are you sure you want to change the Farm ID to "${trimmedId}"? All connected devices will need to use the new ID.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Change',
           onPress: async () => {
             try {
-              await updateFarmId(newFarmId.trim());
+              await updateFarmId(trimmedId);
               await updateFarmName(editFarmName.trim() || null);
               setShowEditFarmIdModal(false);
               setNewFarmId('');
