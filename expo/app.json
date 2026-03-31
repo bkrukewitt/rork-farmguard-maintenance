@@ -23,7 +23,7 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "usesIcloudStorage": true,
-      "buildNumber": "7"
+      "buildNumber": "9"
     },
     "android": {
       "adaptiveIcon": {
@@ -38,7 +38,7 @@
         "android.permission.INTERNET",
         "android.permission.RECORD_AUDIO"
       ],
-      "versionCode": 14
+      "versionCode": 15
     },
     "web": {
       "favicon": "./assets/images/favicon.png"

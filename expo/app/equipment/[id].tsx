@@ -18,6 +18,7 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import * as Clipboard from 'expo-clipboard';
 import { 
   Tractor, 
   Truck, 
@@ -42,6 +43,7 @@ import {
   Droplet,
   CarFront,
   Fuel,
+  Copy,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -336,6 +338,17 @@ export default function EquipmentDetailScreen() {
     );
   };
 
+  const handleCopySerialNumber = async () => {
+    if (!equipment?.serialNumber) return;
+    try {
+      await Clipboard.setStringAsync(equipment.serialNumber);
+      Alert.alert('Copied', 'Serial number copied to clipboard.');
+    } catch (error) {
+      console.log('Error copying serial number:', error);
+      Alert.alert('Error', 'Could not copy serial number.');
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -437,6 +450,17 @@ export default function EquipmentDetailScreen() {
               </View>
               <Text style={styles.detailLabel}>Serial Number</Text>
               <Text style={styles.detailValue}>{equipment.serialNumber || '—'}</Text>
+              {equipment.serialNumber ? (
+                <TouchableOpacity
+                  style={styles.copySerialButton}
+                  onPress={handleCopySerialNumber}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy serial number"
+                >
+                  <Copy color={Colors.primary} size={14} />
+                  <Text style={styles.copySerialButtonText}>Copy</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
             <View style={styles.detailRow}>
               <View style={styles.detailIcon}>
@@ -889,6 +913,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500' as const,
     color: Colors.text,
+  },
+  copySerialButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginLeft: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    backgroundColor: Colors.primary + '15',
+  },
+  copySerialButtonText: {
+    fontSize: 12,
+    fontWeight: '600' as const,
+    color: Colors.primary,
   },
   notesCard: {
     backgroundColor: Colors.surface,

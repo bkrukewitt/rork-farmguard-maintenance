@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,11 +13,13 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Shield, Check, Tractor, Wrench, Package, ClipboardList, Star, RefreshCw, X, Eye } from 'lucide-react-native';
 import { PurchasesPackage } from 'react-native-purchases';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL, SUBSCRIPTION_DISPLAY_NAME } from '@/constants/legalUrls';
 
 const ADMIN_PIN = '7743';
 const REQUIRED_TAPS = 7;
@@ -141,7 +143,51 @@ export default function Paywall({ onDismiss }: PaywallProps) {
 
   const savings = getAnnualSavings();
 
-  const { farmId } = useFarmData();
+  const getMonthlyEquivalent = (pkg: PurchasesPackage) => {
+    const type = pkg.packageType;
+    if (type === 'ANNUAL' || pkg.identifier === '$rc_annual') {
+      return `$${(pkg.product.price / 12).toFixed(2)}/mo`;
+    }
+    return null;
+  };
+
+  const { farmId, joinPassword } = useFarmData();
+
+  const subscriptionDisclosure = useMemo(() => {
+    const pkg = selectedPackage;
+    const name = pkg?.product.title?.trim() || SUBSCRIPTION_DISPLAY_NAME;
+    if (!pkg) {
+      return [
+        `${name}: choose Monthly or Yearly to see pricing. Payment will be charged to your Apple ID. Subscription renews automatically until you cancel.`,
+        'Manage or cancel in Settings → Apple ID → Subscriptions. Free preview may be available once per farm (Try Free Preview).',
+      ].join('\n\n');
+    }
+    const isAnnual = pkg.packageType === 'ANNUAL' || pkg.identifier === '$rc_annual';
+    const periodLabel = isAnnual ? '1 year' : '1 month';
+    const equiv = getMonthlyEquivalent(pkg);
+    const priceLine = equiv
+      ? `${pkg.product.priceString} per ${periodLabel} (${equiv} equivalent).`
+      : `${pkg.product.priceString} per ${periodLabel}.`;
+    return [
+      `${name}: ${priceLine} Payment will be charged to your Apple ID. Subscription renews automatically until you cancel.`,
+      'Manage or cancel in Settings → Apple ID → Subscriptions.',
+    ].join('\n\n');
+  }, [selectedPackage]);
+
+  const [isStartingTrial, setIsStartingTrial] = useState(false);
+
+  const openLegalUrl = useCallback(async (url: string, missingMessage: string) => {
+    const trimmed = url.trim();
+    if (!trimmed) {
+      Alert.alert('Link not configured', missingMessage);
+      return;
+    }
+    try {
+      await WebBrowser.openBrowserAsync(trimmed);
+    } catch {
+      Alert.alert('Error', 'Could not open the link.');
+    }
+  }, []);
 
   const handleStartTrial = async () => {
     if (!farmId) {
@@ -149,7 +195,30 @@ export default function Paywall({ onDismiss }: PaywallProps) {
       Alert.alert('Error', 'Farm not loaded yet. Please try again in a moment.');
       return;
     }
-    await startTrial(farmId);
+    setIsStartingTrial(true);
+    try {
+      const result = await startTrial(farmId, joinPassword);
+      if (result.success) {
+        onDismiss?.();
+        return;
+      }
+      if (result.alreadyUsed) {
+        Alert.alert('Preview unavailable', 'A free preview has already been used for this farm.');
+        return;
+      }
+      Alert.alert(
+        'Couldn’t start preview',
+        'We couldn’t activate your preview. Check your connection and try again.',
+      );
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'message' in err && typeof (err as { message: string }).message === 'string'
+          ? (err as { message: string }).message
+          : 'Could not start free preview. Please try again.';
+      Alert.alert('Couldn’t start preview', msg);
+    } finally {
+      setIsStartingTrial(false);
+    }
   };
 
   const handlePurchase = async () => {
@@ -172,14 +241,6 @@ export default function Paywall({ onDismiss }: PaywallProps) {
     } catch {
       Alert.alert('Restore Failed', 'Could not restore purchases. Please try again.');
     }
-  };
-
-  const getMonthlyEquivalent = (pkg: PurchasesPackage) => {
-    const type = pkg.packageType;
-    if (type === 'ANNUAL' || pkg.identifier === '$rc_annual') {
-      return `$${(pkg.product.price / 12).toFixed(2)}/mo`;
-    }
-    return null;
   };
 
   return (
@@ -323,9 +384,35 @@ export default function Paywall({ onDismiss }: PaywallProps) {
             )}
           </TouchableOpacity>
 
-          <Text style={styles.legalText}>
-            Subscription renews automatically. Cancel anytime in your account settings.
-          </Text>
+          <Text style={styles.legalText}>{subscriptionDisclosure}</Text>
+
+          <View style={styles.legalLinksRow}>
+            <TouchableOpacity
+              onPress={() =>
+                openLegalUrl(
+                  PRIVACY_POLICY_URL,
+                  'Set EXPO_PUBLIC_PRIVACY_POLICY_URL in your EAS build environment.',
+                )
+              }
+              accessibilityRole="link"
+              accessibilityLabel="Privacy Policy"
+            >
+              <Text style={styles.legalLink}>Privacy Policy</Text>
+            </TouchableOpacity>
+            <Text style={styles.legalSeparator}> · </Text>
+            <TouchableOpacity
+              onPress={() =>
+                openLegalUrl(
+                  TERMS_OF_USE_URL,
+                  'Set EXPO_PUBLIC_TERMS_OF_USE_URL in your EAS build environment.',
+                )
+              }
+              accessibilityRole="link"
+              accessibilityLabel="Terms of Use"
+            >
+              <Text style={styles.legalLink}>Terms of Use (EULA)</Text>
+            </TouchableOpacity>
+          </View>
 
           <TouchableOpacity
             style={styles.restoreBtn}
@@ -345,13 +432,20 @@ export default function Paywall({ onDismiss }: PaywallProps) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.trialBtn}
+            style={[styles.trialBtn, (!farmId || isStartingTrial) && styles.trialBtnDisabled]}
             onPress={handleStartTrial}
+            disabled={!farmId || isStartingTrial}
             activeOpacity={0.7}
             testID="paywall-trial"
           >
-            <Eye size={14} color="rgba(255,255,255,0.6)" />
-            <Text style={styles.trialText}>Try Free Preview</Text>
+            {isStartingTrial ? (
+              <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
+            ) : (
+              <Eye size={14} color="rgba(255,255,255,0.6)" />
+            )}
+            <Text style={styles.trialText}>
+              {!farmId ? 'Loading farm…' : 'Try Free Preview'}
+            </Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -629,11 +723,30 @@ const styles = StyleSheet.create({
   },
   legalText: {
     fontSize: 11,
-    color: 'rgba(255,255,255,0.4)',
+    color: 'rgba(255,255,255,0.45)',
     textAlign: 'center',
     lineHeight: 16,
+    marginBottom: 10,
+    paddingHorizontal: 20,
+  },
+  legalLinksRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 16,
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
+    gap: 4,
+  },
+  legalLink: {
+    fontSize: 12,
+    color: '#FFDE00',
+    fontWeight: '600' as const,
+    textDecorationLine: 'underline' as const,
+  },
+  legalSeparator: {
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.35)',
   },
   restoreBtn: {
     flexDirection: 'row',
@@ -651,6 +764,9 @@ const styles = StyleSheet.create({
     gap: 6,
     paddingVertical: 10,
     marginTop: 4,
+  },
+  trialBtnDisabled: {
+    opacity: 0.55,
   },
   trialText: {
     fontSize: 13,

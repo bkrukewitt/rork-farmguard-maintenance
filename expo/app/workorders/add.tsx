@@ -10,11 +10,12 @@ import {
   Platform,
   Modal,
   Pressable,
+  KeyboardAvoidingView,
 } from 'react-native';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import { useRouter, Stack } from 'expo-router';
-import { 
-  Save, 
+import {
+  Save,
   ChevronDown,
   Calendar,
   X,
@@ -27,11 +28,11 @@ import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import Paywall from '@/components/Paywall';
-import { 
-  WorkOrderPriority, 
-  WorkOrderStatus, 
-  WORK_ORDER_PRIORITIES, 
-  WORK_ORDER_STATUSES 
+import {
+  WorkOrderPriority,
+  WorkOrderStatus,
+  WORK_ORDER_PRIORITIES,
+  WORK_ORDER_STATUSES,
 } from '@/types/equipment';
 
 export default function AddWorkOrderScreen() {
@@ -42,7 +43,7 @@ export default function AddWorkOrderScreen() {
   if (isTrial && !isSubscribed) {
     return <Paywall onDismiss={() => router.back()} />;
   }
-  
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedEquipmentId, setSelectedEquipmentId] = useState<string>('');
@@ -52,7 +53,7 @@ export default function AddWorkOrderScreen() {
   const [estimatedHours, setEstimatedHours] = useState('');
   const [notes, setNotes] = useState('');
   const [assignedTo, setAssignedTo] = useState<string[]>([]);
-  
+
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
   const [showPriorityPicker, setShowPriorityPicker] = useState(false);
   const [showStatusPicker, setShowStatusPicker] = useState(false);
@@ -61,16 +62,16 @@ export default function AddWorkOrderScreen() {
   const [showAddEmployee, setShowAddEmployee] = useState(false);
   const [newEmployeeName, setNewEmployeeName] = useState('');
   const [newEmployeeRole, setNewEmployeeRole] = useState('');
-  
+
   const [isSaving, setIsSaving] = useState(false);
 
-  const selectedEquipment = useMemo(() => 
-    equipment.find(e => e.id === selectedEquipmentId),
-    [equipment, selectedEquipmentId]
+  const selectedEquipment = useMemo(
+    () => equipment.find((e) => e.id === selectedEquipmentId),
+    [equipment, selectedEquipmentId],
   );
 
-  const selectedPriority = WORK_ORDER_PRIORITIES.find(p => p.value === priority);
-  const selectedStatus = WORK_ORDER_STATUSES.find(s => s.value === status);
+  const selectedPriority = WORK_ORDER_PRIORITIES.find((p) => p.value === priority);
+  const selectedStatus = WORK_ORDER_STATUSES.find((s) => s.value === status);
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -91,7 +92,7 @@ export default function AddWorkOrderScreen() {
         notes: notes.trim() || undefined,
         assignedTo: assignedTo.length > 0 ? assignedTo : undefined,
       });
-      
+
       router.back();
     } catch (error) {
       console.error('Error adding work order:', error);
@@ -124,7 +125,7 @@ export default function AddWorkOrderScreen() {
 
   const toggleEmployee = (employeeId: string) => {
     if (assignedTo.includes(employeeId)) {
-      setAssignedTo(assignedTo.filter(id => id !== employeeId));
+      setAssignedTo(assignedTo.filter((id) => id !== employeeId));
     } else {
       setAssignedTo([...assignedTo, employeeId]);
     }
@@ -151,13 +152,10 @@ export default function AddWorkOrderScreen() {
         }}
       />
 
-      <KeyboardAwareScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-      >
+      <KeyboardAwareScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Details</Text>
-          
+
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Title *</Text>
             <TextInput
@@ -185,10 +183,7 @@ export default function AddWorkOrderScreen() {
 
           <View style={styles.inputGroup}>
             <Text style={styles.label}>Equipment</Text>
-            <TouchableOpacity
-              style={styles.pickerButton}
-              onPress={() => setShowEquipmentPicker(true)}
-            >
+            <TouchableOpacity style={styles.pickerButton} onPress={() => setShowEquipmentPicker(true)}>
               <Text style={[styles.pickerButtonText, !selectedEquipment && styles.placeholderText]}>
                 {selectedEquipment?.name ?? 'Select equipment (optional)'}
               </Text>
@@ -199,10 +194,7 @@ export default function AddWorkOrderScreen() {
           <View style={styles.row}>
             <View style={[styles.inputGroup, { flex: 1 }]}>
               <Text style={styles.label}>Priority</Text>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => setShowPriorityPicker(true)}
-              >
+              <TouchableOpacity style={styles.pickerButton} onPress={() => setShowPriorityPicker(true)}>
                 <View style={[styles.colorDot, { backgroundColor: selectedPriority?.color }]} />
                 <Text style={styles.pickerButtonText}>{selectedPriority?.label}</Text>
                 <ChevronDown color={Colors.textSecondary} size={20} />
@@ -211,10 +203,7 @@ export default function AddWorkOrderScreen() {
 
             <View style={[styles.inputGroup, { flex: 1 }]}>
               <Text style={styles.label}>Status</Text>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => setShowStatusPicker(true)}
-              >
+              <TouchableOpacity style={styles.pickerButton} onPress={() => setShowStatusPicker(true)}>
                 <View style={[styles.colorDot, { backgroundColor: selectedStatus?.color }]} />
                 <Text style={styles.pickerButtonText}>{selectedStatus?.label}</Text>
                 <ChevronDown color={Colors.textSecondary} size={20} />
@@ -225,10 +214,7 @@ export default function AddWorkOrderScreen() {
           <View style={styles.row}>
             <View style={[styles.inputGroup, { flex: 1 }]}>
               <Text style={styles.label}>Due Date</Text>
-              <TouchableOpacity
-                style={styles.pickerButton}
-                onPress={() => setShowDatePicker(true)}
-              >
+              <TouchableOpacity style={styles.pickerButton} onPress={() => setShowDatePicker(true)}>
                 <Calendar color={Colors.textSecondary} size={18} />
                 <Text style={[styles.pickerButtonText, !dueDate && styles.placeholderText]}>
                   {dueDate ? formatDate(dueDate) : 'Select date'}
@@ -253,10 +239,7 @@ export default function AddWorkOrderScreen() {
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Assign To</Text>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => setShowEmployeePicker(true)}
-            >
+            <TouchableOpacity style={styles.addButton} onPress={() => setShowEmployeePicker(true)}>
               <Plus color={Colors.primary} size={18} />
               <Text style={styles.addButtonText}>Add</Text>
             </TouchableOpacity>
@@ -264,8 +247,8 @@ export default function AddWorkOrderScreen() {
 
           {assignedTo.length > 0 ? (
             <View style={styles.assignedList}>
-              {assignedTo.map(employeeId => {
-                const employee = employees.find(e => e.id === employeeId);
+              {assignedTo.map((employeeId) => {
+                const employee = employees.find((e) => e.id === employeeId);
                 if (!employee) return null;
                 return (
                   <View key={employeeId} style={styles.assignedChip}>
@@ -303,15 +286,13 @@ export default function AddWorkOrderScreen() {
           disabled={isSaving}
         >
           <Save color={Colors.textOnPrimary} size={20} />
-          <Text style={styles.saveButtonText}>
-            {isSaving ? 'Creating...' : 'Create Work Order'}
-          </Text>
+          <Text style={styles.saveButtonText}>{isSaving ? 'Creating...' : 'Create Work Order'}</Text>
         </TouchableOpacity>
       </KeyboardAwareScrollView>
 
       <Modal visible={showEquipmentPicker} transparent animationType="slide">
         <Pressable style={styles.modalOverlay} onPress={() => setShowEquipmentPicker(false)}>
-          <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Equipment</Text>
               <TouchableOpacity onPress={() => setShowEquipmentPicker(false)}>
@@ -329,7 +310,7 @@ export default function AddWorkOrderScreen() {
                 <Text style={styles.modalOptionText}>None</Text>
                 {!selectedEquipmentId && <Check color={Colors.primary} size={20} />}
               </TouchableOpacity>
-              {equipment.map(eq => (
+              {equipment.map((eq) => (
                 <TouchableOpacity
                   key={eq.id}
                   style={styles.modalOption}
@@ -349,7 +330,7 @@ export default function AddWorkOrderScreen() {
 
       <Modal visible={showPriorityPicker} transparent animationType="slide">
         <Pressable style={styles.modalOverlay} onPress={() => setShowPriorityPicker(false)}>
-          <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Priority</Text>
               <TouchableOpacity onPress={() => setShowPriorityPicker(false)}>
@@ -357,7 +338,7 @@ export default function AddWorkOrderScreen() {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalList}>
-              {WORK_ORDER_PRIORITIES.map(p => (
+              {WORK_ORDER_PRIORITIES.map((p) => (
                 <TouchableOpacity
                   key={p.value}
                   style={styles.modalOption}
@@ -380,7 +361,7 @@ export default function AddWorkOrderScreen() {
 
       <Modal visible={showStatusPicker} transparent animationType="slide">
         <Pressable style={styles.modalOverlay} onPress={() => setShowStatusPicker(false)}>
-          <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Status</Text>
               <TouchableOpacity onPress={() => setShowStatusPicker(false)}>
@@ -388,7 +369,7 @@ export default function AddWorkOrderScreen() {
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalList}>
-              {WORK_ORDER_STATUSES.map(s => (
+              {WORK_ORDER_STATUSES.map((s) => (
                 <TouchableOpacity
                   key={s.value}
                   style={styles.modalOption}
@@ -411,7 +392,7 @@ export default function AddWorkOrderScreen() {
 
       <Modal visible={showEmployeePicker} transparent animationType="slide">
         <Pressable style={styles.modalOverlay} onPress={() => setShowEmployeePicker(false)}>
-          <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
+          <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Assign Employees</Text>
               <TouchableOpacity onPress={() => setShowEmployeePicker(false)}>
@@ -422,7 +403,7 @@ export default function AddWorkOrderScreen() {
               {employees.length === 0 ? (
                 <Text style={styles.noEmployeesText}>No employees added yet</Text>
               ) : (
-                employees.map(emp => (
+                employees.map((emp) => (
                   <TouchableOpacity
                     key={emp.id}
                     style={styles.modalOption}
@@ -456,39 +437,50 @@ export default function AddWorkOrderScreen() {
 
       <Modal visible={showAddEmployee} transparent animationType="slide">
         <Pressable style={styles.modalOverlay} onPress={() => setShowAddEmployee(false)}>
-          <Pressable style={styles.modalContent} onPress={e => e.stopPropagation()}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Employee</Text>
-              <TouchableOpacity onPress={() => setShowAddEmployee(false)}>
-                <X color={Colors.textSecondary} size={24} />
-              </TouchableOpacity>
-            </View>
-            <View style={styles.addEmployeeForm}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Name *</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newEmployeeName}
-                  onChangeText={setNewEmployeeName}
-                  placeholder="Employee name"
-                  placeholderTextColor={Colors.textSecondary}
-                />
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
+          >
+            <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Add Employee</Text>
+                <TouchableOpacity onPress={() => setShowAddEmployee(false)}>
+                  <X color={Colors.textSecondary} size={24} />
+                </TouchableOpacity>
               </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.label}>Role</Text>
-                <TextInput
-                  style={styles.input}
-                  value={newEmployeeRole}
-                  onChangeText={setNewEmployeeRole}
-                  placeholder="e.g., Mechanic, Operator"
-                  placeholderTextColor={Colors.textSecondary}
-                />
-              </View>
-              <TouchableOpacity style={styles.saveEmployeeButton} onPress={handleAddEmployee}>
-                <Text style={styles.saveEmployeeButtonText}>Add Employee</Text>
-              </TouchableOpacity>
-            </View>
-          </Pressable>
+
+              <ScrollView
+                contentContainerStyle={styles.addEmployeeForm}
+                keyboardShouldPersistTaps="handled"
+              >
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Name *</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={newEmployeeName}
+                    onChangeText={setNewEmployeeName}
+                    placeholder="Employee name"
+                    placeholderTextColor={Colors.textSecondary}
+                    returnKeyType="next"
+                  />
+                </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Role</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={newEmployeeRole}
+                    onChangeText={setNewEmployeeRole}
+                    placeholder="e.g., Mechanic, Operator"
+                    placeholderTextColor={Colors.textSecondary}
+                    returnKeyType="done"
+                  />
+                </View>
+                <TouchableOpacity style={styles.saveEmployeeButton} onPress={handleAddEmployee}>
+                  <Text style={styles.saveEmployeeButtonText}>Add Employee</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </Pressable>
+          </KeyboardAvoidingView>
         </Pressable>
       </Modal>
 
@@ -716,3 +708,4 @@ const styles = StyleSheet.create({
     color: Colors.textOnPrimary,
   },
 });
+

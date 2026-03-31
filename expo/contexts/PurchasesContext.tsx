@@ -181,25 +181,34 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     }
   }, [customerInfoQuery.data]);
 
-  const startTrial = useCallback(async (farmId: string) => {
+  const startTrial = useCallback(async (farmId: string, farmPassword?: string | null) => {
     try {
-      const result = await trpcClient.farm.startTrial.mutate({ farmId });
+      const result = await trpcClient.farm.startTrial.mutate({
+        farmId,
+        farmPassword: farmPassword ?? null,
+      });
       if (result.success) {
         setIsTrial(true);
         setTrialDaysRemaining(14);
         await AsyncStorage.setItem('farmguard_trial_active', 'true');
         console.log('[Purchases] Server-side trial started for farm:', farmId);
-      } else if (result.alreadyUsed) {
+        return result;
+      }
+      if (result.alreadyUsed) {
         console.log('[Purchases] Trial already used for farm:', farmId);
         await AsyncStorage.removeItem('farmguard_trial_active');
         setIsTrial(false);
+        return result;
       }
+      await AsyncStorage.removeItem('farmguard_trial_active');
+      setIsTrial(false);
+      console.warn('[Purchases] Trial start failed (server did not persist):', farmId);
       return result;
     } catch (error) {
       console.error('[Purchases] Error starting trial:', error);
-      await AsyncStorage.setItem('farmguard_trial_active', 'true');
-      setIsTrial(true);
-      return { success: true, alreadyUsed: false };
+      await AsyncStorage.removeItem('farmguard_trial_active');
+      setIsTrial(false);
+      throw error;
     }
   }, []);
 

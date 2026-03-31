@@ -219,7 +219,7 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => isTrial && !isSubscribed ? handleTrialAction() : router.push('/workorders/add' as any)}
+            onPress={() => isTrial && !isSubscribed ? handleTrialAction() : router.push('/workorders' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: '#3B82F6' }]}>
               <FileText color="#FFFFFF" size={20} />

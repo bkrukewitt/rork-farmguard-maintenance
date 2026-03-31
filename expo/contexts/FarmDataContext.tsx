@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
+import Constants from 'expo-constants';
 import createContextHook from '@nkzw/create-context-hook';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useEffect, useState, useRef } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine, WorkOrder, Employee, FuelLog, CustomFuelType } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
 import { supabase } from '@/lib/supabase';
@@ -36,6 +37,24 @@ export interface FarmMember {
   display_name: string | null;
   joined_at: string;
   last_active_at: string;
+  platform?: string | null;
+  app_version?: string | null;
+  build_number?: string | null;
+  app_last_seen?: string | null;
+}
+
+function getClientAppMeta(): { platform: string; app_version: string; build_number: string | null } {
+  const app_version = Constants.expoConfig?.version ?? '0.0.0';
+  const build_number =
+    Platform.OS === 'ios'
+      ? (Constants.expoConfig?.ios?.buildNumber ?? null)
+      : Platform.OS === 'android'
+        ? (Constants.expoConfig?.android?.versionCode != null
+            ? String(Constants.expoConfig?.android?.versionCode)
+            : null)
+        : null;
+
+  return { platform: Platform.OS, app_version, build_number };
 }
 
 interface FarmDataPayload {
@@ -296,6 +315,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         throw new Error(`Failed to register farm: ${farmError.message}`);
       }
 
+      const appMeta = getClientAppMeta();
+
       const { data: existing, error: existingError } = await supabase
         .from('farm_members')
         .select('*')
@@ -309,7 +330,13 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
       if (existing) {
         const storedName = await AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME);
-        const updatePayload: Record<string, string> = { last_active_at: new Date().toISOString() };
+        const updatePayload: Record<string, string | null> = {
+          last_active_at: new Date().toISOString(),
+          app_last_seen: new Date().toISOString(),
+          platform: appMeta.platform,
+          app_version: appMeta.app_version,
+          build_number: appMeta.build_number,
+        };
         if (storedName) updatePayload.display_name = storedName;
         const { error: updateError } = await supabase
           .from('farm_members')
@@ -343,6 +370,10 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           display_name: storedDisplayName || null,
           joined_at: new Date().toISOString(),
           last_active_at: new Date().toISOString(),
+          app_last_seen: new Date().toISOString(),
+          platform: appMeta.platform,
+          app_version: appMeta.app_version,
+          build_number: appMeta.build_number,
         })
         .select()
         .single();

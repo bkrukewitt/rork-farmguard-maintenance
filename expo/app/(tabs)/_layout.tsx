@@ -47,6 +47,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="workorders"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
         name="inventory"
         options={{
           title: "Inventory",

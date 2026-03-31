@@ -1,0 +1,76 @@
+Terms of Use (EULA)
+FarmGuard Maintenance
+
+These Terms of Use ("Terms") govern your access to and use of the FarmGuard Maintenance mobile application (the "App") and related services (collectively, the "Service") provided by Brian Krukewitt ("we," "us," or "our"). By downloading, installing, accessing, or using the Service, you agree to these Terms. If you do not agree, do not use the Service.
+
+1. The Service
+
+FarmGuard Maintenance is a commercial productivity tool for farm and equipment maintenance operations, including features such as equipment records, maintenance logs, parts and inventory, work orders, routines, and optional synchronization of data across devices associated with a farm identifier ("Farm ID"). Features and availability may change over time. The Service is intended for users who are at least the age of majority in their jurisdiction or who use the Service under the supervision of a parent or legal guardian where required by law.
+
+2. Accounts, farms, and security
+
+The Service may associate your data with a Farm ID and device identifiers to enable sync and collaboration. If you choose to protect a farm with a password, you are responsible for sharing that password only with people you authorize. You are responsible for activity that occurs under your Farm ID and for maintaining the security of your device. Notify us at the contact email below if you believe your farm or data has been accessed without authorization.
+
+3. Subscriptions and in-app purchases
+
+Certain features of the Service may require a paid subscription or other in-app purchase ("Subscription") processed through the Apple App Store or Google Play, as applicable. Payment will be charged to your app store account. Subscriptions renew automatically for the selected term (e.g., monthly or annual) unless you cancel before the renewal date. You can manage or cancel your Subscription in your account settings:
+
+- Apple: Settings → [your name] → Subscriptions (or the App Store subscription management screen).
+- Google: Google Play → Payments & subscriptions → Subscriptions.
+
+Prices, trial eligibility, and renewal terms are displayed at the time of purchase and may vary by region or change with notice in accordance with the store's policies. If a free preview or trial is offered, it is limited as described in the App and may be available only once per farm or under other conditions we specify.
+
+If you subscribed through Apple or Google, those platforms' terms and billing policies also apply. We do not control third-party store refund decisions; you may need to contact Apple or Google support for purchase or refund requests.
+
+4. Privacy
+
+Our collection and use of personal information is described in our Privacy Policy. By using the Service, you acknowledge that you have reviewed the Privacy Policy applicable to the App.
+
+5. User content and data
+
+You retain ownership of content you enter into the Service (such as equipment names, notes, and photos you choose to attach). You grant us the limited rights necessary to operate the Service—for example, to store, process, encrypt in transit where applicable, back up, and sync your data as you direct. You represent that you have the rights to any content you submit and that it does not violate applicable law or third-party rights.
+
+6. Acceptable use
+
+You agree not to:
+
+- Use the Service for any unlawful purpose or in violation of these Terms;
+- Attempt to gain unauthorized access to the Service, other users' data, or our systems;
+- Reverse engineer, decompile, or attempt to extract source code of the App except where permitted by law;
+- Use the Service to transmit malware, spam, or harmful content;
+- Interfere with or disrupt the integrity or performance of the Service.
+
+7. Intellectual property
+
+The App, its design, branding, and underlying software are owned by us or our licensors and are protected by copyright, trademark, and other intellectual property laws. Except for the limited license to use the Service in accordance with these Terms, no rights are granted to you.
+
+8. Disclaimer of warranties
+
+THE SERVICE IS PROVIDED "AS IS" AND "AS AVAILABLE" WITHOUT WARRANTIES OF ANY KIND, WHETHER EXPRESS OR IMPLIED, INCLUDING IMPLIED WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. WE DO NOT WARRANT THAT THE SERVICE WILL BE UNINTERRUPTED, ERROR-FREE, OR FREE OF HARMFUL COMPONENTS. THE SERVICE IS A TOOL TO ASSIST WITH MAINTENANCE RECORDS; IT IS NOT A SUBSTITUTE FOR PROFESSIONAL MECHANICAL, SAFETY, OR LEGAL ADVICE. YOU ARE SOLELY RESPONSIBLE FOR EQUIPMENT OPERATION, SAFETY, AND COMPLIANCE WITH APPLICABLE LAWS AND REGULATIONS.
+
+9. Limitation of liability
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, WE AND OUR AFFILIATES, LICENSORS, AND SUPPLIERS WILL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF PROFITS, DATA, OR GOODWILL, ARISING FROM OR RELATED TO YOUR USE OF THE SERVICE. OUR TOTAL LIABILITY FOR ANY CLAIM ARISING OUT OF OR RELATING TO THESE TERMS OR THE SERVICE SHALL NOT EXCEED THE GREATER OF (A) THE AMOUNT YOU PAID US FOR THE SERVICE IN THE TWELVE (12) MONTHS BEFORE THE CLAIM OR (B) FIFTY U.S. DOLLARS (US $50), EXCEPT WHERE PROHIBITED BY LAW.
+
+10. Indemnity
+
+You agree to defend, indemnify, and hold harmless us and our affiliates from any claims, damages, losses, or expenses (including reasonable attorneys' fees) arising from your use of the Service, your content, or your violation of these Terms.
+
+11. Termination
+
+You may stop using the Service at any time by uninstalling the App and, where applicable, canceling your Subscription. We may suspend or terminate access to the Service if we reasonably believe you have violated these Terms or if necessary to protect the Service or other users. Provisions that by their nature should survive will survive termination (including disclaimers, limitations of liability, and governing law).
+
+12. Changes to these Terms
+
+We may update these Terms from time to time. We will post the updated Terms at this URL (or a successor URL) and may indicate the "Last updated" date below. Continued use of the Service after changes become effective constitutes acceptance of the revised Terms. If you do not agree, you must stop using the Service.
+
+13. Governing law
+
+These Terms are governed by the laws of the State of Wisconsin, United States, without regard to conflict-of-law principles, except where your local law requires otherwise. Courts in Wisconsin shall have exclusive jurisdiction over disputes arising from these Terms where permitted by law; if you are a consumer in the EEA, UK, or other jurisdiction with mandatory protections, those protections may apply to you.
+
+14. Contact
+
+For questions about these Terms or the Service, contact:
+Email: farmguardmaintain@gmail.com
+
+Last updated: March 25, 2026

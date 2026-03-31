@@ -53,6 +53,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import * as XLSX from 'xlsx';
+import { useFocusEffect } from '@react-navigation/native';
 import { useFarmData, DuplicateItem, FarmMember, verifyFarmPasswordForId, checkFarmHasPassword } from '@/contexts/FarmDataContext';
 import { supabase } from '@/lib/supabase';
 import { useTheme } from '@/contexts/ThemeContext';
@@ -61,6 +62,7 @@ import { Equipment, Consumable, ServiceRoutine, InspectionRoutine, BUILT_IN_FUEL
 import { Fuel } from 'lucide-react-native';
 import { User } from 'lucide-react-native';
 import ExportRecordsModal from '@/components/ExportRecordsModal';
+import { useSubscription } from '@/hooks/useSubscription';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -182,6 +184,17 @@ export default function SettingsScreen() {
   const [fuelExportEndDate, setFuelExportEndDate] = useState('');
   const [showManageFuelTypesModal, setShowManageFuelTypesModal] = useState(false);
   const [newCustomFuelName, setNewCustomFuelName] = useState('');
+  const {
+    isProUser,
+    hasEntitlement,
+    grandfathered,
+    productIdentifier,
+    expirationDate,
+    willRenew,
+    isRestoring: isRestoringSubscription,
+    restore,
+    refresh: refreshSubscription,
+  } = useSubscription();
 
   const SUPER_ADMIN_PIN = '9173';
   const DEBUG_PIN = '1847';
@@ -223,6 +236,26 @@ export default function SettingsScreen() {
       setSuperAdminPinError('Incorrect PIN');
     }
   }, [superAdminPin]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refreshSubscription();
+    }, [refreshSubscription]),
+  );
+
+  const handleRestoreSubscription = useCallback(async () => {
+    try {
+      await restore();
+      await refreshSubscription();
+      Alert.alert('Purchases Restored', 'Your subscription status has been refreshed.');
+    } catch (error) {
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Could not restore purchases. Please try again.';
+      Alert.alert('Restore Failed', message);
+    }
+  }, [restore, refreshSubscription]);
 
   const handleCreateFarm = async () => {
     const trimmed = newFarmIdToCreate.trim();
@@ -605,7 +638,7 @@ export default function SettingsScreen() {
   const confirmLeaveFarm = (transferToDeviceId?: string) => {
     Alert.alert(
       'Keep Local Data?',
-      'Do you want to keep your equipment and maintenance data on this device, or clear it all?',
+      'Do you want to keep your equipment and maintenance data on this device, or clear it all?\n\nClearing data only removes it from this device. It does not delete your farm data from the cloud.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -648,7 +681,7 @@ export default function SettingsScreen() {
       // Last member — confirm dissolve, then ask about data
       Alert.alert(
         'Leave & Dissolve Farm',
-        'You are the only member. This will dissolve the farm organization. Would you like to keep your local data?',
+        'You are the only member. This will dissolve the farm organization.\n\nWould you like to keep your local data? Clearing data only removes it from this device. It does not delete your farm data from the cloud.',
         [
           { text: 'Cancel', style: 'cancel' },
           {
@@ -1500,6 +1533,94 @@ export default function SettingsScreen() {
           </View>
           <ChevronRight color={colors.textSecondary} size={20} />
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Subscription Status</Text>
+        <View style={[styles.syncCard, { backgroundColor: colors.surface }]}>
+          <View
+            style={[
+              styles.subscriptionBadge,
+              { backgroundColor: isProUser ? colors.statusOk + '15' : colors.statusDue + '15' },
+            ]}
+          >
+            <Text
+              style={[
+                styles.subscriptionBadgeText,
+                { color: isProUser ? colors.statusOk : colors.statusDue },
+              ]}
+            >
+              {isProUser ? 'Pro Active' : 'Free Plan'}
+            </Text>
+          </View>
+
+          <View style={[styles.displayNameRow, { backgroundColor: colors.background, marginTop: 10 }]}>
+            <View style={[styles.displayNameIcon, { backgroundColor: colors.primary + '15' }]}>
+              <Shield color={colors.primary} size={18} />
+            </View>
+            <View style={styles.displayNameInfo}>
+              <Text style={[styles.displayNameLabel, { color: colors.textSecondary }]}>Product</Text>
+              <Text style={[styles.displayNameValue, { color: colors.text }]}>
+                {productIdentifier || (hasEntitlement ? 'Active entitlement' : 'No active product')}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.displayNameRow, { backgroundColor: colors.background, marginTop: 10 }]}>
+            <View style={[styles.displayNameIcon, { backgroundColor: colors.secondary + '15' }]}>
+              <Calendar color={colors.secondary} size={18} />
+            </View>
+            <View style={styles.displayNameInfo}>
+              <Text style={[styles.displayNameLabel, { color: colors.textSecondary }]}>Expiration</Text>
+              <Text style={[styles.displayNameValue, { color: colors.text }]}>
+                {expirationDate ? new Date(expirationDate).toLocaleString() : 'Not available'}
+              </Text>
+            </View>
+          </View>
+
+          <View style={[styles.displayNameRow, { backgroundColor: colors.background, marginTop: 10 }]}>
+            <View style={[styles.displayNameIcon, { backgroundColor: colors.accent + '15' }]}>
+              <RefreshCw color={colors.accent} size={18} />
+            </View>
+            <View style={styles.displayNameInfo}>
+              <Text style={[styles.displayNameLabel, { color: colors.textSecondary }]}>Renewal</Text>
+              <Text style={[styles.displayNameValue, { color: colors.text }]}>
+                {willRenew === null ? 'Not available' : willRenew ? 'Will renew' : 'Will not renew'}
+              </Text>
+            </View>
+          </View>
+
+          {grandfathered ? (
+            <View style={[styles.adminIndicator, { backgroundColor: colors.statusOk + '15', marginTop: 10 }]}>
+              <Check color={colors.statusOk} size={14} />
+              <Text style={[styles.adminIndicatorText, { color: colors.statusOk }]}>
+                Grandfathered legacy access active
+              </Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            style={[
+              styles.syncButton,
+              {
+                backgroundColor: colors.primary,
+                marginTop: 12,
+                opacity: isRestoringSubscription ? 0.7 : 1,
+              },
+            ]}
+            onPress={handleRestoreSubscription}
+            disabled={isRestoringSubscription}
+          >
+            {isRestoringSubscription ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <RefreshCw color="#fff" size={18} />
+            )}
+            <Text style={styles.syncButtonText}>
+              {isRestoringSubscription ? 'Restoring...' : 'Restore Purchases'}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.section}>
@@ -3302,6 +3423,18 @@ const styles = StyleSheet.create({
   memberCountText: {
     fontSize: 13,
     fontWeight: '500' as const,
+  },
+  subscriptionBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  subscriptionBadgeText: {
+    fontSize: 12,
+    fontWeight: '700' as const,
+    textTransform: 'uppercase',
+    letterSpacing: 0.3,
   },
   duplicateModalContent: {
     borderTopLeftRadius: 24,

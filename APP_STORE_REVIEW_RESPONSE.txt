@@ -1,0 +1,28 @@
+App Store rejection — manual steps and reply template
+======================================================
+
+Hosted legal URLs (also defaulted in constants/legalUrls.ts; optional EAS override):
+  Privacy: https://doc-hosting.flycricket.io/farmguard-maintenance-privacy-policy/cd2cbf42-014b-4999-8cf8-69114b25eb0a/privacy
+  Terms:   https://doc-hosting.flycricket.io/farmguard-terms/747aa982-c8a8-4bfa-8ed9-1386353619a1/terms
+
+Optional: set EXPO_PUBLIC_PRIVACY_POLICY_URL / EXPO_PUBLIC_TERMS_OF_USE_URL in EAS if you need different URLs per build.
+
+App Store Connect (metadata) — Guideline 3.1.2(c) and 2.3.2
+------------------------------------------------------------
+1. App Privacy: Privacy Policy field = same URL as EXPO_PUBLIC_PRIVACY_POLICY_URL.
+2. EULA: Either upload a custom EULA in App Information, OR use Apple’s standard EULA and add Apple’s Terms of Use link to the App Description (per Apple’s instructions).
+3. App Description: Add one clear sentence that full Pro features require a paid subscription (monthly/annual), e.g.:
+   “Full access to Pro features requires an active subscription (monthly or annual); optional free preview may be available. See in-app purchase details.”
+4. Promoted In-App Purchases / win-back (Guideline 2.3.2): Replace duplicate promotional images. Use unique, non-screenshot artwork per product (Apple’s current size requirements in ASC).
+
+Reply to App Review (paste in Resolution Center + duplicate in App Review Information → Notes)
+-----------------------------------------------------------------------------------------------
+We have addressed the issues as follows:
+
+3.1.2(c) — The subscription screen now includes functional Privacy Policy and Terms of Use (EULA) links, subscription title/length/price disclosure, and renewal/cancellation language. Privacy Policy URL: [ ]. Terms of Use URL: [ ]. App Store Connect Privacy Policy field and App Description/EULA have been updated.
+
+2.3.2 (metadata) — We updated the App Description to clearly identify subscription-required content. Promotional images for each promoted IAP/win-back offer are now unique and are not app screenshots.
+
+2.1(a) — We fixed the free preview flow on iPad: the client now passes the farm join password when required, avoids treating failed trial starts as success, and surfaces clear errors when the server cannot start a preview. [Attach screen recording: open app → subscription screen → tap Privacy and Terms links → Try Free Preview.]
+
+Screen recording: attach a short video showing the paywall, both legal links opening in Safari, and the free preview path succeeding on iPad or iPhone.

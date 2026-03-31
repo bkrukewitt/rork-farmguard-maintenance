@@ -8,8 +8,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
-import { 
-  Plus, 
+import {
+  Plus,
   ClipboardList,
   Calendar,
   AlertTriangle,
@@ -39,29 +39,29 @@ export default function WorkOrdersScreen() {
       }
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
-    
+
     if (filterStatus !== 'all') {
-      orders = orders.filter(order => order.status === filterStatus);
+      orders = orders.filter((order) => order.status === filterStatus);
     }
-    
+
     return orders;
   }, [workOrders, filterStatus]);
 
   const stats = useMemo(() => {
-    const pending = workOrders.filter(w => w.status === 'pending').length;
-    const inProgress = workOrders.filter(w => w.status === 'in_progress').length;
-    const completed = workOrders.filter(w => w.status === 'completed').length;
-    const urgent = workOrders.filter(w => w.priority === 'urgent' && w.status !== 'completed').length;
+    const pending = workOrders.filter((w) => w.status === 'pending').length;
+    const inProgress = workOrders.filter((w) => w.status === 'in_progress').length;
+    const completed = workOrders.filter((w) => w.status === 'completed').length;
+    const urgent = workOrders.filter((w) => w.priority === 'urgent' && w.status !== 'completed').length;
     return { pending, inProgress, completed, urgent };
   }, [workOrders]);
 
   const getPriorityColor = (priority: string) => {
-    const found = WORK_ORDER_PRIORITIES.find(p => p.value === priority);
+    const found = WORK_ORDER_PRIORITIES.find((p) => p.value === priority);
     return found?.color ?? '#6B7280';
   };
 
   const getStatusColor = (status: string) => {
-    const found = WORK_ORDER_STATUSES.find(s => s.value === status);
+    const found = WORK_ORDER_STATUSES.find((s) => s.value === status);
     return found?.color ?? '#6B7280';
   };
 
@@ -77,8 +77,10 @@ export default function WorkOrdersScreen() {
   };
 
   const renderWorkOrderItem = ({ item }: { item: WorkOrder }) => {
-    const eq = equipment.find(e => e.id === item.equipmentId);
-    const assignedEmployees = item.assignedTo?.map(id => employees.find(e => e.id === id)?.name).filter(Boolean);
+    const eq = equipment.find((e) => e.id === item.equipmentId);
+    const assignedEmployees = item.assignedTo
+      ?.map((id) => employees.find((e) => e.id === id)?.name)
+      .filter(Boolean);
     const StatusIcon = getStatusIcon(item.status);
     const priorityColor = getPriorityColor(item.priority);
     const statusColor = getStatusColor(item.status);
@@ -90,22 +92,26 @@ export default function WorkOrdersScreen() {
         activeOpacity={0.7}
       >
         <View style={[styles.priorityIndicator, { backgroundColor: priorityColor }]} />
-        
+
         <View style={styles.cardContent}>
           <View style={styles.cardHeader}>
-            <Text style={[styles.workOrderTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+            <Text style={[styles.workOrderTitle, { color: colors.text }]} numberOfLines={1}>
+              {item.title}
+            </Text>
             <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
               <StatusIcon color={statusColor} size={12} />
               <Text style={[styles.statusText, { color: statusColor }]}>
-                {WORK_ORDER_STATUSES.find(s => s.value === item.status)?.label}
+                {WORK_ORDER_STATUSES.find((s) => s.value === item.status)?.label}
               </Text>
             </View>
           </View>
-          
+
           {item.description && (
-            <Text style={[styles.description, { color: colors.textSecondary }]} numberOfLines={2}>{item.description}</Text>
+            <Text style={[styles.description, { color: colors.textSecondary }]} numberOfLines={2}>
+              {item.description}
+            </Text>
           )}
-          
+
           <View style={styles.cardMeta}>
             {eq && (
               <View style={styles.metaItem}>
@@ -113,7 +119,7 @@ export default function WorkOrdersScreen() {
                 <Text style={[styles.metaValue, { color: colors.text }]}>{eq.name}</Text>
               </View>
             )}
-            
+
             {item.dueDate && (
               <View style={styles.metaItem}>
                 <Calendar color={colors.textSecondary} size={12} />
@@ -121,7 +127,7 @@ export default function WorkOrdersScreen() {
               </View>
             )}
           </View>
-          
+
           {assignedEmployees && assignedEmployees.length > 0 && (
             <View style={[styles.assignedRow, { borderTopColor: colors.borderLight }]}>
               <Text style={[styles.assignedLabel, { color: colors.textSecondary }]}>Assigned:</Text>
@@ -131,7 +137,7 @@ export default function WorkOrdersScreen() {
             </View>
           )}
         </View>
-        
+
         <ChevronRight color={colors.textSecondary} size={20} />
       </TouchableOpacity>
     );
@@ -148,7 +154,7 @@ export default function WorkOrdersScreen() {
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ title: 'Work Orders' }} />
-      
+
       <View style={styles.statsRow}>
         <View style={[styles.statCard, { backgroundColor: '#F59E0B' + '15' }]}>
           <Clock color="#F59E0B" size={20} />
@@ -177,28 +183,76 @@ export default function WorkOrdersScreen() {
       <View style={[styles.filterContainer, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
         <Filter color={colors.textSecondary} size={18} />
         <TouchableOpacity
-          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterStatus === 'all' && { backgroundColor: colors.primary }]}
+          style={[
+            styles.filterButton,
+            { backgroundColor: colors.surfaceAlt },
+            filterStatus === 'all' && { backgroundColor: colors.primary },
+          ]}
           onPress={() => setFilterStatus('all')}
         >
-          <Text style={[styles.filterText, { color: colors.textSecondary }, filterStatus === 'all' && { color: colors.textOnPrimary }]}>All</Text>
+          <Text
+            style={[
+              styles.filterText,
+              { color: colors.textSecondary },
+              filterStatus === 'all' && { color: colors.textOnPrimary },
+            ]}
+          >
+            All
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterStatus === 'pending' && { backgroundColor: colors.primary }]}
+          style={[
+            styles.filterButton,
+            { backgroundColor: colors.surfaceAlt },
+            filterStatus === 'pending' && { backgroundColor: colors.primary },
+          ]}
           onPress={() => setFilterStatus('pending')}
         >
-          <Text style={[styles.filterText, { color: colors.textSecondary }, filterStatus === 'pending' && { color: colors.textOnPrimary }]}>Pending</Text>
+          <Text
+            style={[
+              styles.filterText,
+              { color: colors.textSecondary },
+              filterStatus === 'pending' && { color: colors.textOnPrimary },
+            ]}
+          >
+            Pending
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterStatus === 'in_progress' && { backgroundColor: colors.primary }]}
+          style={[
+            styles.filterButton,
+            { backgroundColor: colors.surfaceAlt },
+            filterStatus === 'in_progress' && { backgroundColor: colors.primary },
+          ]}
           onPress={() => setFilterStatus('in_progress')}
         >
-          <Text style={[styles.filterText, { color: colors.textSecondary }, filterStatus === 'in_progress' && { color: colors.textOnPrimary }]}>Active</Text>
+          <Text
+            style={[
+              styles.filterText,
+              { color: colors.textSecondary },
+              filterStatus === 'in_progress' && { color: colors.textOnPrimary },
+            ]}
+          >
+            Active
+          </Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterStatus === 'completed' && { backgroundColor: colors.primary }]}
+          style={[
+            styles.filterButton,
+            { backgroundColor: colors.surfaceAlt },
+            filterStatus === 'completed' && { backgroundColor: colors.primary },
+          ]}
           onPress={() => setFilterStatus('completed')}
         >
-          <Text style={[styles.filterText, { color: colors.textSecondary }, filterStatus === 'completed' && { color: colors.textOnPrimary }]}>Done</Text>
+          <Text
+            style={[
+              styles.filterText,
+              { color: colors.textSecondary },
+              filterStatus === 'completed' && { color: colors.textOnPrimary },
+            ]}
+          >
+            Done
+          </Text>
         </TouchableOpacity>
       </View>
 
@@ -231,58 +285,16 @@ export default function WorkOrdersScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  statsRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-  },
-  statCard: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 4,
-  },
-  statNumber: {
-    fontSize: 20,
-    fontWeight: '700' as const,
-  },
-  statLabel: {
-    fontSize: 10,
-    color: '#7F8C8D',
-    fontWeight: '500' as const,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    gap: 8,
-    borderBottomWidth: 1,
-  },
-  filterButton: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  filterText: {
-    fontSize: 13,
-    fontWeight: '500' as const,
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 100,
-  },
+  container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  statsRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
+  statCard: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, gap: 4 },
+  statNumber: { fontSize: 20, fontWeight: '700' as const },
+  statLabel: { fontSize: 10, color: '#7F8C8D', fontWeight: '500' as const },
+  filterContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 8, borderBottomWidth: 1 },
+  filterButton: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
+  filterText: { fontSize: 13, fontWeight: '500' as const },
+  listContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 100 },
   workOrderCard: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -294,92 +306,23 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 2,
   },
-  priorityIndicator: {
-    width: 4,
-    alignSelf: 'stretch',
-  },
-  cardContent: {
-    flex: 1,
-    padding: 14,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  workOrderTitle: {
-    fontSize: 15,
-    fontWeight: '600' as const,
-    flex: 1,
-    marginRight: 8,
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  statusText: {
-    fontSize: 11,
-    fontWeight: '600' as const,
-  },
-  description: {
-    fontSize: 13,
-    marginBottom: 8,
-    lineHeight: 18,
-  },
-  cardMeta: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  metaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  metaLabel: {
-    fontSize: 12,
-  },
-  metaValue: {
-    fontSize: 12,
-    fontWeight: '500' as const,
-  },
-  assignedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-  },
-  assignedLabel: {
-    fontSize: 12,
-    marginRight: 4,
-  },
-  assignedNames: {
-    fontSize: 12,
-    fontWeight: '500' as const,
-    flex: 1,
-  },
-  emptyState: {
-    alignItems: 'center',
-    paddingVertical: 80,
-    paddingHorizontal: 40,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '600' as const,
-    marginTop: 20,
-  },
-  emptySubtitle: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 20,
-  },
+  priorityIndicator: { width: 4, alignSelf: 'stretch' },
+  cardContent: { flex: 1, padding: 14 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
+  workOrderTitle: { fontSize: 15, fontWeight: '600' as const, flex: 1, marginRight: 8 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, gap: 4 },
+  statusText: { fontSize: 11, fontWeight: '600' as const },
+  description: { fontSize: 13, marginBottom: 8, lineHeight: 18 },
+  cardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metaLabel: { fontSize: 12 },
+  metaValue: { fontSize: 12, fontWeight: '500' as const },
+  assignedRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, paddingTop: 8, borderTopWidth: 1 },
+  assignedLabel: { fontSize: 12, marginRight: 4 },
+  assignedNames: { fontSize: 12, fontWeight: '500' as const, flex: 1 },
+  emptyState: { alignItems: 'center', paddingVertical: 80, paddingHorizontal: 40 },
+  emptyTitle: { fontSize: 20, fontWeight: '600' as const, marginTop: 20 },
+  emptySubtitle: { fontSize: 14, textAlign: 'center', marginTop: 8, lineHeight: 20 },
   fab: {
     position: 'absolute',
     bottom: 24,
@@ -395,3 +338,4 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
 });
+
