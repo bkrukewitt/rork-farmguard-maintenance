@@ -10,6 +10,7 @@ import {
   Pressable,
   RefreshControl,
   TextInput,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -231,7 +232,7 @@ export default function MaintenanceScreen() {
         <View style={styles.logRight}>
           <Text style={[styles.logDate, { color: colors.textSecondary }]}>{formatDate(item.date)}</Text>
           <View style={[styles.typeBadge, { backgroundColor: typeColor + '20' }]}>
-            <Text style={[styles.typeBadgeText, { color: typeColor }]}>
+            <Text style={[styles.typeBadgeText, { color: typeColor }]} numberOfLines={2}>
               {getTypeLabel(item)}
             </Text>
           </View>
@@ -284,7 +285,12 @@ export default function MaintenanceScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.filterContainer, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={[styles.filterScroll, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}
+        contentContainerStyle={styles.filterContainer}
+      >
         <Filter color={colors.textSecondary} size={16} />
         {(['all', 'routine', 'repair', 'inspection', 'fuel', 'workorder'] as FilterType[]).map(type => (
           <TouchableOpacity
@@ -292,12 +298,15 @@ export default function MaintenanceScreen() {
             style={[styles.filterButton, { backgroundColor: colors.surfaceAlt }, filterType === type && { backgroundColor: colors.primary }]}
             onPress={() => setFilterType(type)}
           >
-            <Text style={[styles.filterText, { color: colors.textSecondary }, filterType === type && { color: colors.textOnPrimary }]}>
+            <Text
+              style={[styles.filterText, { color: colors.textSecondary }, filterType === type && { color: colors.textOnPrimary }]}
+              numberOfLines={1}
+            >
               {type === 'all' ? 'All' : type === 'workorder' ? 'Orders' : type === 'fuel' ? 'Fuel' : type.charAt(0).toUpperCase() + type.slice(1)}
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       <FlatList
         data={groupedItems}
@@ -528,22 +537,28 @@ const styles = StyleSheet.create({
     fontWeight: '500' as const,
     flex: 1,
   },
+  filterScroll: {
+    borderBottomWidth: 1,
+    maxHeight: 52,
+  },
   filterContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 10,
     gap: 6,
-    borderBottomWidth: 1,
+    flexGrow: 1,
   },
   filterButton: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 18,
+    flexShrink: 0,
   },
   filterText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '500' as const,
+    textAlign: 'center' as const,
   },
   listContent: {
     paddingHorizontal: 16,
@@ -605,19 +620,24 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     marginLeft: 8,
+    maxWidth: 108,
+    minWidth: 0,
   },
   logDate: {
     fontSize: 12,
   },
   typeBadge: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
     marginTop: 8,
+    maxWidth: '100%',
+    alignSelf: 'flex-end',
   },
   typeBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600' as const,
+    textAlign: 'center' as const,
   },
   emptyState: {
     alignItems: 'center',

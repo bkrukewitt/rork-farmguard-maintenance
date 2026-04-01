@@ -396,12 +396,12 @@ export default function WorkOrderDetailScreen() {
           <View style={styles.headerTop}>
             <View style={[styles.priorityBadge, { backgroundColor: priorityInfo?.color + '20' }]}>
               <View style={[styles.priorityDot, { backgroundColor: priorityInfo?.color }]} />
-              <Text style={[styles.priorityText, { color: priorityInfo?.color }]}>
+              <Text style={[styles.priorityText, { color: priorityInfo?.color }]} numberOfLines={1}>
                 {priorityInfo?.label} Priority
               </Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: statusInfo?.color + '20' }]}>
-              <Text style={[styles.statusText, { color: statusInfo?.color }]}>
+              <Text style={[styles.statusText, { color: statusInfo?.color }]} numberOfLines={1}>
                 {statusInfo?.label}
               </Text>
             </View>
@@ -574,34 +574,46 @@ const styles = StyleSheet.create({
   },
   headerTop: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
     marginBottom: 12,
   },
   priorityBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 6,
     borderRadius: 16,
     gap: 6,
+    maxWidth: '58%',
+    minWidth: 0,
+    flexShrink: 1,
   },
   priorityDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
+    flexShrink: 0,
   },
   priorityText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600' as const,
+    flexShrink: 1,
   },
   statusBadge: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
+    maxWidth: '48%',
+    minWidth: 0,
+    flexShrink: 1,
   },
   statusText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600' as const,
+    textAlign: 'center' as const,
   },
   title: {
     fontSize: 20,

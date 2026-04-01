@@ -48,6 +48,17 @@ export default function DashboardScreen() {
     setShowPaywall(true);
   }, []);
 
+  const navigateHeaderStat = useCallback(
+    (href: string) => {
+      if (isTrial && !isSubscribed) {
+        handleTrialAction();
+        return;
+      }
+      router.push(href as any);
+    },
+    [isTrial, isSubscribed, handleTrialAction, router],
+  );
+
   const myWorkOrders = useMemo(() => {
     const linkedEmployee = employees.find(e => e.linkedDeviceId === deviceId);
     if (!linkedEmployee) return [];
@@ -178,20 +189,38 @@ export default function DashboardScreen() {
         </View>
 
         <View style={styles.headerStats}>
-          <View style={styles.headerStatItem}>
+          <TouchableOpacity
+            style={styles.headerStatItem}
+            activeOpacity={0.75}
+            onPress={() => navigateHeaderStat('/equipment')}
+          >
             <Text style={[styles.headerStatNumber, { color: colors.textOnPrimary }]}>{equipment.length}</Text>
-            <Text style={[styles.headerStatLabel, { color: colors.textOnPrimary }]}>Equipment</Text>
-          </View>
+            <Text style={[styles.headerStatLabel, { color: colors.textOnPrimary }]} numberOfLines={2}>
+              Equipment
+            </Text>
+          </TouchableOpacity>
           <View style={[styles.headerStatDivider, { backgroundColor: colors.textOnPrimary + '30' }]} />
-          <View style={styles.headerStatItem}>
+          <TouchableOpacity
+            style={styles.headerStatItem}
+            activeOpacity={0.75}
+            onPress={() => navigateHeaderStat('/maintenance')}
+          >
             <Text style={[styles.headerStatNumber, { color: colors.textOnPrimary }]}>{monthlyLogCount}</Text>
-            <Text style={[styles.headerStatLabel, { color: colors.textOnPrimary }]}>Services This Month</Text>
-          </View>
+            <Text style={[styles.headerStatLabel, { color: colors.textOnPrimary }]} numberOfLines={2}>
+              Services This Month
+            </Text>
+          </TouchableOpacity>
           <View style={[styles.headerStatDivider, { backgroundColor: colors.textOnPrimary + '30' }]} />
-          <View style={styles.headerStatItem}>
+          <TouchableOpacity
+            style={styles.headerStatItem}
+            activeOpacity={0.75}
+            onPress={() => navigateHeaderStat('/workorders')}
+          >
             <Text style={[styles.headerStatNumber, { color: colors.textOnPrimary }]}>{activeWorkOrders.length}</Text>
-            <Text style={[styles.headerStatLabel, { color: colors.textOnPrimary }]}>Open Orders</Text>
-          </View>
+            <Text style={[styles.headerStatLabel, { color: colors.textOnPrimary }]} numberOfLines={2}>
+              Open Orders
+            </Text>
+          </TouchableOpacity>
         </View>
       </LinearGradient>
 
@@ -204,7 +233,9 @@ export default function DashboardScreen() {
             <View style={[styles.actionIconContainer, { backgroundColor: colors.primary }]}>
               <Plus color={colors.textOnPrimary} size={20} />
             </View>
-            <Text style={[styles.actionText, { color: colors.text }]}>Add Equipment</Text>
+            <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
+              Add Equipment
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -214,7 +245,9 @@ export default function DashboardScreen() {
             <View style={[styles.actionIconContainer, { backgroundColor: colors.accent }]}>
               <Wrench color={colors.textOnAccent} size={20} />
             </View>
-            <Text style={[styles.actionText, { color: colors.text }]}>Log Service</Text>
+            <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
+              Log Service
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -224,7 +257,9 @@ export default function DashboardScreen() {
             <View style={[styles.actionIconContainer, { backgroundColor: '#3B82F6' }]}>
               <FileText color="#FFFFFF" size={20} />
             </View>
-            <Text style={[styles.actionText, { color: colors.text }]}>Work Order</Text>
+            <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
+              Work Order
+            </Text>
           </TouchableOpacity>
         </View>
 
@@ -248,7 +283,10 @@ export default function DashboardScreen() {
                   <Text style={[styles.woTitle, { color: colors.text }]} numberOfLines={1}>{wo.title}</Text>
                   <View style={styles.woMeta}>
                     <View style={[styles.woStatusBadge, { backgroundColor: wo.status === 'in_progress' ? '#3B82F620' : '#F59E0B20' }]}>
-                      <Text style={[styles.woStatusText, { color: wo.status === 'in_progress' ? '#3B82F6' : '#F59E0B' }]}>
+                      <Text
+                        style={[styles.woStatusText, { color: wo.status === 'in_progress' ? '#3B82F6' : '#F59E0B' }]}
+                        numberOfLines={1}
+                      >
                         {wo.status === 'in_progress' ? 'In Progress' : 'Pending'}
                       </Text>
                     </View>
@@ -453,10 +491,11 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.3)',
   },
   trialBadgeText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700' as const,
     color: '#FFFFFF',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
+    textAlign: 'center' as const,
   },
   headerStats: {
     flexDirection: 'row',
@@ -468,16 +507,20 @@ const styles = StyleSheet.create({
   },
   headerStatItem: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
+    paddingHorizontal: 2,
   },
   headerStatNumber: {
     fontSize: 22,
     fontWeight: '700' as const,
   },
   headerStatLabel: {
-    fontSize: 11,
+    fontSize: 10,
     opacity: 0.75,
     marginTop: 2,
+    textAlign: 'center' as const,
+    alignSelf: 'stretch' as const,
   },
   headerStatDivider: {
     width: 1,
@@ -515,7 +558,9 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 11,
     fontWeight: '600' as const,
-    textAlign: 'center',
+    textAlign: 'center' as const,
+    flexShrink: 1,
+    maxWidth: '100%',
   },
   section: {
     marginBottom: 24,
@@ -563,15 +608,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    minWidth: 0,
   },
   woStatusBadge: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 6,
     paddingVertical: 3,
     borderRadius: 8,
+    maxWidth: '52%',
+    flexShrink: 1,
   },
   woStatusText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600' as const,
+    textAlign: 'center' as const,
   },
   woDate: {
     fontSize: 11,

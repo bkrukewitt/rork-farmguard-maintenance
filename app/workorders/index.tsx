@@ -6,6 +6,7 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import {
@@ -100,7 +101,7 @@ export default function WorkOrdersScreen() {
             </Text>
             <View style={[styles.statusBadge, { backgroundColor: statusColor + '20' }]}>
               <StatusIcon color={statusColor} size={12} />
-              <Text style={[styles.statusText, { color: statusColor }]}>
+              <Text style={[styles.statusText, { color: statusColor }]} numberOfLines={1}>
                 {WORK_ORDER_STATUSES.find((s) => s.value === item.status)?.label}
               </Text>
             </View>
@@ -155,32 +156,77 @@ export default function WorkOrdersScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ title: 'Work Orders' }} />
 
-      <View style={styles.statsRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.statsRow}
+      >
         <View style={[styles.statCard, { backgroundColor: '#F59E0B' + '15' }]}>
-          <Clock color="#F59E0B" size={20} />
-          <Text style={[styles.statNumber, { color: '#F59E0B' }]}>{stats.pending}</Text>
-          <Text style={styles.statLabel}>Pending</Text>
+          <Clock color="#F59E0B" size={18} />
+          <Text
+            style={[styles.statNumber, { color: '#F59E0B' }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.65}
+          >
+            {stats.pending}
+          </Text>
+          <Text style={styles.statLabel} numberOfLines={2}>
+            Pending
+          </Text>
         </View>
         <View style={[styles.statCard, { backgroundColor: '#3B82F6' + '15' }]}>
-          <ClipboardList color="#3B82F6" size={20} />
-          <Text style={[styles.statNumber, { color: '#3B82F6' }]}>{stats.inProgress}</Text>
-          <Text style={styles.statLabel}>In Progress</Text>
+          <ClipboardList color="#3B82F6" size={18} />
+          <Text
+            style={[styles.statNumber, { color: '#3B82F6' }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.65}
+          >
+            {stats.inProgress}
+          </Text>
+          <Text style={styles.statLabel} numberOfLines={2}>
+            In Progress
+          </Text>
         </View>
         <View style={[styles.statCard, { backgroundColor: '#10B981' + '15' }]}>
-          <CheckCircle2 color="#10B981" size={20} />
-          <Text style={[styles.statNumber, { color: '#10B981' }]}>{stats.completed}</Text>
-          <Text style={styles.statLabel}>Completed</Text>
+          <CheckCircle2 color="#10B981" size={18} />
+          <Text
+            style={[styles.statNumber, { color: '#10B981' }]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.65}
+          >
+            {stats.completed}
+          </Text>
+          <Text style={styles.statLabel} numberOfLines={2}>
+            Completed
+          </Text>
         </View>
         {stats.urgent > 0 && (
           <View style={[styles.statCard, { backgroundColor: '#DC2626' + '15' }]}>
-            <AlertTriangle color="#DC2626" size={20} />
-            <Text style={[styles.statNumber, { color: '#DC2626' }]}>{stats.urgent}</Text>
-            <Text style={styles.statLabel}>Urgent</Text>
+            <AlertTriangle color="#DC2626" size={18} />
+            <Text
+              style={[styles.statNumber, { color: '#DC2626' }]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.65}
+            >
+              {stats.urgent}
+            </Text>
+            <Text style={styles.statLabel} numberOfLines={2}>
+              Urgent
+            </Text>
           </View>
         )}
-      </View>
+      </ScrollView>
 
-      <View style={[styles.filterContainer, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={[styles.filterScroll, { backgroundColor: colors.surface, borderBottomColor: colors.borderLight }]}
+        contentContainerStyle={styles.filterContainer}
+      >
         <Filter color={colors.textSecondary} size={18} />
         <TouchableOpacity
           style={[
@@ -254,7 +300,7 @@ export default function WorkOrdersScreen() {
             Done
           </Text>
         </TouchableOpacity>
-      </View>
+      </ScrollView>
 
       <FlatList
         data={sortedWorkOrders}
@@ -287,11 +333,41 @@ export default function WorkOrdersScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  statsRow: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, gap: 8 },
-  statCard: { flex: 1, alignItems: 'center', paddingVertical: 12, borderRadius: 12, gap: 4 },
-  statNumber: { fontSize: 20, fontWeight: '700' as const },
-  statLabel: { fontSize: 10, color: '#7F8C8D', fontWeight: '500' as const },
-  filterContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, gap: 8, borderBottomWidth: 1 },
+  statsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+    flexGrow: 1,
+  },
+  statCard: {
+    width: 88,
+    minHeight: 88,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    gap: 2,
+  },
+  statNumber: { fontSize: 18, fontWeight: '700' as const, maxWidth: '100%', textAlign: 'center' as const },
+  statLabel: {
+    fontSize: 9,
+    lineHeight: 12,
+    color: '#7F8C8D',
+    fontWeight: '500' as const,
+    textAlign: 'center' as const,
+    alignSelf: 'stretch' as const,
+  },
+  filterScroll: { borderBottomWidth: 1, maxHeight: 56 },
+  filterContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+    flexGrow: 1,
+  },
   filterButton: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20 },
   filterText: { fontSize: 13, fontWeight: '500' as const },
   listContent: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 100 },
@@ -308,10 +384,27 @@ const styles = StyleSheet.create({
   },
   priorityIndicator: { width: 4, alignSelf: 'stretch' },
   cardContent: { flex: 1, padding: 14 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 },
-  workOrderTitle: { fontSize: 15, fontWeight: '600' as const, flex: 1, marginRight: 8 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, gap: 4 },
-  statusText: { fontSize: 11, fontWeight: '600' as const },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+    gap: 8,
+    minWidth: 0,
+  },
+  workOrderTitle: { fontSize: 15, fontWeight: '600' as const, flex: 1, minWidth: 0, marginRight: 0 },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+    maxWidth: '48%',
+    minWidth: 0,
+    flexShrink: 1,
+  },
+  statusText: { fontSize: 10, fontWeight: '600' as const, flexShrink: 1, textAlign: 'center' as const },
   description: { fontSize: 13, marginBottom: 8, lineHeight: 18 },
   cardMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   metaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
