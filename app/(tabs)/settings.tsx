@@ -2885,7 +2885,7 @@ export default function SettingsScreen() {
             </View>
 
             <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
-              Choose a category and describe your feedback. Tapping "Send" will open your email app.
+              Choose a category and describe your feedback. Tapping {'"'}Send{'"'} will open your email app.
             </Text>
 
             <View style={styles.feedbackCategoryRow}>

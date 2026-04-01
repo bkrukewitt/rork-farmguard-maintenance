@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 
 interface KeyboardAwareScrollViewProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   style?: StyleProp<ViewStyle>;
   contentContainerStyle?: StyleProp<ViewStyle>;
   scrollViewStyle?: StyleProp<ViewStyle>;

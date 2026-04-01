@@ -58,10 +58,6 @@ export default function AddMaintenanceScreen() {
   const { farmId, equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines, updateEquipment, addConsumable } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
 
-  if (isTrial && !isSubscribed) {
-    return <Paywall onDismiss={() => router.back()} />;
-  }
-
   const [selectedEquipmentId, setSelectedEquipmentId] = useState(preselectedEquipmentId ?? '');
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
   const [type, setType] = useState<MaintenanceLog['type']>('routine');
@@ -371,6 +367,10 @@ export default function AddMaintenanceScreen() {
       Alert.alert('Error', error.message);
     },
   });
+
+  if (isTrial && !isSubscribed) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   const handleSave = () => {
     saveMutation.mutate();
@@ -758,7 +758,7 @@ export default function AddMaintenanceScreen() {
                   </Text>
                 ) : !hasSearchResults && consumableSearch.length > 0 ? (
                   <Text style={styles.noEquipmentText}>
-                    No parts found matching "{consumableSearch}"
+                    No parts found matching {'"'}{consumableSearch}{'"'}
                   </Text>
                 ) : isEquipmentSelected ? (
                   <>

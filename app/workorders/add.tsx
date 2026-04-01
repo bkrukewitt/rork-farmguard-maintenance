@@ -40,10 +40,6 @@ export default function AddWorkOrderScreen() {
   const { equipment, employees, addWorkOrder, addEmployee } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
 
-  if (isTrial && !isSubscribed) {
-    return <Paywall onDismiss={() => router.back()} />;
-  }
-
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedEquipmentId, setSelectedEquipmentId] = useState<string>('');
@@ -72,6 +68,10 @@ export default function AddWorkOrderScreen() {
 
   const selectedPriority = WORK_ORDER_PRIORITIES.find((p) => p.value === priority);
   const selectedStatus = WORK_ORDER_STATUSES.find((s) => s.value === status);
+
+  if (isTrial && !isSubscribed) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   const handleSave = async () => {
     if (!title.trim()) {

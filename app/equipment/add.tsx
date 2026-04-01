@@ -54,10 +54,6 @@ export default function AddEquipmentScreen() {
   const { addEquipment, addInterval } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
 
-  if (isTrial && !isSubscribed) {
-    return <Paywall onDismiss={() => router.back()} />;
-  }
-
   const [name, setName] = useState('');
   const [type, setType] = useState<EquipmentType>('tractor');
   const [make, setMake] = useState('');
@@ -189,6 +185,10 @@ export default function AddEquipmentScreen() {
       Alert.alert('Error', error.message);
     },
   });
+
+  if (isTrial && !isSubscribed) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   const handleSave = () => {
     saveMutation.mutate();

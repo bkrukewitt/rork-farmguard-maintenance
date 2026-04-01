@@ -770,7 +770,7 @@ export default function ExportRecordsModal({ visible, onDismiss }: ExportRecords
           <ScrollView style={styles.previewScroll} nestedScrollEnabled>
             <View style={styles.previewContent}>
               <Text style={[styles.previewPlaceholder, { color: colors.textSecondary }]}>
-                Preview generated. Tap "Save / Share" to export as PDF, or "Email" to send.
+                Preview generated. Tap {'"'}Save / Share{'"'} to export as PDF, or {'"'}Email{'"'} to send.
               </Text>
               <View style={[styles.previewStats, { backgroundColor: colors.primary + '10' }]}>
                 <Text style={[styles.previewStatsText, { color: colors.primary }]}>

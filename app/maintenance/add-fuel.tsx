@@ -37,10 +37,6 @@ export default function AddFuelLogScreen() {
   } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
 
-  if (isTrial && !isSubscribed) {
-    return <Paywall onDismiss={() => router.back()} />;
-  }
-
   const [selectedEquipmentId, setSelectedEquipmentId] = useState(preselectedEquipmentId ?? '');
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
   const [fuelType, setFuelType] = useState<FuelType>('off_road_diesel');
@@ -67,6 +63,10 @@ export default function AddFuelLogScreen() {
     const custom = customFuelTypes.map(ct => ({ value: 'custom' as FuelType, label: ct.name }));
     return [...built, ...custom];
   }, [customFuelTypes]);
+
+  if (isTrial && !isSubscribed) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   const handleSave = async () => {
     if (!selectedEquipmentId) {

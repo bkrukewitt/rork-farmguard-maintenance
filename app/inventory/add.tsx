@@ -26,10 +26,6 @@ export default function AddConsumableScreen() {
   const { addConsumable, equipment } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
 
-  if (isTrial && !isSubscribed) {
-    return <Paywall onDismiss={() => router.back()} />;
-  }
-
   const [name, setName] = useState('');
   const [partNumber, setPartNumber] = useState('');
   const [category, setCategory] = useState<ConsumableCategory>('filter');
@@ -143,6 +139,10 @@ export default function AddConsumableScreen() {
       Alert.alert('Error', error.message);
     },
   });
+
+  if (isTrial && !isSubscribed) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   const handleSave = () => {
     saveMutation.mutate();

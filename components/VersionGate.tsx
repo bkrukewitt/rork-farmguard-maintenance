@@ -75,7 +75,7 @@ export default function VersionGate({ children }: VersionGateProps) {
 
           <Text style={styles.title}>Update Required</Text>
           <Text style={styles.subtitle}>
-            You're running version{' '}
+            You&apos;re running version{' '}
             <Text style={styles.versionBadge}>{currentVersion}</Text>
           </Text>
           <Text style={styles.body}>
