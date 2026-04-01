@@ -45,6 +45,7 @@ import {
   AlertTriangle,
   MessageSquare,
   Send,
+  Calendar,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
