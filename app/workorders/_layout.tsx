@@ -2,7 +2,7 @@ import { Stack } from "expo-router";
 import React from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 
-/** Stack groups list / add / detail so Expo Router shows one tab, not three. */
+/** Stack for list / add / detail; lives outside (tabs) so work orders are not a tab bar item. */
 export default function WorkOrdersStackLayout() {
   const { colors } = useTheme();
 

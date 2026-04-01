@@ -39,6 +39,10 @@ function RootLayoutNav() {
     >
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen
+        name="workorders"
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
         name="equipment/add"
         options={{
           title: "Add Equipment",

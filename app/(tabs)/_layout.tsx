@@ -1,5 +1,5 @@
 import { Tabs } from "expo-router";
-import { LayoutDashboard, Tractor, Wrench, Settings, Package, ClipboardList } from "lucide-react-native";
+import { LayoutDashboard, Tractor, Wrench, Settings, Package } from "lucide-react-native";
 import React from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 
@@ -44,15 +44,6 @@ export default function TabLayout() {
         options={{
           title: "Maintenance",
           tabBarIcon: ({ color, size }) => <Wrench color={color} size={size} />,
-        }}
-      />
-      <Tabs.Screen
-        name="workorders"
-        options={{
-          title: "Work Orders",
-          tabBarIcon: ({ color, size }) => (
-            <ClipboardList color={color} size={size} />
-          ),
         }}
       />
       <Tabs.Screen
