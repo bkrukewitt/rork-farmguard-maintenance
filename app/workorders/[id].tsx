@@ -33,6 +33,7 @@ import { Image } from 'expo-image';
 import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { usePurchases } from '@/contexts/PurchasesContext';
 import { uploadImage } from '@/utils/imageUpload';
 import { 
   WorkOrderPriority, 
@@ -52,8 +53,10 @@ export default function WorkOrderDetailScreen() {
     employees, 
     updateWorkOrder, 
     deleteWorkOrder,
-    addEmployee 
+    addEmployee,
+    isDemoMode,
   } = useFarmData();
+  const { isSubscribed } = usePurchases();
   
   const workOrder = getWorkOrderById(id);
   
@@ -700,7 +703,16 @@ export default function WorkOrderDetailScreen() {
         options={{
           title: 'Work Order',
           headerRight: () => (
-            <TouchableOpacity onPress={() => setIsEditing(true)} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
+            <TouchableOpacity
+              onPress={() => {
+                if (!isSubscribed && isDemoMode) {
+                  Alert.alert('Demo mode', 'Subscribe to edit or create work orders.');
+                  return;
+                }
+                setIsEditing(true);
+              }}
+              hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+            >
               <Text style={styles.editButton}>Edit</Text>
             </TouchableOpacity>
           ),

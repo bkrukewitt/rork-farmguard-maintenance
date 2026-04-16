@@ -9,6 +9,16 @@ import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRout
 import { generateId } from '@/utils/helpers';
 import { supabase } from '@/lib/supabase';
 import { trpcClient } from '@/lib/trpc';
+import {
+  DEMO_CONSUMABLES,
+  DEMO_CUSTOM_FUEL_TYPES,
+  DEMO_EMPLOYEES,
+  DEMO_EQUIPMENT,
+  DEMO_FUEL_LOGS,
+  DEMO_INTERVALS,
+  DEMO_MAINTENANCE_LOGS,
+  DEMO_WORK_ORDERS,
+} from '@/constants/demoData';
 
 const STORAGE_KEYS = {
   EQUIPMENT: 'farmguard_equipment',
@@ -27,6 +37,7 @@ const STORAGE_KEYS = {
   IS_FARM_CREATOR: 'farmguard_is_farm_creator',
   DISPLAY_NAME: 'farmguard_display_name',
   FARM_PASSWORD: 'farmguard_farm_password',
+  DEMO_MODE: 'farmguard_demo_mode',
 };
 
 export interface FarmMember {
@@ -221,6 +232,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [farmName, setFarmName] = useState<string | null>(null);
   const [joinPassword, setJoinPassword] = useState<string | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const deletedIdsRef = useRef<string[]>([]);
   const skipAutoMergeRef = useRef(false);
   const initialMergeDoneRef = useRef(false);
@@ -229,6 +241,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   useEffect(() => {
     void getFarmId().then(setFarmId);
     void getDeviceId().then(setDeviceId);
+    void AsyncStorage.getItem(STORAGE_KEYS.DEMO_MODE).then(val => {
+      setIsDemoMode(val === 'true');
+    });
     void AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME).then(name => {
       if (name) setDisplayName(name);
     });
@@ -251,6 +266,19 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       }
     });
   }, []);
+
+  const enterDemoMode = useCallback(async () => {
+    await AsyncStorage.setItem(STORAGE_KEYS.DEMO_MODE, 'true');
+    setIsDemoMode(true);
+  }, []);
+
+  const exitDemoMode = useCallback(async () => {
+    await AsyncStorage.removeItem(STORAGE_KEYS.DEMO_MODE);
+    setIsDemoMode(false);
+  }, []);
+
+  const effectiveFarmId = isDemoMode ? '' : farmId;
+  const effectiveJoinPassword = isDemoMode ? null : joinPassword;
 
   useEffect(() => {
     if (!farmId) {
@@ -386,7 +414,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       console.log(`[Supabase] New member registered, role: ${role}`);
       return newMember as FarmMember;
     },
-    enabled: !!farmId && !!deviceId,
+    enabled: !!effectiveFarmId && !!deviceId,
     staleTime: 1000 * 60 * 5,
     retry: 2,
   });
@@ -409,7 +437,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       }
       return (data || []) as FarmMember[];
     },
-    enabled: !!farmId,
+    enabled: !!effectiveFarmId,
     staleTime: 1000 * 60 * 1,
     refetchOnMount: true,
   });
@@ -419,7 +447,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const remoteDataQuery = useQuery({
     queryKey: ['remoteData', farmId],
     queryFn: () => fetchRemoteData(farmId),
-    enabled: !!farmId,
+    enabled: !!effectiveFarmId,
     staleTime: 1000 * 60 * 2,
     refetchOnMount: true,
     refetchOnReconnect: true,
@@ -521,14 +549,38 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     refetchOnReconnect: false,
   });
 
-  const equipment = useMemo(() => equipmentQuery.data ?? [], [equipmentQuery.data]);
-  const maintenanceLogs = useMemo(() => maintenanceLogsQuery.data ?? [], [maintenanceLogsQuery.data]);
-  const intervals = useMemo(() => intervalsQuery.data ?? [], [intervalsQuery.data]);
-  const consumables = useMemo(() => consumablesQuery.data ?? [], [consumablesQuery.data]);
-  const serviceRoutines = useMemo(() => serviceRoutinesQuery.data ?? [], [serviceRoutinesQuery.data]);
-  const inspectionRoutines = useMemo(() => inspectionRoutinesQuery.data ?? [], [inspectionRoutinesQuery.data]);
-  const workOrders = useMemo(() => workOrdersQuery.data ?? [], [workOrdersQuery.data]);
-  const employees = useMemo(() => employeesQuery.data ?? [], [employeesQuery.data]);
+  const equipment = useMemo(
+    () => (isDemoMode ? DEMO_EQUIPMENT : (equipmentQuery.data ?? [])),
+    [equipmentQuery.data, isDemoMode],
+  );
+  const maintenanceLogs = useMemo(
+    () => (isDemoMode ? DEMO_MAINTENANCE_LOGS : (maintenanceLogsQuery.data ?? [])),
+    [maintenanceLogsQuery.data, isDemoMode],
+  );
+  const intervals = useMemo(
+    () => (isDemoMode ? DEMO_INTERVALS : (intervalsQuery.data ?? [])),
+    [intervalsQuery.data, isDemoMode],
+  );
+  const consumables = useMemo(
+    () => (isDemoMode ? DEMO_CONSUMABLES : (consumablesQuery.data ?? [])),
+    [consumablesQuery.data, isDemoMode],
+  );
+  const serviceRoutines = useMemo(
+    () => (serviceRoutinesQuery.data ?? []),
+    [serviceRoutinesQuery.data],
+  );
+  const inspectionRoutines = useMemo(
+    () => (inspectionRoutinesQuery.data ?? []),
+    [inspectionRoutinesQuery.data],
+  );
+  const workOrders = useMemo(
+    () => (isDemoMode ? DEMO_WORK_ORDERS : (workOrdersQuery.data ?? [])),
+    [workOrdersQuery.data, isDemoMode],
+  );
+  const employees = useMemo(
+    () => (isDemoMode ? DEMO_EMPLOYEES : (employeesQuery.data ?? [])),
+    [employeesQuery.data, isDemoMode],
+  );
 
   const fuelLogsQuery = useQuery({
     queryKey: ['fuelLogs'],
@@ -554,8 +606,14 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     refetchOnReconnect: false,
   });
 
-  const fuelLogs = useMemo(() => fuelLogsQuery.data ?? [], [fuelLogsQuery.data]);
-  const customFuelTypes = useMemo(() => customFuelTypesQuery.data ?? [], [customFuelTypesQuery.data]);
+  const fuelLogs = useMemo(
+    () => (isDemoMode ? DEMO_FUEL_LOGS : (fuelLogsQuery.data ?? [])),
+    [fuelLogsQuery.data, isDemoMode],
+  );
+  const customFuelTypes = useMemo(
+    () => (isDemoMode ? DEMO_CUSTOM_FUEL_TYPES : (customFuelTypesQuery.data ?? [])),
+    [customFuelTypesQuery.data, isDemoMode],
+  );
 
   const mergeArraysSmart = useCallback(<T extends { id: string }>(local: T[], remoteArr: T[], tombstoneSet: Set<string>): T[] => {
     const map = new Map<string, T>();
@@ -1810,6 +1868,17 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
   });
 
+  const setLocalFarmPassword = useCallback(async (password: string | null) => {
+    const trimmed = password ? password.trim() : null;
+    if (trimmed) {
+      await SecureStore.setItemAsync('farmguard_farm_password', trimmed);
+    } else {
+      await SecureStore.deleteItemAsync('farmguard_farm_password');
+    }
+    await AsyncStorage.removeItem(STORAGE_KEYS.FARM_PASSWORD);
+    setJoinPassword(trimmed);
+  }, []);
+
   const updateDisplayNameMutation = useMutation({
     mutationFn: async (name: string) => {
       const trimmed = name.trim();
@@ -2137,7 +2206,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   }, [isLoading, equipment.length, maintenanceLogs.length, consumables.length]);
 
   return useMemo(() => ({
-    farmId,
+    farmId: effectiveFarmId,
     farmName,
     deviceId,
     setFarmId: setFarmIdAndSync,
@@ -2156,8 +2225,12 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     forceDeleteConsumables: forceDeleteConsumableMutation.mutateAsync,
     purgeAndResync: purgeAndResyncMutation.mutateAsync,
     isPurging: purgeAndResyncMutation.isPending,
-    joinPassword,
+    isDemoMode,
+    enterDemoMode,
+    exitDemoMode,
+    joinPassword: effectiveJoinPassword,
     setFarmPassword: setJoinPasswordMutation.mutateAsync,
+    setLocalFarmPassword,
     isSettingFarmPassword: setJoinPasswordMutation.isPending,
     createFarm: createFarmMutation.mutateAsync,
     isCreatingFarm: createFarmMutation.isPending,
@@ -2225,13 +2298,14 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     refreshData,
     refreshFarmMembers,
   }), [
-    farmId, deviceId, setFarmIdAndSync, isSyncing, lastSyncTime, syncToServer,
-    farmMembers, isAdmin, joinPassword, displayName,
+    effectiveFarmId, deviceId, setFarmIdAndSync, isSyncing, lastSyncTime, syncToServer,
+    farmMembers, isAdmin, isDemoMode, enterDemoMode, exitDemoMode, effectiveJoinPassword, displayName,
     removeMemberMutation.mutateAsync, leaveFarmMutation.mutateAsync, leaveFarmMutation.isPending,
     deleteFarmFromServerMutation.mutateAsync, deleteFarmFromServerMutation.isPending,
     forceDeleteEquipmentMutation.mutateAsync, forceDeleteConsumableMutation.mutateAsync,
     purgeAndResyncMutation.mutateAsync, purgeAndResyncMutation.isPending,
     setJoinPasswordMutation.mutateAsync, setJoinPasswordMutation.isPending,
+    setLocalFarmPassword,
     createFarmMutation.mutateAsync, createFarmMutation.isPending,
     updateFarmIdMutation.mutateAsync, updateFarmIdMutation.isPending,
     updateDisplayNameMutation.mutateAsync, updateDisplayNameMutation.isPending,

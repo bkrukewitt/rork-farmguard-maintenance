@@ -151,7 +151,7 @@ export default function Paywall({ onDismiss }: PaywallProps) {
     return null;
   };
 
-  const { farmId, joinPassword } = useFarmData();
+  const { enterDemoMode } = useFarmData();
 
   const subscriptionDisclosure = useMemo(() => {
     const pkg = selectedPackage;
@@ -159,7 +159,7 @@ export default function Paywall({ onDismiss }: PaywallProps) {
     if (!pkg) {
       return [
         `${name}: choose Monthly or Yearly to see pricing. Payment will be charged to your Apple ID. Subscription renews automatically until you cancel.`,
-        'Manage or cancel in Settings → Apple ID → Subscriptions. Free preview may be available once per farm (Try Free Preview).',
+        'Manage or cancel in Settings → Apple ID → Subscriptions. You can try a read-only demo (Try Demo).',
       ].join('\n\n');
     }
     const isAnnual = pkg.packageType === 'ANNUAL' || pkg.identifier === '$rc_annual';
@@ -190,32 +190,10 @@ export default function Paywall({ onDismiss }: PaywallProps) {
   }, []);
 
   const handleStartTrial = async () => {
-    if (!farmId) {
-      console.warn('[Paywall] farmId is empty, cannot start trial');
-      Alert.alert('Error', 'Farm not loaded yet. Please try again in a moment.');
-      return;
-    }
     setIsStartingTrial(true);
     try {
-      const result = await startTrial(farmId, joinPassword);
-      if (result.success) {
-        onDismiss?.();
-        return;
-      }
-      if (result.alreadyUsed) {
-        Alert.alert('Preview unavailable', 'A free preview has already been used for this farm.');
-        return;
-      }
-      Alert.alert(
-        'Couldn’t start preview',
-        'We couldn’t activate your preview. Check your connection and try again.',
-      );
-    } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'message' in err && typeof (err as { message: string }).message === 'string'
-          ? (err as { message: string }).message
-          : 'Could not start free preview. Please try again.';
-      Alert.alert('Couldn’t start preview', msg);
+      await enterDemoMode();
+      onDismiss?.();
     } finally {
       setIsStartingTrial(false);
     }
@@ -432,9 +410,9 @@ export default function Paywall({ onDismiss }: PaywallProps) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.trialBtn, (!farmId || isStartingTrial) && styles.trialBtnDisabled]}
+            style={[styles.trialBtn, isStartingTrial && styles.trialBtnDisabled]}
             onPress={handleStartTrial}
-            disabled={!farmId || isStartingTrial}
+            disabled={isStartingTrial}
             activeOpacity={0.7}
             testID="paywall-trial"
           >
@@ -443,9 +421,7 @@ export default function Paywall({ onDismiss }: PaywallProps) {
             ) : (
               <Eye size={14} color="rgba(255,255,255,0.6)" />
             )}
-            <Text style={styles.trialText}>
-              {!farmId ? 'Loading farm…' : 'Try Free Preview'}
-            </Text>
+            <Text style={styles.trialText}>Try Demo</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -494,6 +470,7 @@ export default function Paywall({ onDismiss }: PaywallProps) {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
     </View>
   );
 }

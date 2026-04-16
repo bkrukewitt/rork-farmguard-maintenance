@@ -51,7 +51,7 @@ const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.Compon
 
 export default function AddEquipmentScreen() {
   const router = useRouter();
-  const { addEquipment, addInterval } = useFarmData();
+  const { addEquipment, addInterval, isDemoMode } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
 
   const [name, setName] = useState('');
@@ -186,7 +186,7 @@ export default function AddEquipmentScreen() {
     },
   });
 
-  if (isTrial && !isSubscribed) {
+  if (!isSubscribed && (isTrial || isDemoMode)) {
     return <Paywall onDismiss={() => router.back()} />;
   }
 

@@ -34,6 +34,7 @@ export default function AddFuelLogScreen() {
     updateEquipment,
     customFuelTypes,
     addCustomFuelType,
+    isDemoMode,
   } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
 
@@ -64,7 +65,7 @@ export default function AddFuelLogScreen() {
     return [...built, ...custom];
   }, [customFuelTypes]);
 
-  if (isTrial && !isSubscribed) {
+  if (!isSubscribed && (isTrial || isDemoMode)) {
     return <Paywall onDismiss={() => router.back()} />;
   }
 

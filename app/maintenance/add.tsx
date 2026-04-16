@@ -55,7 +55,7 @@ const PERFORMER_OPTIONS: { value: MaintenanceLog['performedBy']; label: string }
 export default function AddMaintenanceScreen() {
   const router = useRouter();
   const { equipmentId: preselectedEquipmentId } = useLocalSearchParams<{ equipmentId?: string }>();
-  const { farmId, equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines, updateEquipment, addConsumable } = useFarmData();
+  const { farmId, equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines, updateEquipment, addConsumable, isDemoMode } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
 
   const [selectedEquipmentId, setSelectedEquipmentId] = useState(preselectedEquipmentId ?? '');
@@ -368,7 +368,7 @@ export default function AddMaintenanceScreen() {
     },
   });
 
-  if (isTrial && !isSubscribed) {
+  if (!isSubscribed && (isTrial || isDemoMode)) {
     return <Paywall onDismiss={() => router.back()} />;
   }
 

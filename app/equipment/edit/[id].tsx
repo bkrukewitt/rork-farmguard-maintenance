@@ -33,6 +33,8 @@ import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { EquipmentType, EquipmentMetric } from '@/types/equipment';
 import { uploadImage } from '@/utils/imageUpload';
+import { usePurchases } from '@/contexts/PurchasesContext';
+import Paywall from '@/components/Paywall';
 
 const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
   { value: 'tractor', label: 'Tractor', Icon: Tractor },
@@ -50,9 +52,14 @@ const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.Compon
 export default function EditEquipmentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { getEquipmentById, updateEquipment, isLoading } = useFarmData();
+  const { getEquipmentById, updateEquipment, isLoading, isDemoMode } = useFarmData();
+  const { isSubscribed } = usePurchases();
 
   const equipment = getEquipmentById(id ?? '');
+
+  if (!isSubscribed && isDemoMode) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   const [name, setName] = useState('');
   const [type, setType] = useState<EquipmentType>('tractor');

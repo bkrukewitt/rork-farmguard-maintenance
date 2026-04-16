@@ -31,6 +31,8 @@ import {
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { usePurchases } from '@/contexts/PurchasesContext';
+import Paywall from '@/components/Paywall';
 import { MaintenanceLog, EquipmentAttachment } from '@/types/equipment';
 import { uploadAttachment, getAttachmentPublicUrl } from '@/utils/attachmentUpload';
 import { generateId } from '@/utils/helpers';
@@ -50,10 +52,15 @@ const PERFORMER_OPTIONS: { value: MaintenanceLog['performedBy']; label: string }
 export default function EditMaintenanceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { farmId, getMaintenanceLogById, getEquipmentById, updateMaintenanceLog, isLoading } = useFarmData();
+  const { farmId, getMaintenanceLogById, getEquipmentById, updateMaintenanceLog, isLoading, isDemoMode } = useFarmData();
+  const { isSubscribed } = usePurchases();
 
   const log = getMaintenanceLogById(id ?? '');
   const equipment = log ? getEquipmentById(log.equipmentId) : undefined;
+
+  if (!isSubscribed && isDemoMode) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   const [type, setType] = useState<MaintenanceLog['type']>('routine');
   const [description, setDescription] = useState('');

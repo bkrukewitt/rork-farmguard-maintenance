@@ -29,7 +29,7 @@ import { formatDate, formatMetric } from '@/utils/helpers';
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, workOrders, employees, fuelLogs, isLoading, refreshData, deviceId, getLowStockConsumables } = useFarmData();
+  const { equipment, maintenanceLogs, workOrders, employees, fuelLogs, isLoading, refreshData, deviceId, getLowStockConsumables, isDemoMode } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
   const { isTrial, isSubscribed } = usePurchases();
   const [showPaywall, setShowPaywall] = useState(false);
@@ -50,13 +50,13 @@ export default function DashboardScreen() {
 
   const navigateHeaderStat = useCallback(
     (href: string) => {
-      if (isTrial && !isSubscribed) {
+      if (!isSubscribed && (isTrial || isDemoMode)) {
         handleTrialAction();
         return;
       }
       router.push(href as any);
     },
-    [isTrial, isSubscribed, handleTrialAction, router],
+    [isTrial, isDemoMode, isSubscribed, handleTrialAction, router],
   );
 
   const myWorkOrders = useMemo(() => {
@@ -181,7 +181,7 @@ export default function DashboardScreen() {
             <Text style={[styles.headerTitle, { color: colors.textOnPrimary }]}>FarmGuard</Text>
             <Text style={[styles.headerSubtitle, { color: colors.textOnPrimary }]}>Equipment Maintenance</Text>
           </View>
-          {isTrial && !isSubscribed && (
+          {!isSubscribed && (isTrial || isDemoMode) && (
             <View style={styles.trialBadge}>
               <Text style={styles.trialBadgeText}>PREVIEW</Text>
             </View>
@@ -228,7 +228,7 @@ export default function DashboardScreen() {
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => isTrial && !isSubscribed ? handleTrialAction() : router.push('/equipment?showAddMenu=true' as any)}
+            onPress={() => (!isSubscribed && (isTrial || isDemoMode)) ? handleTrialAction() : router.push('/equipment?showAddMenu=true' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: colors.primary }]}>
               <Plus color={colors.textOnPrimary} size={20} />
@@ -240,7 +240,7 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => isTrial && !isSubscribed ? handleTrialAction() : router.push('/maintenance/add' as any)}
+            onPress={() => (!isSubscribed && (isTrial || isDemoMode)) ? handleTrialAction() : router.push('/maintenance/add' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: colors.accent }]}>
               <Wrench color={colors.textOnAccent} size={20} />
@@ -252,7 +252,7 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => isTrial && !isSubscribed ? handleTrialAction() : router.push('/workorders' as any)}
+            onPress={() => (!isSubscribed && (isTrial || isDemoMode)) ? handleTrialAction() : router.push('/workorders' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: '#3B82F6' }]}>
               <FileText color="#FFFFFF" size={20} />
@@ -439,7 +439,7 @@ export default function DashboardScreen() {
             <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
               Add your first piece of equipment to start tracking maintenance
             </Text>
-            {isTrial && !isSubscribed && (
+            {!isSubscribed && (isTrial || isDemoMode) && (
               <Text style={[styles.emptySubtitle, { color: colors.primary, marginTop: 12, fontWeight: '500' as const }]}>
                 Subscribe to start adding equipment
               </Text>

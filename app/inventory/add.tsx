@@ -23,7 +23,7 @@ import { uploadImage } from '@/utils/imageUpload';
 
 export default function AddConsumableScreen() {
   const router = useRouter();
-  const { addConsumable, equipment } = useFarmData();
+  const { addConsumable, equipment, isDemoMode } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
 
   const [name, setName] = useState('');
@@ -140,7 +140,7 @@ export default function AddConsumableScreen() {
     },
   });
 
-  if (isTrial && !isSubscribed) {
+  if (!isSubscribed && (isTrial || isDemoMode)) {
     return <Paywall onDismiss={() => router.back()} />;
   }
 

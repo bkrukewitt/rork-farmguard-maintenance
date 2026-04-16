@@ -34,7 +34,8 @@ import { CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
 export default function ConsumableDetailScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { getConsumableById, updateConsumable, deleteConsumable, equipment } = useFarmData();
+  const { getConsumableById, updateConsumable, deleteConsumable, equipment, isDemoMode } = useFarmData();
+  const { isSubscribed } = usePurchases();
 
   const consumable = getConsumableById(id ?? '');
 
@@ -56,6 +57,10 @@ export default function ConsumableDetailScreen() {
   const [editImageUrl, setEditImageUrl] = useState<string | undefined>(undefined);
 
   const startEditing = () => {
+    if (!isSubscribed && isDemoMode) {
+      Alert.alert('Demo mode', 'Subscribe to edit or add inventory items.');
+      return;
+    }
     if (consumable) {
       setEditName(consumable.name);
       setEditPartNumber(consumable.partNumber);
