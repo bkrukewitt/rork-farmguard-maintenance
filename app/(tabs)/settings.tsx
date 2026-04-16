@@ -63,6 +63,7 @@ import { Equipment, Consumable, ServiceRoutine, InspectionRoutine, BUILT_IN_FUEL
 import { Fuel } from 'lucide-react-native';
 import { User } from 'lucide-react-native';
 import ExportRecordsModal from '@/components/ExportRecordsModal';
+import PaywallModal from '@/components/PaywallModal';
 import { useSubscription } from '@/hooks/useSubscription';
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from '@/constants/legalUrls';
 
@@ -134,6 +135,7 @@ export default function SettingsScreen() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showJoinFarmModal, setShowJoinFarmModal] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
   const [joinFarmId, setJoinFarmId] = useState('');
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicateItem[]>([]);
@@ -1799,6 +1801,23 @@ export default function SettingsScreen() {
               {isRestoringSubscription ? 'Restoring...' : 'Restore Purchases'}
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.syncButton,
+              {
+                backgroundColor: colors.surfaceAlt,
+                marginTop: 10,
+                borderWidth: 1,
+                borderColor: colors.border,
+              },
+            ]}
+            onPress={() => setShowPaywall(true)}
+            activeOpacity={0.8}
+          >
+            <Shield color={colors.textSecondary} size={18} />
+            <Text style={[styles.syncButtonText, { color: colors.text }]}>Change Plan</Text>
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -2084,9 +2103,19 @@ export default function SettingsScreen() {
               <Copy color="#fff" size={16} />
               <Text style={styles.superAdminButtonText}>Copy Debug Info</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.primary, marginTop: 8 }]}
+              onPress={() => setShowPaywall(true)}
+            >
+              <Shield color="#fff" size={16} />
+              <Text style={styles.superAdminButtonText}>Show Paywall</Text>
+            </TouchableOpacity>
           </View>
         </View>
       )}
+
+      <PaywallModal visible={showPaywall} onDismiss={() => setShowPaywall(false)} />
 
       <TouchableOpacity style={styles.footer} onPress={handleFooterTap} activeOpacity={0.7}>
         <Text style={[styles.footerText, { color: colors.primary }]}>FarmGuard Maintenance</Text>
