@@ -304,7 +304,7 @@ export default function WorkOrderDetailScreen() {
             title: 'Edit Work Order',
             headerRight: () => (
               <TouchableOpacity onPress={handleSave} disabled={isSaving}>
-                <Save color={isSaving ? Colors.textSecondary : Colors.primary} size={24} />
+                <Save color={isSaving ? Colors.textLight : Colors.textOnPrimary} size={24} />
               </TouchableOpacity>
             ),
           }}
@@ -700,7 +700,7 @@ export default function WorkOrderDetailScreen() {
         options={{
           title: 'Work Order',
           headerRight: () => (
-            <TouchableOpacity onPress={() => setIsEditing(true)}>
+            <TouchableOpacity onPress={() => setIsEditing(true)} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}>
               <Text style={styles.editButton}>Edit</Text>
             </TouchableOpacity>
           ),
@@ -879,8 +879,8 @@ const styles = StyleSheet.create({
   },
   editButton: {
     fontSize: 16,
-    fontWeight: '500' as const,
-    color: Colors.primary,
+    fontWeight: '600' as const,
+    color: Colors.textOnPrimary,
   },
   headerCard: {
     backgroundColor: Colors.surface,
@@ -919,6 +919,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 16,
@@ -929,7 +932,7 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 11,
     fontWeight: '600' as const,
-    textAlign: 'center' as const,
+    lineHeight: 14,
   },
   title: {
     fontSize: 20,

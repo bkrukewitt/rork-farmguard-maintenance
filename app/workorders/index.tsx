@@ -156,70 +156,54 @@ export default function WorkOrdersScreen() {
     <View style={[styles.container, { backgroundColor: colors.background }]}>
       <Stack.Screen options={{ title: 'Work Orders' }} />
 
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.statsRow}
-      >
+      <View style={styles.statsRow}>
         <View style={[styles.statCard, { backgroundColor: '#F59E0B' + '15' }]}>
-          <Clock color="#F59E0B" size={18} />
-          <Text
-            style={[styles.statNumber, { color: '#F59E0B' }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.65}
-          >
-            {stats.pending}
-          </Text>
-          <Text style={styles.statLabel} numberOfLines={2}>
-            Pending
-          </Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: '#3B82F6' + '15' }]}>
-          <ClipboardList color="#3B82F6" size={18} />
-          <Text
-            style={[styles.statNumber, { color: '#3B82F6' }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.65}
-          >
-            {stats.inProgress}
-          </Text>
-          <Text style={styles.statLabel} numberOfLines={2}>
-            In Progress
-          </Text>
-        </View>
-        <View style={[styles.statCard, { backgroundColor: '#10B981' + '15' }]}>
-          <CheckCircle2 color="#10B981" size={18} />
-          <Text
-            style={[styles.statNumber, { color: '#10B981' }]}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.65}
-          >
-            {stats.completed}
-          </Text>
-          <Text style={styles.statLabel} numberOfLines={2}>
-            Completed
-          </Text>
-        </View>
-        {stats.urgent > 0 && (
-          <View style={[styles.statCard, { backgroundColor: '#DC2626' + '15' }]}>
-            <AlertTriangle color="#DC2626" size={18} />
-            <Text
-              style={[styles.statNumber, { color: '#DC2626' }]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.65}
-            >
-              {stats.urgent}
+          <Clock color="#F59E0B" size={20} />
+          <View style={styles.statCardTextCol}>
+            <Text style={[styles.statNumber, { color: '#F59E0B' }]} numberOfLines={1}>
+              {stats.pending}
             </Text>
-            <Text style={styles.statLabel} numberOfLines={2}>
-              Urgent
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+              Pending
             </Text>
           </View>
-        )}
-      </ScrollView>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: '#3B82F6' + '15' }]}>
+          <ClipboardList color="#3B82F6" size={20} />
+          <View style={styles.statCardTextCol}>
+            <Text style={[styles.statNumber, { color: '#3B82F6' }]} numberOfLines={1}>
+              {stats.inProgress}
+            </Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+              Active
+            </Text>
+          </View>
+        </View>
+        <View style={[styles.statCard, { backgroundColor: '#10B981' + '15' }]}>
+          <CheckCircle2 color="#10B981" size={20} />
+          <View style={styles.statCardTextCol}>
+            <Text style={[styles.statNumber, { color: '#10B981' }]} numberOfLines={1}>
+              {stats.completed}
+            </Text>
+            <Text style={[styles.statLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+              Done
+            </Text>
+          </View>
+        </View>
+        {stats.urgent > 0 ? (
+          <View style={[styles.statCard, { backgroundColor: '#DC2626' + '15' }]}>
+            <AlertTriangle color="#DC2626" size={20} />
+            <View style={styles.statCardTextCol}>
+              <Text style={[styles.statNumber, { color: '#DC2626' }]} numberOfLines={1}>
+                {stats.urgent}
+              </Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]} numberOfLines={1}>
+                Urgent
+              </Text>
+            </View>
+          </View>
+        ) : null}
+      </View>
 
       <ScrollView
         horizontal
@@ -336,28 +320,34 @@ const styles = StyleSheet.create({
   statsRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 10,
     gap: 8,
-    flexGrow: 1,
   },
   statCard: {
-    width: 88,
-    minHeight: 88,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    flex: 1,
+    minWidth: 0,
     paddingVertical: 10,
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     borderRadius: 12,
-    gap: 2,
+    gap: 8,
   },
-  statNumber: { fontSize: 18, fontWeight: '700' as const, maxWidth: '100%', textAlign: 'center' as const },
+  statCardTextCol: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  statNumber: {
+    fontSize: 20,
+    fontWeight: '700' as const,
+    lineHeight: 24,
+  },
   statLabel: {
-    fontSize: 9,
-    lineHeight: 12,
-    color: '#7F8C8D',
-    fontWeight: '500' as const,
-    textAlign: 'center' as const,
-    alignSelf: 'stretch' as const,
+    fontSize: 11,
+    lineHeight: 14,
+    fontWeight: '600' as const,
+    marginTop: 2,
   },
   filterScroll: { borderBottomWidth: 1, maxHeight: 56 },
   filterContainer: {

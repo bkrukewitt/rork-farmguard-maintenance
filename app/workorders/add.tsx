@@ -146,7 +146,7 @@ export default function AddWorkOrderScreen() {
           title: 'New Work Order',
           headerRight: () => (
             <TouchableOpacity onPress={handleSave} disabled={isSaving}>
-              <Save color={isSaving ? Colors.textSecondary : Colors.primary} size={24} />
+              <Save color={isSaving ? Colors.textLight : Colors.textOnPrimary} size={24} />
             </TouchableOpacity>
           ),
         }}

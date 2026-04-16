@@ -18,6 +18,7 @@ import {
   Linking,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as WebBrowser from 'expo-web-browser';
 import { useRouter } from 'expo-router';
 import { 
   Tractor, 
@@ -45,7 +46,6 @@ import {
   AlertTriangle,
   MessageSquare,
   Send,
-  Calendar,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
@@ -64,6 +64,7 @@ import { Fuel } from 'lucide-react-native';
 import { User } from 'lucide-react-native';
 import ExportRecordsModal from '@/components/ExportRecordsModal';
 import { useSubscription } from '@/hooks/useSubscription';
+import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from '@/constants/legalUrls';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -187,11 +188,7 @@ export default function SettingsScreen() {
   const [newCustomFuelName, setNewCustomFuelName] = useState('');
   const {
     isProUser,
-    hasEntitlement,
     grandfathered,
-    productIdentifier,
-    expirationDate,
-    willRenew,
     isRestoring: isRestoringSubscription,
     restore,
     refresh: refreshSubscription,
@@ -1537,94 +1534,6 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Subscription Status</Text>
-        <View style={[styles.syncCard, { backgroundColor: colors.surface }]}>
-          <View
-            style={[
-              styles.subscriptionBadge,
-              { backgroundColor: isProUser ? colors.statusOk + '15' : colors.statusDue + '15' },
-            ]}
-          >
-            <Text
-              style={[
-                styles.subscriptionBadgeText,
-                { color: isProUser ? colors.statusOk : colors.statusDue },
-              ]}
-            >
-              {isProUser ? 'Pro Active' : 'Free Plan'}
-            </Text>
-          </View>
-
-          <View style={[styles.displayNameRow, { backgroundColor: colors.background, marginTop: 10 }]}>
-            <View style={[styles.displayNameIcon, { backgroundColor: colors.primary + '15' }]}>
-              <Shield color={colors.primary} size={18} />
-            </View>
-            <View style={styles.displayNameInfo}>
-              <Text style={[styles.displayNameLabel, { color: colors.textSecondary }]}>Product</Text>
-              <Text style={[styles.displayNameValue, { color: colors.text }]}>
-                {productIdentifier || (hasEntitlement ? 'Active entitlement' : 'No active product')}
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.displayNameRow, { backgroundColor: colors.background, marginTop: 10 }]}>
-            <View style={[styles.displayNameIcon, { backgroundColor: colors.secondary + '15' }]}>
-              <Calendar color={colors.secondary} size={18} />
-            </View>
-            <View style={styles.displayNameInfo}>
-              <Text style={[styles.displayNameLabel, { color: colors.textSecondary }]}>Expiration</Text>
-              <Text style={[styles.displayNameValue, { color: colors.text }]}>
-                {expirationDate ? new Date(expirationDate).toLocaleString() : 'Not available'}
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.displayNameRow, { backgroundColor: colors.background, marginTop: 10 }]}>
-            <View style={[styles.displayNameIcon, { backgroundColor: colors.accent + '15' }]}>
-              <RefreshCw color={colors.accent} size={18} />
-            </View>
-            <View style={styles.displayNameInfo}>
-              <Text style={[styles.displayNameLabel, { color: colors.textSecondary }]}>Renewal</Text>
-              <Text style={[styles.displayNameValue, { color: colors.text }]}>
-                {willRenew === null ? 'Not available' : willRenew ? 'Will renew' : 'Will not renew'}
-              </Text>
-            </View>
-          </View>
-
-          {grandfathered ? (
-            <View style={[styles.adminIndicator, { backgroundColor: colors.statusOk + '15', marginTop: 10 }]}>
-              <Check color={colors.statusOk} size={14} />
-              <Text style={[styles.adminIndicatorText, { color: colors.statusOk }]}>
-                Grandfathered legacy access active
-              </Text>
-            </View>
-          ) : null}
-
-          <TouchableOpacity
-            style={[
-              styles.syncButton,
-              {
-                backgroundColor: colors.primary,
-                marginTop: 12,
-                opacity: isRestoringSubscription ? 0.7 : 1,
-              },
-            ]}
-            onPress={handleRestoreSubscription}
-            disabled={isRestoringSubscription}
-          >
-            {isRestoringSubscription ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
-              <RefreshCw color="#fff" size={18} />
-            )}
-            <Text style={styles.syncButtonText}>
-              {isRestoringSubscription ? 'Restoring...' : 'Restore Purchases'}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Service</Text>
         
         <TouchableOpacity 
@@ -1855,21 +1764,88 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Subscription</Text>
+        <View style={[styles.syncCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.subscriptionStatusRow}>
+            <View style={[styles.settingIcon, { backgroundColor: colors.primary + '15' }]}>
+              <Zap color={colors.primary} size={20} />
+            </View>
+            <Text style={[styles.subscriptionStatusLine, { color: colors.text }]}>
+              {grandfathered
+                ? 'Pro — Legacy access'
+                : isProUser
+                  ? 'Pro'
+                  : 'Free plan'}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              styles.syncButton,
+              {
+                backgroundColor: colors.primary,
+                marginTop: 12,
+                opacity: isRestoringSubscription ? 0.7 : 1,
+              },
+            ]}
+            onPress={handleRestoreSubscription}
+            disabled={isRestoringSubscription}
+          >
+            {isRestoringSubscription ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <RefreshCw color="#fff" size={18} />
+            )}
+            <Text style={styles.syncButtonText}>
+              {isRestoringSubscription ? 'Restoring...' : 'Restore Purchases'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>About</Text>
-        
-        <View style={[styles.settingRow, { backgroundColor: colors.surface }]}>
+
+        <TouchableOpacity
+          style={[styles.settingRow, { backgroundColor: colors.surface }]}
+          onPress={() => {
+            void WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL);
+          }}
+          activeOpacity={0.7}
+        >
           <View style={styles.settingLeft}>
             <View style={[styles.settingIcon, { backgroundColor: colors.secondary + '15' }]}>
               <Shield color={colors.secondary} size={20} />
             </View>
-            <View>
+            <View style={{ flex: 1 }}>
               <Text style={[styles.settingLabel, { color: colors.text }]}>Privacy Policy</Text>
-              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Your data stays on your device</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                View our privacy policy in your browser
+              </Text>
             </View>
           </View>
           <ChevronRight color={colors.textSecondary} size={20} />
-        </View>
+        </TouchableOpacity>
 
+        <TouchableOpacity
+          style={[styles.settingRow, { backgroundColor: colors.surface }]}
+          onPress={() => {
+            void WebBrowser.openBrowserAsync(TERMS_OF_USE_URL);
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: colors.primary + '15' }]}>
+              <FileText color={colors.primary} size={20} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Terms of Use</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                View terms of use in your browser
+              </Text>
+            </View>
+          </View>
+          <ChevronRight color={colors.textSecondary} size={20} />
+        </TouchableOpacity>
       </View>
 
       {isDebugMode && !isSuperAdmin && (
@@ -3425,17 +3401,15 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500' as const,
   },
-  subscriptionBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
+  subscriptionStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
   },
-  subscriptionBadgeText: {
-    fontSize: 12,
-    fontWeight: '700' as const,
-    textTransform: 'uppercase',
-    letterSpacing: 0.3,
+  subscriptionStatusLine: {
+    flex: 1,
+    fontSize: 17,
+    fontWeight: '600' as const,
   },
   duplicateModalContent: {
     borderTopLeftRadius: 24,

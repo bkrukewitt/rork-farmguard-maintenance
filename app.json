@@ -23,7 +23,7 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "usesIcloudStorage": true,
-      "buildNumber": "11"
+      "buildNumber": "13"
     },
     "android": {
       "adaptiveIcon": {

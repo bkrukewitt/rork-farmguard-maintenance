@@ -405,40 +405,46 @@ export default function EquipmentDetailScreen() {
           </View>
         )}
 
-        <View style={styles.actionsRow}>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push(`/maintenance/add?equipmentId=${equipment.id}` as any)}
-          >
-            <Plus color={Colors.primary} size={20} />
-            <Text style={styles.actionButtonText}>Log Service</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={() => router.push(`/equipment/edit/${equipment.id}` as any)}
-          >
-            <Edit3 color={Colors.primary} size={20} />
-            <Text style={styles.actionButtonText}>Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.actionButton}
-            onPress={handleQuickExport}
-            disabled={isQuickExporting}
-          >
-            {isQuickExporting ? (
-              <ActivityIndicator size="small" color={Colors.primary} />
-            ) : (
-              <Download color={Colors.primary} size={20} />
-            )}
-            <Text style={styles.actionButtonText}>Export</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.deleteButton]}
-            onPress={handleDelete}
-          >
-            <Trash2 color={Colors.statusOverdue} size={20} />
-            <Text style={[styles.actionButtonText, { color: Colors.statusOverdue }]}>Delete</Text>
-          </TouchableOpacity>
+        <View style={styles.actionsGrid}>
+          <View style={styles.actionsRowPair}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.actionButtonHalf]}
+              onPress={() => router.push(`/maintenance/add?equipmentId=${equipment.id}` as any)}
+            >
+              <Plus color={Colors.primary} size={20} />
+              <Text style={styles.actionButtonText} numberOfLines={2}>
+                Log Service
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.actionButtonHalf]}
+              onPress={() => router.push(`/equipment/edit/${equipment.id}` as any)}
+            >
+              <Edit3 color={Colors.primary} size={20} />
+              <Text style={styles.actionButtonText}>Edit</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.actionsRowPair}>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.actionButtonHalf]}
+              onPress={handleQuickExport}
+              disabled={isQuickExporting}
+            >
+              {isQuickExporting ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Download color={Colors.primary} size={20} />
+              )}
+              <Text style={styles.actionButtonText}>Export</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.actionButton, styles.actionButtonHalf, styles.deleteButton]}
+              onPress={handleDelete}
+            >
+              <Trash2 color={Colors.statusOverdue} size={20} />
+              <Text style={[styles.actionButtonText, { color: Colors.statusOverdue }]}>Delete</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.section}>
@@ -847,22 +853,30 @@ const styles = StyleSheet.create({
     fontWeight: '600' as const,
     color: Colors.accent,
   },
-  actionsRow: {
+  actionsGrid: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    gap: 10,
+  },
+  actionsRowPair: {
     flexDirection: 'row',
-    padding: 16,
     gap: 10,
   },
   actionButton: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.surface,
     paddingVertical: 12,
+    paddingHorizontal: 8,
     borderRadius: 12,
     gap: 6,
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  actionButtonHalf: {
+    flex: 1,
+    minHeight: 48,
   },
   deleteButton: {
     borderColor: Colors.statusOverdue + '30',
@@ -871,6 +885,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '500' as const,
     color: Colors.primary,
+    textAlign: 'center' as const,
+    flexShrink: 1,
   },
   section: {
     paddingHorizontal: 16,
@@ -905,11 +921,15 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   detailLabel: {
-    flex: 1,
+    width: 124,
+    flexShrink: 0,
+    paddingRight: 8,
     fontSize: 14,
     color: Colors.textSecondary,
   },
   detailValue: {
+    flex: 1,
+    minWidth: 0,
     fontSize: 14,
     fontWeight: '500' as const,
     color: Colors.text,
