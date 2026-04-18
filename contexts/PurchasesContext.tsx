@@ -5,6 +5,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, { CustomerInfo, PurchasesOfferings } from 'react-native-purchases';
 import { trpcClient } from '@/lib/trpc';
+import { useFarmData } from '@/contexts/FarmDataContext';
 
 const GRANDFATHER_IOS_MAX_BUILD = '1';
 const GRANDFATHER_ANDROID_MAX_VERSION_CODE = '15';
@@ -31,6 +32,7 @@ Purchases.configure({ apiKey: rcApiKey });
 
 export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   const queryClient = useQueryClient();
+  const { isDemoMode } = useFarmData();
 
   const customerInfoQuery = useQuery<CustomerInfo>({
     queryKey: ['purchases', 'customerInfo'],
@@ -42,31 +44,6 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     },
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 30,
-    retry: 2,
-  });
-
-  const offeringsQuery = useQuery<PurchasesOfferings>({
-    queryKey: ['purchases', 'offerings'],
-    queryFn: async () => {
-      console.log('[Purchases] Fetching offerings...');
-      try {
-        const offerings = await Purchases.getOfferings();
-        console.log('[Purchases] Offerings fetched successfully');
-        console.log('[Purchases] Current offering:', offerings.current?.identifier ?? '(none)');
-        console.log('[Purchases] All offering keys:', Object.keys(offerings.all));
-        if (offerings.current) {
-          console.log('[Purchases] Available packages:', offerings.current.availablePackages.map(p => p.identifier));
-        } else {
-          console.warn('[Purchases] No current offering found — check RevenueCat dashboard that an offering is set as current');
-        }
-        return offerings;
-      } catch (err) {
-        console.error('[Purchases] getOfferings error:', err);
-        throw err;
-      }
-    },
-    staleTime: 1000 * 60 * 10,
-    gcTime: 1000 * 60 * 60,
     retry: 2,
   });
 
@@ -167,6 +144,35 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   const [adminOverride, setAdminOverride] = useState(false);
 
   const isSubscribed = hasActiveEntitlement || isGrandfathered || adminOverride;
+
+  const shouldFetchOfferings =
+    customerInfoQuery.isSuccess && !isSubscribed && !isTrial && !isDemoMode;
+
+  const offeringsQuery = useQuery<PurchasesOfferings>({
+    queryKey: ['purchases', 'offerings'],
+    queryFn: async () => {
+      console.log('[Purchases] Fetching offerings...');
+      try {
+        const offerings = await Purchases.getOfferings();
+        console.log('[Purchases] Offerings fetched successfully');
+        console.log('[Purchases] Current offering:', offerings.current?.identifier ?? '(none)');
+        console.log('[Purchases] All offering keys:', Object.keys(offerings.all));
+        if (offerings.current) {
+          console.log('[Purchases] Available packages:', offerings.current.availablePackages.map(p => p.identifier));
+        } else {
+          console.warn('[Purchases] No current offering found — check RevenueCat dashboard that an offering is set as current');
+        }
+        return offerings;
+      } catch (err) {
+        console.error('[Purchases] getOfferings error:', err);
+        throw err;
+      }
+    },
+    staleTime: 1000 * 60 * 10,
+    gcTime: 1000 * 60 * 60,
+    retry: 2,
+    enabled: shouldFetchOfferings,
+  });
 
   if (isGrandfathered) {
     console.log('[Purchases] User is grandfathered — full access granted');

@@ -5,13 +5,13 @@ import {
   StyleSheet,
   Linking,
   TouchableOpacity,
-  ActivityIndicator,
   Platform,
   Animated,
 } from 'react-native';
 import Constants from 'expo-constants';
 import { trpc } from '@/lib/trpc';
 import colors from '@/constants/colors';
+import { BUNDLED_MIN_SUPPORTED_VERSION } from '@/constants/minAppVersion';
 import { AlertTriangle, RefreshCw } from 'lucide-react-native';
 
 function compareVersions(current: string, minimum: string): number {
@@ -37,6 +37,7 @@ export default function VersionGate({ children }: VersionGateProps) {
   const { data, isLoading, isError, refetch } = trpc.farm.getMinVersion.useQuery(undefined, {
     staleTime: 1000 * 60 * 10,
     retry: 3,
+    initialData: { minVersion: BUNDLED_MIN_SUPPORTED_VERSION },
   });
 
   const isOutdated =
@@ -51,14 +52,6 @@ export default function VersionGate({ children }: VersionGateProps) {
       }).start();
     }
   }, [isLoading, isOutdated, fadeAnim]);
-
-  if (isLoading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
 
   if (isError) {
     console.warn('[VersionGate] Could not fetch min version, allowing through');
@@ -119,12 +112,6 @@ export default function VersionGate({ children }: VersionGateProps) {
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-  },
   container: {
     flex: 1,
     backgroundColor: colors.background,

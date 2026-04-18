@@ -29,6 +29,7 @@ import {
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
+import { usePurchases } from '@/contexts/PurchasesContext';
 import { CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
 
 export default function ConsumableDetailScreen() {

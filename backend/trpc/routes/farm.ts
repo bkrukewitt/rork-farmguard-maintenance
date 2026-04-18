@@ -207,6 +207,7 @@ async function saveFarmData(farmId: string, data: FarmData): Promise<void> {
   }
 }
 
+/** Keep aligned with `BUNDLED_MIN_SUPPORTED_VERSION` in `constants/minAppVersion.ts`. */
 const MIN_REQUIRED_VERSION = "1.0.0";
 
 export const farmRouter = createTRPCRouter({

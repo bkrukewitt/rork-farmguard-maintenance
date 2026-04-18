@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { usePurchases } from '@/contexts/PurchasesContext';
+import { useFarmData } from '@/contexts/FarmDataContext';
 import Paywall from '@/components/Paywall';
+import StartupLoadingScreen from '@/components/StartupLoadingScreen';
 
 interface SubscriptionGateProps {
   children: React.ReactNode;
@@ -9,29 +10,17 @@ interface SubscriptionGateProps {
 
 export default function SubscriptionGate({ children }: SubscriptionGateProps) {
   const { isSubscribed, isLoadingCustomerInfo, isTrial } = usePurchases();
+  const { isDemoMode } = useFarmData();
 
-  console.log('[SubscriptionGate] isSubscribed:', isSubscribed, 'isTrial:', isTrial, 'isLoading:', isLoadingCustomerInfo);
+  console.log('[SubscriptionGate] isSubscribed:', isSubscribed, 'isTrial:', isTrial, 'isDemoMode:', isDemoMode, 'isLoading:', isLoadingCustomerInfo);
 
   if (isLoadingCustomerInfo) {
-    return (
-      <View style={styles.loading}>
-        <ActivityIndicator size="large" color="#367C2B" />
-      </View>
-    );
+    return <StartupLoadingScreen />;
   }
 
-  if (!isSubscribed && !isTrial) {
+  if (!isSubscribed && !isTrial && !isDemoMode) {
     return <Paywall />;
   }
 
   return <>{children}</>;
 }
-
-const styles = StyleSheet.create({
-  loading: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1A2E10',
-  },
-});

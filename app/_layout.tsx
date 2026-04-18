@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useLayoutEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { FarmDataProvider } from "@/contexts/FarmDataContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
@@ -113,7 +113,9 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
-  useEffect(() => {
+  // Dismiss native splash after the first layout pass so React has committed a frame
+  // (startup loading UI, version block, or paywall). Avoids a blank flash before paint.
+  useLayoutEffect(() => {
     void SplashScreen.hideAsync();
   }, []);
 

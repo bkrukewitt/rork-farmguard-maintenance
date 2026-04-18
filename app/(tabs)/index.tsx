@@ -50,13 +50,9 @@ export default function DashboardScreen() {
 
   const navigateHeaderStat = useCallback(
     (href: string) => {
-      if (!isSubscribed && (isTrial || isDemoMode)) {
-        handleTrialAction();
-        return;
-      }
       router.push(href as any);
     },
-    [isTrial, isDemoMode, isSubscribed, handleTrialAction, router],
+    [router],
   );
 
   const myWorkOrders = useMemo(() => {
@@ -228,7 +224,7 @@ export default function DashboardScreen() {
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => (!isSubscribed && (isTrial || isDemoMode)) ? handleTrialAction() : router.push('/equipment?showAddMenu=true' as any)}
+            onPress={() => (!isSubscribed && isDemoMode) ? handleTrialAction() : router.push('/equipment?showAddMenu=true' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: colors.primary }]}>
               <Plus color={colors.textOnPrimary} size={20} />
@@ -240,7 +236,7 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => (!isSubscribed && (isTrial || isDemoMode)) ? handleTrialAction() : router.push('/maintenance/add' as any)}
+            onPress={() => (!isSubscribed && isDemoMode) ? handleTrialAction() : router.push('/maintenance/add' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: colors.accent }]}>
               <Wrench color={colors.textOnAccent} size={20} />
@@ -252,7 +248,7 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => (!isSubscribed && (isTrial || isDemoMode)) ? handleTrialAction() : router.push('/workorders' as any)}
+            onPress={() => router.push('/workorders' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: '#3B82F6' }]}>
               <FileText color="#FFFFFF" size={20} />
@@ -439,7 +435,7 @@ export default function DashboardScreen() {
             <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
               Add your first piece of equipment to start tracking maintenance
             </Text>
-            {!isSubscribed && (isTrial || isDemoMode) && (
+            {!isSubscribed && isDemoMode && (
               <Text style={[styles.emptySubtitle, { color: colors.primary, marginTop: 12, fontWeight: '500' as const }]}>
                 Subscribe to start adding equipment
               </Text>
