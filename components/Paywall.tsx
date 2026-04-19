@@ -409,20 +409,35 @@ export default function Paywall({ onDismiss }: PaywallProps) {
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.trialBtn, isStartingTrial && styles.trialBtnDisabled]}
-            onPress={handleStartTrial}
-            disabled={isStartingTrial}
-            activeOpacity={0.7}
-            testID="paywall-trial"
-          >
-            {isStartingTrial ? (
-              <ActivityIndicator size="small" color="rgba(255,255,255,0.6)" />
-            ) : (
-              <Eye size={14} color="rgba(255,255,255,0.6)" />
-            )}
-            <Text style={styles.trialText}>Try Demo</Text>
-          </TouchableOpacity>
+          <View style={styles.demoSection}>
+            <Text style={styles.demoSectionTitle}>Preview the app</Text>
+            <Text style={styles.demoSectionBody}>
+              Walk through the real screens with sample equipment, maintenance history, inventory, and work
+              orders—so you can see how FarmGuard fits your operation.
+            </Text>
+            <Text style={styles.demoSectionNote}>
+              Preview is read-only: you cannot add or edit equipment, log service, import data, or save
+              changes until you subscribe.
+            </Text>
+            <TouchableOpacity
+              style={[styles.demoCtaButton, isStartingTrial && styles.demoCtaButtonDisabled]}
+              onPress={handleStartTrial}
+              disabled={isStartingTrial}
+              activeOpacity={0.85}
+              testID="paywall-trial"
+              accessibilityRole="button"
+              accessibilityLabel="Try demo preview of the app"
+            >
+              {isStartingTrial ? (
+                <ActivityIndicator size="small" color="#1A2E10" />
+              ) : (
+                <>
+                  <Eye size={22} color="#1A2E10" strokeWidth={2} />
+                  <Text style={styles.demoCtaText}>Try Demo</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
 
@@ -735,20 +750,58 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.5)',
   },
-  trialBtn: {
+  demoSection: {
+    width: '100%',
+    marginTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 222, 0, 0.25)',
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  demoSectionTitle: {
+    fontSize: 17,
+    fontWeight: '800' as const,
+    color: '#FFDE00',
+    textAlign: 'center' as const,
+    marginBottom: 10,
+    letterSpacing: 0.3,
+  },
+  demoSectionBody: {
+    fontSize: 14,
+    lineHeight: 21,
+    color: 'rgba(255,255,255,0.72)',
+    textAlign: 'center' as const,
+    marginBottom: 10,
+  },
+  demoSectionNote: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: 'rgba(255,255,255,0.5)',
+    textAlign: 'center' as const,
+    marginBottom: 16,
+    fontStyle: 'italic' as const,
+  },
+  demoCtaButton: {
     flexDirection: 'row' as const,
     alignItems: 'center' as const,
-    gap: 6,
-    paddingVertical: 10,
-    marginTop: 4,
+    justifyContent: 'center' as const,
+    gap: 10,
+    width: '100%',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    backgroundColor: '#FFDE00',
   },
-  trialBtnDisabled: {
-    opacity: 0.55,
+  demoCtaButtonDisabled: {
+    opacity: 0.65,
   },
-  trialText: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.6)',
-    textDecorationLine: 'underline' as const,
+  demoCtaText: {
+    fontSize: 18,
+    fontWeight: '800' as const,
+    color: '#1A2E10',
+    letterSpacing: 0.4,
   },
   pinOverlay: {
     flex: 1,

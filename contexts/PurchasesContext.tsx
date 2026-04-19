@@ -5,7 +5,6 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Purchases, { CustomerInfo, PurchasesOfferings } from 'react-native-purchases';
 import { trpcClient } from '@/lib/trpc';
-import { useFarmData } from '@/contexts/FarmDataContext';
 
 const GRANDFATHER_IOS_MAX_BUILD = '1';
 const GRANDFATHER_ANDROID_MAX_VERSION_CODE = '15';
@@ -32,7 +31,6 @@ Purchases.configure({ apiKey: rcApiKey });
 
 export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   const queryClient = useQueryClient();
-  const { isDemoMode } = useFarmData();
 
   const customerInfoQuery = useQuery<CustomerInfo>({
     queryKey: ['purchases', 'customerInfo'],
@@ -145,8 +143,10 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
 
   const isSubscribed = hasActiveEntitlement || isGrandfathered || adminOverride;
 
+  // Unsubscribed users need packages for Paywall / PaywallModal (including read-only demo).
+  // Subscribers skip this fetch via !isSubscribed.
   const shouldFetchOfferings =
-    customerInfoQuery.isSuccess && !isSubscribed && !isTrial && !isDemoMode;
+    customerInfoQuery.isSuccess && !isSubscribed && !isTrial;
 
   const offeringsQuery = useQuery<PurchasesOfferings>({
     queryKey: ['purchases', 'offerings'],
