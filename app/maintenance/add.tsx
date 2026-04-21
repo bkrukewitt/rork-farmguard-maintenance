@@ -11,6 +11,7 @@ import {
   InteractionManager,
   Modal,
   Pressable,
+  KeyboardAvoidingView,
 } from 'react-native';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -899,6 +900,10 @@ export default function AddMaintenanceScreen() {
           setPendingAttachment(null);
         }}
       >
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <Pressable
           style={styles.modalOverlay}
           onPress={() => {
@@ -947,6 +952,7 @@ export default function AddMaintenanceScreen() {
             </View>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -955,11 +961,20 @@ export default function AddMaintenanceScreen() {
         animationType="fade"
         onRequestClose={() => setShowAddConsumableModal(false)}
       >
+        <KeyboardAvoidingView
+          style={styles.flex}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <Pressable
           style={styles.modalOverlay}
           onPress={() => setShowAddConsumableModal(false)}
         >
           <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.modalScrollContent}
+            >
             <Text style={styles.modalTitle}>Add New Part</Text>
             <Text style={styles.modalSubtitle}>
               {selectedEquipment ? `Will be linked to ${selectedEquipment.name}` : 'Select equipment first to link'}
@@ -1043,8 +1058,10 @@ export default function AddMaintenanceScreen() {
                 <Text style={styles.modalSaveText}>Add Part</Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </KeyboardAwareScrollView>
   );
@@ -1517,6 +1534,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    padding: 24,
+  },
+  flex: {
+    flex: 1,
+  },
+  modalScrollContent: {
     padding: 24,
   },
   modalContent: {

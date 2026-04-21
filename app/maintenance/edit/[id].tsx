@@ -11,6 +11,7 @@ import {
   InteractionManager,
   Modal,
   Pressable,
+  KeyboardAvoidingView,
 } from 'react-native';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
@@ -526,6 +527,10 @@ export default function EditMaintenanceScreen() {
             setPendingAttachment(null);
           }}
         >
+          <KeyboardAvoidingView
+            style={styles.flexOne}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
           <Pressable
             style={styles.modalOverlay}
             onPress={() => {
@@ -574,6 +579,7 @@ export default function EditMaintenanceScreen() {
               </View>
             </Pressable>
           </Pressable>
+          </KeyboardAvoidingView>
         </Modal>
       </KeyboardAwareScrollView>
     </>
@@ -823,6 +829,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 4,
+  },
+  flexOne: {
+    flex: 1,
   },
   modalOverlay: {
     flex: 1,

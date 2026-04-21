@@ -10,6 +10,12 @@ import {
   ViewStyle,
   TextInput,
   EmitterSubscription,
+  Dimensions,
+  KeyboardEvent,
+  View,
+  LayoutChangeEvent,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 
 interface KeyboardAwareScrollViewProps {
@@ -29,14 +35,18 @@ export default function KeyboardAwareScrollView({
   style,
   contentContainerStyle,
   scrollViewStyle,
-  keyboardVerticalOffset = Platform.OS === 'ios' ? 100 : 30,
+  keyboardVerticalOffset,
   showsVerticalScrollIndicator = false,
   stickyFooter,
-  extraScrollHeight = 120,
+  extraScrollHeight = 24,
   dismissOnPress = true,
 }: KeyboardAwareScrollViewProps) {
   const scrollViewRef = useRef<ScrollView>(null);
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState<number>(0);
+  const [footerHeight, setFooterHeight] = useState<number>(0);
+  const keyboardHeightRef = useRef<number>(0);
+  const footerHeightRef = useRef<number>(0);
+  const currentScrollY = useRef<number>(0);
 
   const dismissKeyboard = useCallback(() => {
     if (dismissOnPress) {
@@ -45,25 +55,32 @@ export default function KeyboardAwareScrollView({
   }, [dismissOnPress]);
 
   const scrollToFocusedInput = useCallback(() => {
+    if (Platform.OS === 'web') return;
     setTimeout(() => {
       const currentlyFocused = TextInput.State.currentlyFocusedInput?.();
-      if (!currentlyFocused || !scrollViewRef.current) return;
+      const scrollNode = scrollViewRef.current;
+      if (!currentlyFocused || !scrollNode) return;
 
-      if (typeof currentlyFocused.measureLayout === 'function') {
-        currentlyFocused.measureLayout(
-          scrollViewRef.current as any,
-          (_x: number, y: number, _w: number, h: number) => {
-            scrollViewRef.current?.scrollTo({
-              y: Math.max(0, y - extraScrollHeight + h),
-              animated: true,
-            });
-          },
-          () => {
-            console.log('KeyboardAwareScrollView: measureLayout failed');
-          }
-        );
-      }
-    }, 50);
+      if (typeof currentlyFocused.measureInWindow !== 'function') return;
+
+      currentlyFocused.measureInWindow((_x: number, y: number, _w: number, h: number) => {
+        if (typeof y !== 'number' || typeof h !== 'number') return;
+        const screenHeight = Dimensions.get('window').height;
+        const kbHeight = keyboardHeightRef.current;
+        const footerH = footerHeightRef.current;
+        const keyboardTop = kbHeight > 0 ? screenHeight - kbHeight : screenHeight;
+        const inputBottom = y + h;
+        const safeBottom = keyboardTop - (kbHeight > 0 ? 0 : footerH) - extraScrollHeight;
+
+        if (inputBottom > safeBottom) {
+          const delta = inputBottom - safeBottom;
+          scrollNode.scrollTo({
+            y: Math.max(0, currentScrollY.current + delta),
+            animated: true,
+          });
+        }
+      });
+    }, Platform.OS === 'ios' ? 50 : 200);
   }, [extraScrollHeight]);
 
   useEffect(() => {
@@ -71,30 +88,51 @@ export default function KeyboardAwareScrollView({
 
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const changeEvent = Platform.OS === 'ios' ? 'keyboardWillChangeFrame' : 'keyboardDidChangeFrame';
 
-    subs.push(
-      Keyboard.addListener(showEvent, () => {
-        setKeyboardVisible(true);
-        scrollToFocusedInput();
-      })
-    );
+    const onShow = (e: KeyboardEvent) => {
+      const h = e?.endCoordinates?.height ?? 0;
+      setKeyboardHeight(h);
+      keyboardHeightRef.current = h;
+      scrollToFocusedInput();
+    };
 
-    subs.push(
-      Keyboard.addListener(hideEvent, () => {
-        setKeyboardVisible(false);
-      })
-    );
+    const onHide = () => {
+      setKeyboardHeight(0);
+      keyboardHeightRef.current = 0;
+    };
+
+    subs.push(Keyboard.addListener(showEvent, onShow));
+    subs.push(Keyboard.addListener(hideEvent, onHide));
+    subs.push(Keyboard.addListener(changeEvent, onShow));
 
     return () => {
       subs.forEach(s => s.remove());
     };
   }, [scrollToFocusedInput]);
 
+  const onFooterLayout = useCallback((e: LayoutChangeEvent) => {
+    const h = e.nativeEvent.layout.height;
+    setFooterHeight(h);
+    footerHeightRef.current = h;
+  }, []);
+
+  const onScroll = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    currentScrollY.current = e.nativeEvent.contentOffset.y;
+  }, []);
+
+  const keyboardVisible = keyboardHeight > 0;
+  const bottomPadding = keyboardVisible
+    ? keyboardHeight + extraScrollHeight + 80
+    : footerHeight + 20;
+
+  const verticalOffset = keyboardVerticalOffset ?? 0;
+
   return (
     <KeyboardAvoidingView
       style={[styles.flex, style]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={keyboardVerticalOffset}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={verticalOffset}
     >
       <Pressable style={styles.flex} onPress={dismissKeyboard}>
         <ScrollView
@@ -102,17 +140,20 @@ export default function KeyboardAwareScrollView({
           style={[styles.flex, scrollViewStyle]}
           contentContainerStyle={[
             contentContainerStyle,
-            keyboardVisible && { paddingBottom: extraScrollHeight + 100 },
+            { paddingBottom: bottomPadding },
           ]}
           showsVerticalScrollIndicator={showsVerticalScrollIndicator}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          onScrollBeginDrag={() => {}}
+          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+          scrollEventThrottle={16}
+          onScroll={onScroll}
         >
           {children}
         </ScrollView>
       </Pressable>
-      {stickyFooter}
+      {stickyFooter ? (
+        <View onLayout={onFooterLayout}>{stickyFooter}</View>
+      ) : null}
     </KeyboardAvoidingView>
   );
 }

@@ -13,6 +13,7 @@ import {
   TextInput,
   Platform,
   InteractionManager,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
@@ -721,6 +722,10 @@ export default function EquipmentDetailScreen() {
           setPendingFile(null);
         }}
       >
+        <KeyboardAvoidingView
+          style={styles.flexOne}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <Pressable
           style={styles.modalOverlay}
           onPress={() => {
@@ -773,6 +778,7 @@ export default function EquipmentDetailScreen() {
             </View>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </>
   );
@@ -1112,6 +1118,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 4,
+  },
+  flexOne: {
+    flex: 1,
   },
   modalOverlay: {
     flex: 1,

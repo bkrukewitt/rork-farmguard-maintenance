@@ -9,6 +9,8 @@ import {
   Modal,
   Pressable,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -372,6 +374,10 @@ export default function AddFuelLogScreen() {
         animationType="fade"
         onRequestClose={() => setShowAddCustomFuelModal(false)}
       >
+        <KeyboardAvoidingView
+          style={styles.flexOne}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
         <Pressable style={styles.modalOverlayCentered} onPress={() => setShowAddCustomFuelModal(false)}>
           <Pressable style={styles.modalContentCentered} onPress={e => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Add Custom Fuel Type</Text>
@@ -400,6 +406,7 @@ export default function AddFuelLogScreen() {
             </View>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
     </KeyboardAwareScrollView>
   );
@@ -626,6 +633,9 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.textSecondary,
     paddingVertical: 30,
+  },
+  flexOne: {
+    flex: 1,
   },
   modalOverlayCentered: {
     flex: 1,
