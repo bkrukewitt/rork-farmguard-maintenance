@@ -12,5 +12,10 @@ export const PRIVACY_POLICY_URL =
 export const TERMS_OF_USE_URL =
   process.env.EXPO_PUBLIC_TERMS_OF_USE_URL?.trim() || DEFAULT_TERMS_OF_USE_URL;
 
+/** Bug reports / feature requests (Google Form). Override with EXPO_PUBLIC_SUPPORT_FEEDBACK_FORM_URL in EAS if needed. */
+export const SUPPORT_FEEDBACK_FORM_URL =
+  process.env.EXPO_PUBLIC_SUPPORT_FEEDBACK_FORM_URL?.trim() ||
+  'https://docs.google.com/forms/d/e/1FAIpQLSdZPkDxVaBrATWQINyQk-D7I37xknqV7-0wPPXXWk0WeADCGQ/viewform?usp=dialog';
+
 /** Display name for subscription disclosure (align with App Store / RevenueCat entitlement copy). */
 export const SUBSCRIPTION_DISPLAY_NAME = 'FarmGuard Maintenance Pro';

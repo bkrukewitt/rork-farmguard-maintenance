@@ -45,7 +45,6 @@ import {
   Zap,
   AlertTriangle,
   MessageSquare,
-  Send,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
@@ -65,7 +64,7 @@ import { User } from 'lucide-react-native';
 import ExportRecordsModal from '@/components/ExportRecordsModal';
 import PaywallModal from '@/components/PaywallModal';
 import { useSubscription } from '@/hooks/useSubscription';
-import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL } from '@/constants/legalUrls';
+import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL, SUPPORT_FEEDBACK_FORM_URL } from '@/constants/legalUrls';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -176,10 +175,6 @@ export default function SettingsScreen() {
   const [joinPasswordSetError, setJoinPasswordSetError] = useState('');
   const [showLinkEmployeeModal, setShowLinkEmployeeModal] = useState(false);
   const [linkingMemberDeviceId, setLinkingMemberDeviceId] = useState<string>('');
-  const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  const [feedbackCategory, setFeedbackCategory] = useState<'bug' | 'feature' | 'question' | 'other'>('bug');
-  const [feedbackSubject, setFeedbackSubject] = useState('');
-  const [feedbackMessage, setFeedbackMessage] = useState('');
   const [isExportingFuel, setIsExportingFuel] = useState(false);
   const [showFuelExportModal, setShowFuelExportModal] = useState(false);
   const [fuelExportEquipmentId, setFuelExportEquipmentId] = useState<string>('all');
@@ -952,58 +947,14 @@ export default function SettingsScreen() {
     }
   };
 
-  const feedbackCategories: { key: 'bug' | 'feature' | 'question' | 'other'; label: string }[] = [
-    { key: 'bug', label: 'Bug Report' },
-    { key: 'feature', label: 'Feature Request' },
-    { key: 'question', label: 'Question' },
-    { key: 'other', label: 'Other' },
-  ];
-
-  const SUPPORT_EMAIL = 'farmguardmaintain@gmail.com';
-
-  const handleSendFeedback = async () => {
-    if (!feedbackMessage.trim()) return;
-    const appVersion = Constants.expoConfig?.version ?? '1.0.0';
-    const categoryLabel = feedbackCategories.find(c => c.key === feedbackCategory)?.label ?? feedbackCategory;
-    const subject = feedbackSubject.trim()
-      ? `[FarmGuard ${categoryLabel}] ${feedbackSubject.trim()}`
-      : `[FarmGuard ${categoryLabel}]`;
-    const body = [
-      feedbackMessage.trim(),
-      '',
-      '---',
-      `Category: ${categoryLabel}`,
-      `App Version: ${appVersion}`,
-      `Platform: ${Platform.OS}`,
-      farmId ? `Farm ID: ${farmId}` : '',
-      deviceId ? `Device ID: ${deviceId.slice(0, 12)}` : '',
-    ].filter(Boolean).join('\n');
-
-    const mailtoUrl = `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  const handleOpenFeedbackForm = useCallback(async () => {
     try {
-      const supported = await Linking.canOpenURL(mailtoUrl);
-      if (supported) {
-        await Linking.openURL(mailtoUrl);
-        setShowFeedbackModal(false);
-        setFeedbackSubject('');
-        setFeedbackMessage('');
-        setFeedbackCategory('bug');
-      } else {
-        Alert.alert(
-          'No Email App Found',
-          `No email app is configured on this device. Please email us directly at ${SUPPORT_EMAIL}`,
-          [{ text: 'OK' }]
-        );
-      }
+      await Linking.openURL(SUPPORT_FEEDBACK_FORM_URL);
     } catch (error) {
-      console.error('[Settings] Error opening email client:', error);
-      Alert.alert(
-        'Could Not Open Email',
-        `Please email your feedback directly to ${SUPPORT_EMAIL}`,
-        [{ text: 'OK' }]
-      );
+      console.error('[Settings] Error opening feedback form:', error);
+      Alert.alert('Error', 'Could not open the feedback form.');
     }
-  };
+  }, []);
 
   const handleManualSync = async () => {
     try {
@@ -1745,12 +1696,7 @@ export default function SettingsScreen() {
         
         <TouchableOpacity
           style={[styles.settingRow, { backgroundColor: colors.surface }]}
-          onPress={() => {
-            setFeedbackSubject('');
-            setFeedbackMessage('');
-            setFeedbackCategory('bug');
-            setShowFeedbackModal(true);
-          }}
+          onPress={handleOpenFeedbackForm}
         >
           <View style={styles.settingLeft}>
             <View style={[styles.settingIcon, { backgroundColor: '#3B82F6' + '15' }]}>
@@ -1758,7 +1704,9 @@ export default function SettingsScreen() {
             </View>
             <View>
               <Text style={[styles.settingLabel, { color: colors.text }]}>Send Feedback</Text>
-              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Report bugs, request features, or ask questions</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                Opens our feedback form in your browser
+              </Text>
             </View>
           </View>
           <ChevronRight color={colors.textSecondary} size={20} />
@@ -2866,88 +2814,6 @@ export default function SettingsScreen() {
                 })}
               </ScrollView>
             )}
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <Modal
-        visible={showFeedbackModal}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setShowFeedbackModal(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
-          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowFeedbackModal(false); }} />
-          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.text }]}>Send Feedback</Text>
-              <TouchableOpacity onPress={() => setShowFeedbackModal(false)}>
-                <X color={colors.textSecondary} size={24} />
-              </TouchableOpacity>
-            </View>
-
-            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
-              Choose a category and describe your feedback. Tapping {'"'}Send{'"'} will open your email app.
-            </Text>
-
-            <View style={styles.feedbackCategoryRow}>
-              {feedbackCategories.map((cat) => (
-                <TouchableOpacity
-                  key={cat.key}
-                  style={[
-                    styles.feedbackCategoryChip,
-                    { borderColor: colors.border },
-                    feedbackCategory === cat.key && { backgroundColor: colors.primary, borderColor: colors.primary },
-                  ]}
-                  onPress={() => setFeedbackCategory(cat.key)}
-                >
-                  <Text
-                    style={[
-                      styles.feedbackCategoryChipText,
-                      { color: colors.text },
-                      feedbackCategory === cat.key && { color: '#fff' },
-                    ]}
-                  >
-                    {cat.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <TextInput
-                style={[styles.joinInputText, { color: colors.text }]}
-                placeholder="Subject (optional)"
-                placeholderTextColor={colors.textSecondary}
-                value={feedbackSubject}
-                onChangeText={setFeedbackSubject}
-                maxLength={120}
-              />
-            </View>
-
-            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, minHeight: 120, paddingTop: 14 }]}>
-              <TextInput
-                style={[styles.joinInputText, { color: colors.text, minHeight: 100, textAlignVertical: 'top' }]}
-                placeholder="Describe your feedback..."
-                placeholderTextColor={colors.textSecondary}
-                value={feedbackMessage}
-                onChangeText={setFeedbackMessage}
-                multiline
-                maxLength={2000}
-              />
-            </View>
-
-            <TouchableOpacity
-              style={[styles.joinButton, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 8, opacity: !feedbackMessage.trim() ? 0.5 : 1 }]}
-              onPress={handleSendFeedback}
-              disabled={!feedbackMessage.trim()}
-            >
-              <Send color="#fff" size={18} />
-              <Text style={styles.joinButtonText}>Open Email App</Text>
-            </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
       </Modal>

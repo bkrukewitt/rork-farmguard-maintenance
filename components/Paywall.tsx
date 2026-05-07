@@ -12,14 +12,15 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Shield, Check, Tractor, Wrench, Package, ClipboardList, Star, RefreshCw, X, Eye } from 'lucide-react-native';
+import { Shield, Check, Tractor, Wrench, Package, ClipboardList, Star, RefreshCw, X, Eye, MessageSquare } from 'lucide-react-native';
 import { PurchasesPackage } from 'react-native-purchases';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import { useFarmData } from '@/contexts/FarmDataContext';
-import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL, SUBSCRIPTION_DISPLAY_NAME } from '@/constants/legalUrls';
+import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL, SUBSCRIPTION_DISPLAY_NAME, SUPPORT_FEEDBACK_FORM_URL } from '@/constants/legalUrls';
 
 const ADMIN_PIN = '7743';
 const REQUIRED_TAPS = 7;
@@ -186,6 +187,14 @@ export default function Paywall({ onDismiss }: PaywallProps) {
       await WebBrowser.openBrowserAsync(trimmed);
     } catch {
       Alert.alert('Error', 'Could not open the link.');
+    }
+  }, []);
+
+  const openSupportForm = useCallback(async () => {
+    try {
+      await Linking.openURL(SUPPORT_FEEDBACK_FORM_URL);
+    } catch {
+      Alert.alert('Error', 'Could not open the support form.');
     }
   }, []);
 
@@ -436,6 +445,20 @@ export default function Paywall({ onDismiss }: PaywallProps) {
                   <Text style={styles.demoCtaText}>Try Demo</Text>
                 </>
               )}
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.supportFormButtonWrap}>
+            <TouchableOpacity
+              style={styles.demoCtaButton}
+              onPress={openSupportForm}
+              activeOpacity={0.85}
+              testID="paywall-contact-support"
+              accessibilityRole="button"
+              accessibilityLabel="Contact support — opens feedback form in browser"
+            >
+              <MessageSquare size={22} color="#1A2E10" strokeWidth={2} />
+              <Text style={styles.demoCtaText}>Contact Support</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -802,6 +825,11 @@ const styles = StyleSheet.create({
     fontWeight: '800' as const,
     color: '#1A2E10',
     letterSpacing: 0.4,
+  },
+  supportFormButtonWrap: {
+    width: '100%',
+    marginTop: 14,
+    paddingHorizontal: 0,
   },
   pinOverlay: {
     flex: 1,
