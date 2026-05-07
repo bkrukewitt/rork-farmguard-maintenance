@@ -1204,6 +1204,12 @@ export default function SettingsScreen() {
     }
   };
 
+  const planSummary = grandfathered ? 'Legacy Pro' : isProUser ? 'Pro' : 'Free';
+  const syncSummary = farmId
+    ? (lastSyncTime ? `Last sync ${new Date(lastSyncTime).toLocaleDateString()}` : 'Not synced yet')
+    : 'Not configured';
+  const farmSummary = farmName || farmId || 'No farm configured';
+
   return (
     <ScrollView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -1236,7 +1242,40 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Cloud Sync</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Quick Status</Text>
+        <View style={styles.quickStatusGrid}>
+          <View style={[styles.quickStatusCard, { backgroundColor: colors.surface }]}>
+            <View style={[styles.settingIcon, { backgroundColor: colors.primary + '15' }]}>
+              <Zap color={colors.primary} size={18} />
+            </View>
+            <Text style={[styles.quickStatusLabel, { color: colors.textSecondary }]}>Plan</Text>
+            <Text style={[styles.quickStatusValue, { color: colors.text }]} numberOfLines={1}>
+              {planSummary}
+            </Text>
+          </View>
+          <View style={[styles.quickStatusCard, { backgroundColor: colors.surface }]}>
+            <View style={[styles.settingIcon, { backgroundColor: colors.secondary + '15' }]}>
+              <RefreshCw color={colors.secondary} size={18} />
+            </View>
+            <Text style={[styles.quickStatusLabel, { color: colors.textSecondary }]}>Sync</Text>
+            <Text style={[styles.quickStatusValue, { color: colors.text }]} numberOfLines={1}>
+              {syncSummary}
+            </Text>
+          </View>
+          <View style={[styles.quickStatusCard, { backgroundColor: colors.surface }]}>
+            <View style={[styles.settingIcon, { backgroundColor: colors.accent + '15' }]}>
+              <Cloud color={colors.accent} size={18} />
+            </View>
+            <Text style={[styles.quickStatusLabel, { color: colors.textSecondary }]}>Farm</Text>
+            <Text style={[styles.quickStatusValue, { color: colors.text }]} numberOfLines={1}>
+              {farmSummary}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Account & Farm</Text>
         
         <View style={[styles.syncCard, { backgroundColor: colors.surface }]}>
           <View style={styles.syncHeader}>
@@ -1487,7 +1526,7 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Service</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Maintenance Templates</Text>
         
         <TouchableOpacity 
           style={[styles.settingRow, { backgroundColor: colors.surface }]} 
@@ -1548,7 +1587,7 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Data Management</Text>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Data & Reports</Text>
         
         <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={() => setShowExportModal(true)}>
           <View style={styles.settingLeft}>
@@ -1626,20 +1665,6 @@ export default function SettingsScreen() {
           )}
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={handleClearData}>
-          <View style={styles.settingLeft}>
-            <View style={[styles.settingIcon, { backgroundColor: colors.statusOverdue + '15' }]}>
-              <Trash2 color={colors.statusOverdue} size={20} />
-            </View>
-            <View>
-              <Text style={[styles.settingLabel, { color: colors.statusOverdue }]}>
-                Clear All Data
-              </Text>
-              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>Delete all equipment and logs</Text>
-            </View>
-          </View>
-          <ChevronRight color={colors.textSecondary} size={20} />
-        </TouchableOpacity>
       </View>
 
       <View style={styles.section}>
@@ -1808,6 +1833,24 @@ export default function SettingsScreen() {
               <Text style={[styles.settingLabel, { color: colors.text }]}>Terms of Use</Text>
               <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
                 View terms of use in your browser
+              </Text>
+            </View>
+          </View>
+          <ChevronRight color={colors.textSecondary} size={20} />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.statusOverdue }]}>Danger Zone</Text>
+        <TouchableOpacity style={[styles.settingRow, { backgroundColor: colors.surface }]} onPress={handleClearData}>
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: colors.statusOverdue + '15' }]}>
+              <Trash2 color={colors.statusOverdue} size={20} />
+            </View>
+            <View>
+              <Text style={[styles.settingLabel, { color: colors.statusOverdue }]}>Clear All Data</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                Delete all equipment and logs on this device
               </Text>
             </View>
           </View>
@@ -3525,6 +3568,25 @@ const styles = StyleSheet.create({
   versionText: {
     fontSize: 12,
     fontWeight: '400' as const,
+  },
+  quickStatusGrid: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  quickStatusCard: {
+    flex: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
+  quickStatusLabel: {
+    fontSize: 12,
+    fontWeight: '500' as const,
+    marginTop: 8,
+  },
+  quickStatusValue: {
+    fontSize: 14,
+    fontWeight: '700' as const,
+    marginTop: 2,
   },
   feedbackCategoryRow: {
     flexDirection: 'row',
