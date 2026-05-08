@@ -81,6 +81,7 @@ interface FarmDataPayload {
   customFuelTypes: CustomFuelType[];
   deletedIds?: string[];
   joinPassword?: string | null;
+  recoveryEmail?: string | null;
 }
 
 export interface DuplicateItem {
@@ -216,6 +217,7 @@ async function fetchRemoteData(farmId: string): Promise<FarmDataPayload | null> 
       customFuelTypes: (rd.customFuelTypes as CustomFuelType[]) || [],
       deletedIds: (rd.deletedIds as string[]) || [],
       joinPassword: (rd._joinPassword as string) || null,
+      recoveryEmail: (rd._recoveryEmail as string) || null,
     };
   } catch (error) {
     console.error('Error fetching remote farm data:', JSON.stringify(error));
@@ -232,6 +234,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [farmName, setFarmName] = useState<string | null>(null);
   const [joinPassword, setJoinPassword] = useState<string | null>(null);
+  const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
   const deletedIdsRef = useRef<string[]>([]);
   const skipAutoMergeRef = useRef(false);
@@ -452,6 +455,16 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     refetchOnMount: true,
     refetchOnReconnect: true,
   });
+
+  useEffect(() => {
+    if (remoteDataQuery.data) {
+      setRecoveryEmail(remoteDataQuery.data.recoveryEmail ?? null);
+      return;
+    }
+    if (!farmId) {
+      setRecoveryEmail(null);
+    }
+  }, [remoteDataQuery.data, farmId]);
 
   const equipmentQuery = useQuery({
     queryKey: ['equipment'],
@@ -819,6 +832,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
             customFuelTypes: finalCustomFuelTypes,
             deletedIds: finalDeletedIds,
             _joinPassword: joinPassword || null,
+            _recoveryEmail: recoveryEmail || null,
           },
           updated_at: new Date().toISOString(),
         });
@@ -847,7 +861,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     } finally {
       setIsSyncing(false);
     }
-  }, [farmId, mergeArraysSmart, mergeDeletedIds, queryClient, joinPassword]);
+  }, [farmId, mergeArraysSmart, mergeDeletedIds, queryClient, joinPassword, recoveryEmail]);
 
   const addEquipmentMutation = useMutation({
     mutationFn: async (newEquipment: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -1868,6 +1882,47 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
   });
 
+  const setRecoveryEmailMutation = useMutation({
+    mutationFn: async (email: string) => {
+      if (!isAdmin) throw new Error('Only the farm admin can set a recovery email.');
+      if (!farmId) throw new Error('No Farm ID configured.');
+
+      const normalized = email.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(normalized)) {
+        throw new Error('Please enter a valid email address.');
+      }
+
+      const { data: existing } = await supabase
+        .from('farm_data')
+        .select('data')
+        .eq('farm_id', farmId)
+        .maybeSingle();
+
+      const existingData = (existing?.data as Record<string, unknown>) || {};
+      const { error } = await supabase.from('farm_data').upsert({
+        farm_id: farmId,
+        data: {
+          ...existingData,
+          _recoveryEmail: normalized,
+        },
+        updated_at: new Date().toISOString(),
+      });
+
+      if (error) {
+        console.error('[Farm] Error setting recovery email:', JSON.stringify(error));
+        throw new Error('Failed to save recovery email.');
+      }
+
+      setRecoveryEmail(normalized);
+      console.log(`[Farm] Recovery email updated for farm ${farmId}`);
+      return normalized;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['remoteData', farmId] });
+    },
+  });
+
   const setLocalFarmPassword = useCallback(async (password: string | null) => {
     const trimmed = password ? password.trim() : null;
     if (trimmed) {
@@ -2229,9 +2284,12 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     enterDemoMode,
     exitDemoMode,
     joinPassword: effectiveJoinPassword,
+    recoveryEmail,
     setFarmPassword: setJoinPasswordMutation.mutateAsync,
+    setRecoveryEmail: setRecoveryEmailMutation.mutateAsync,
     setLocalFarmPassword,
     isSettingFarmPassword: setJoinPasswordMutation.isPending,
+    isSettingRecoveryEmail: setRecoveryEmailMutation.isPending,
     createFarm: createFarmMutation.mutateAsync,
     isCreatingFarm: createFarmMutation.isPending,
     updateFarmId: updateFarmIdMutation.mutateAsync,
@@ -2299,12 +2357,13 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     refreshFarmMembers,
   }), [
     effectiveFarmId, deviceId, setFarmIdAndSync, isSyncing, lastSyncTime, syncToServer,
-    farmMembers, isAdmin, isDemoMode, enterDemoMode, exitDemoMode, effectiveJoinPassword, displayName,
+    farmMembers, isAdmin, isDemoMode, enterDemoMode, exitDemoMode, effectiveJoinPassword, recoveryEmail, displayName,
     removeMemberMutation.mutateAsync, leaveFarmMutation.mutateAsync, leaveFarmMutation.isPending,
     deleteFarmFromServerMutation.mutateAsync, deleteFarmFromServerMutation.isPending,
     forceDeleteEquipmentMutation.mutateAsync, forceDeleteConsumableMutation.mutateAsync,
     purgeAndResyncMutation.mutateAsync, purgeAndResyncMutation.isPending,
     setJoinPasswordMutation.mutateAsync, setJoinPasswordMutation.isPending,
+    setRecoveryEmailMutation.mutateAsync, setRecoveryEmailMutation.isPending,
     setLocalFarmPassword,
     createFarmMutation.mutateAsync, createFarmMutation.isPending,
     updateFarmIdMutation.mutateAsync, updateFarmIdMutation.isPending,

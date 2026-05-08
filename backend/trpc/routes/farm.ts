@@ -2,9 +2,10 @@ import * as z from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, publicProcedure } from "../create-context";
 import { getFarmData, upsertFarmData, getFarmMembers, upsertFarmMember, updateMemberActivity, getValue, setValue } from "../../utils/rork-db";
-import { verifyFarmAccess, getFarmPasswordFromDb } from "../../utils/supabase-server";
+import { verifyFarmAccess, getFarmPasswordFromDb, listPasswordProtectedFarmsFromDb, setFarmPasswordInDb, requestFarmPasswordResetInDb, completeFarmPasswordResetInDb } from "../../utils/supabase-server";
 import { sanitizeObject } from "../../utils/sanitize";
 import { requireSubscription, startTrial, getTrialInfo, verifySubscription } from "../../utils/revenuecat";
+import { checkRateLimit, getClientIdentifier } from "../../utils/rate-limiter";
 
 const EquipmentTypeSchema = z.enum([
   'tractor', 'combine', 'truck', 'implement', 'sprayer', 
@@ -183,6 +184,105 @@ async function requireFarmAccess(farmId: string, farmPassword: string | null | u
   console.log(`[Auth] Access granted for farm: ${farmId}`);
 }
 
+function requireSuperAdminPin(pin: string): void {
+  const configuredPin = process.env.SUPER_ADMIN_PIN || "9173";
+  if (pin !== configuredPin) {
+    throw new TRPCError({
+      code: "UNAUTHORIZED",
+      message: "Invalid super admin PIN.",
+    });
+  }
+}
+
+interface PasswordResetAuditEvent {
+  id: string;
+  type:
+    | "password_reset_requested"
+    | "password_reset_request_rate_limited"
+    | "password_reset_request_missing_recovery_email"
+    | "password_reset_completed"
+    | "password_reset_complete_failed"
+    | "super_admin_generated_reset_code";
+  farmId: string;
+  actor: "user" | "super_admin" | "system";
+  actorId?: string;
+  clientId?: string;
+  at: string;
+  metadata?: Record<string, unknown>;
+}
+
+async function appendPasswordResetAuditEvent(event: Omit<PasswordResetAuditEvent, "id" | "at">): Promise<void> {
+  const auditId = `pra_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const fullEvent: PasswordResetAuditEvent = {
+    id: auditId,
+    at: new Date().toISOString(),
+    ...event,
+  };
+  await setValue(`password_reset_audit:${auditId}`, fullEvent);
+  const indexKey = "password_reset_audit_index";
+  const existing = (await getValue<string[]>(indexKey)) ?? [];
+  existing.push(auditId);
+  // Keep last 1000 events for lightweight audit retention.
+  const trimmed = existing.slice(-1000);
+  await setValue(indexKey, trimmed);
+}
+
+async function fetchRecentPasswordResetAuditEvents(limit: number): Promise<PasswordResetAuditEvent[]> {
+  const indexKey = "password_reset_audit_index";
+  const ids = (await getValue<string[]>(indexKey)) ?? [];
+  const slice = ids.slice(-limit).reverse();
+  const events: PasswordResetAuditEvent[] = [];
+  for (const id of slice) {
+    const ev = await getValue<PasswordResetAuditEvent>(`password_reset_audit:${id}`);
+    if (ev) {
+      events.push(ev);
+    }
+  }
+  return events;
+}
+
+async function sendPasswordResetEmail(toEmail: string, farmId: string, code: string, expiresAt: string): Promise<boolean> {
+  const resendApiKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.RESET_EMAIL_FROM || "FarmGuard <no-reply@farmguard.app>";
+  if (!resendApiKey) {
+    console.warn(`[Auth] RESEND_API_KEY not configured, cannot send password reset email for farm ${farmId}`);
+    return false;
+  }
+
+  try {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: fromEmail,
+        to: [toEmail],
+        subject: `FarmGuard password reset for farm ${farmId}`,
+        text: [
+          `We received a password reset request for farm: ${farmId}.`,
+          "",
+          `Your verification code is: ${code}`,
+          `This code expires at: ${new Date(expiresAt).toLocaleString()}`,
+          "",
+          "If you did not request this, you can ignore this message."
+        ].join("\n"),
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      console.error(`[Auth] Failed to send reset email (${response.status}): ${body}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("[Auth] Error sending reset email:", err);
+    return false;
+  }
+}
+
 async function getOrCreateFarmData(farmId: string): Promise<FarmData> {
   const data = await getFarmData(farmId);
   if (data) {
@@ -233,6 +333,178 @@ export const farmRouter = createTRPCRouter({
       const isValid = storedPassword === input.password;
       console.log(`[Auth] Password verification result for farm ${input.farmId}: ${isValid}`);
       return { valid: isValid, hasPassword: true };
+    }),
+
+  listPasswordProtectedFarms: publicProcedure
+    .input(z.object({
+      superAdminPin: z.string().min(1),
+    }))
+    .query(async ({ input }) => {
+      requireSuperAdminPin(input.superAdminPin);
+      const farms = await listPasswordProtectedFarmsFromDb();
+      return { farms };
+    }),
+
+  forceSetFarmPassword: publicProcedure
+    .input(z.object({
+      superAdminPin: z.string().min(1),
+      farmId: z.string().min(1),
+      newPassword: z.string().min(4),
+    }))
+    .mutation(async ({ input }) => {
+      requireSuperAdminPin(input.superAdminPin);
+      const updated = await setFarmPasswordInDb(input.farmId.trim(), input.newPassword);
+      if (!updated) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to force-update farm password.",
+        });
+      }
+      return { success: true };
+    }),
+
+  listPasswordResetAuditEvents: publicProcedure
+    .input(z.object({
+      superAdminPin: z.string().min(1),
+      limit: z.number().min(1).max(100).optional().default(50),
+    }))
+    .query(async ({ input }) => {
+      requireSuperAdminPin(input.superAdminPin);
+      const events = await fetchRecentPasswordResetAuditEvents(input.limit ?? 50);
+      return { events };
+    }),
+
+  requestFarmPasswordReset: publicProcedure
+    .input(z.object({
+      farmId: z.string().min(1),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const targetFarmId = input.farmId.trim();
+      const clientId = getClientIdentifier(ctx.req);
+      const limit = checkRateLimit(`pwreset:req:${targetFarmId}:${clientId}`, 3, 15 * 60 * 1000);
+      if (!limit.allowed) {
+        await appendPasswordResetAuditEvent({
+          type: "password_reset_request_rate_limited",
+          farmId: targetFarmId,
+          actor: "user",
+          clientId,
+          metadata: { resetAt: new Date(limit.resetAt).toISOString() },
+        });
+        return { success: true, rateLimited: true };
+      }
+
+      const result = await requestFarmPasswordResetInDb(targetFarmId);
+      if (!result) {
+        await appendPasswordResetAuditEvent({
+          type: "password_reset_request_missing_recovery_email",
+          farmId: targetFarmId,
+          actor: "user",
+          clientId,
+        });
+        return { success: true };
+      }
+
+      const emailed = await sendPasswordResetEmail(
+        result.recoveryEmail,
+        targetFarmId,
+        result.code,
+        result.expiresAt,
+      );
+      await appendPasswordResetAuditEvent({
+        type: "password_reset_requested",
+        farmId: targetFarmId,
+        actor: "user",
+        clientId,
+        metadata: {
+          emailed,
+          expiresAt: result.expiresAt,
+          recoveryEmailDomain: result.recoveryEmail.split("@")[1] ?? null,
+        },
+      });
+      return { success: true, emailed };
+    }),
+
+  completeFarmPasswordReset: publicProcedure
+    .input(z.object({
+      farmId: z.string().min(1),
+      code: z.string().min(4),
+      newPassword: z.string().min(4),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const targetFarmId = input.farmId.trim();
+      const clientId = getClientIdentifier(ctx.req);
+      const limit = checkRateLimit(`pwreset:complete:${targetFarmId}:${clientId}`, 10, 15 * 60 * 1000);
+      if (!limit.allowed) {
+        await appendPasswordResetAuditEvent({
+          type: "password_reset_complete_failed",
+          farmId: targetFarmId,
+          actor: "user",
+          clientId,
+          metadata: { reason: "rate_limited", resetAt: new Date(limit.resetAt).toISOString() },
+        });
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Too many reset attempts. Please wait and try again.",
+        });
+      }
+
+      const result = await completeFarmPasswordResetInDb(targetFarmId, input.code, input.newPassword);
+      if (!result.success) {
+        await appendPasswordResetAuditEvent({
+          type: "password_reset_complete_failed",
+          farmId: targetFarmId,
+          actor: "user",
+          clientId,
+          metadata: { reason: result.reason, lockedUntil: result.lockedUntil ?? null },
+        });
+        const message = result.reason === "locked"
+          ? `Too many invalid codes. Reset is temporarily locked${result.lockedUntil ? ` until ${new Date(result.lockedUntil).toLocaleString()}` : ""}.`
+          : "Invalid or expired reset code.";
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message,
+        });
+      }
+      await appendPasswordResetAuditEvent({
+        type: "password_reset_completed",
+        farmId: targetFarmId,
+        actor: "user",
+        clientId,
+      });
+      return { success: true };
+    }),
+
+  superAdminGeneratePasswordResetCode: publicProcedure
+    .input(z.object({
+      superAdminPin: z.string().min(1),
+      farmId: z.string().min(1),
+    }))
+    .mutation(async ({ input }) => {
+      requireSuperAdminPin(input.superAdminPin);
+      const targetFarmId = input.farmId.trim();
+      const result = await requestFarmPasswordResetInDb(targetFarmId);
+      if (!result) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Farm does not have a recovery email configured.",
+        });
+      }
+      await appendPasswordResetAuditEvent({
+        type: "super_admin_generated_reset_code",
+        farmId: targetFarmId,
+        actor: "super_admin",
+        metadata: {
+          recoveryEmailDomain: result.recoveryEmail.split("@")[1] ?? null,
+          expiresAt: result.expiresAt,
+        },
+      });
+      return {
+        success: true,
+        farmId: targetFarmId,
+        code: result.code,
+        expiresAt: result.expiresAt,
+        recoveryEmail: result.recoveryEmail,
+      };
     }),
 
   getData: publicProcedure

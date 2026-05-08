@@ -9,6 +9,7 @@ import { PurchasesProvider } from "@/contexts/PurchasesContext";
 import { trpc, trpcClient } from "@/lib/trpc";
 import VersionGate from "@/components/VersionGate";
 import SubscriptionGate from "@/components/SubscriptionGate";
+import RecoveryEmailGate from "@/components/RecoveryEmailGate";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -129,6 +130,7 @@ export default function RootLayout() {
                 <VersionGate>
                   <SubscriptionGate>
                     <RootLayoutNav />
+                    <RecoveryEmailGate />
                   </SubscriptionGate>
                 </VersionGate>
               </PurchasesProvider>

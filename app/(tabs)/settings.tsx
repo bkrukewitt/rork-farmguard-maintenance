@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -163,9 +163,25 @@ export default function SettingsScreen() {
   const [isFetchingAdminMembers, setIsFetchingAdminMembers] = useState<boolean>(false);
   const [adminMembersError, setAdminMembersError] = useState<string>('');
   const [isUpdatingAdminMember, setIsUpdatingAdminMember] = useState<string | null>(null);
+  const [superAdminFarmIdForPassword, setSuperAdminFarmIdForPassword] = useState<string>('');
+  const [superAdminNewPassword, setSuperAdminNewPassword] = useState<string>('');
+  const [superAdminNewPasswordConfirm, setSuperAdminNewPasswordConfirm] = useState<string>('');
+  const [passwordAdminError, setPasswordAdminError] = useState<string>('');
   const [joinStep, setJoinStep] = useState<'farm_id' | 'password'>('farm_id');
   const [joinPasswordInput, setJoinPasswordInput] = useState('');
   const [joinPasswordError, setJoinPasswordError] = useState('');
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [forgotResetCode, setForgotResetCode] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotError, setForgotError] = useState('');
+  const [superAdminResetFarmId, setSuperAdminResetFarmId] = useState('');
+  const [superAdminResetCode, setSuperAdminResetCode] = useState('');
+  const [superAdminResetExpiresAt, setSuperAdminResetExpiresAt] = useState('');
+  const [superAdminResetError, setSuperAdminResetError] = useState('');
+  type SuperAdminTab = 'danger' | 'members' | 'password' | 'recovery' | 'debug';
+  const [superAdminTab, setSuperAdminTab] = useState<SuperAdminTab>('danger');
+  const [auditFarmFilter, setAuditFarmFilter] = useState('');
 
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
   const [showLeaveFarmModal, setShowLeaveFarmModal] = useState(false);
@@ -193,6 +209,61 @@ export default function SettingsScreen() {
 
   const SUPER_ADMIN_PIN = '9173';
   const DEBUG_PIN = '1847';
+  const effectiveSuperAdminPin = process.env.EXPO_PUBLIC_SUPER_ADMIN_PIN || SUPER_ADMIN_PIN;
+
+  const passwordProtectedFarmsQuery = trpc.farm.listPasswordProtectedFarms.useQuery(
+    { superAdminPin: effectiveSuperAdminPin },
+    { enabled: isSuperAdmin }
+  );
+
+  const passwordResetAuditQuery = trpc.farm.listPasswordResetAuditEvents.useQuery(
+    { superAdminPin: effectiveSuperAdminPin, limit: 50 },
+    { enabled: isSuperAdmin }
+  );
+  const refetchPasswordAudit = passwordResetAuditQuery.refetch;
+
+  const filteredAuditEvents = useMemo(() => {
+    const list = passwordResetAuditQuery.data?.events ?? [];
+    const q = auditFarmFilter.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((ev) => ev.farmId.toLowerCase().includes(q));
+  }, [passwordResetAuditQuery.data?.events, auditFarmFilter]);
+
+  useEffect(() => {
+    if (!isSuperAdmin || superAdminTab !== 'recovery') return;
+    void refetchPasswordAudit();
+  }, [isSuperAdmin, superAdminTab, refetchPasswordAudit]);
+
+  const forceSetFarmPasswordMutation = trpc.farm.forceSetFarmPassword.useMutation({
+    onSuccess: () => {
+      void passwordProtectedFarmsQuery.refetch();
+      setPasswordAdminError('');
+      setSuperAdminNewPassword('');
+      setSuperAdminNewPasswordConfirm('');
+      Alert.alert('Password Updated', `Join password updated for farm ${superAdminFarmIdForPassword.trim()}.`);
+    },
+    onError: (error) => {
+      setPasswordAdminError(error.message || 'Failed to update farm password.');
+    },
+  });
+
+  const requestFarmPasswordResetMutation = trpc.farm.requestFarmPasswordReset.useMutation();
+  const completeFarmPasswordResetMutation = trpc.farm.completeFarmPasswordReset.useMutation();
+  const superAdminGenerateResetCodeMutation = trpc.farm.superAdminGeneratePasswordResetCode.useMutation({
+    onSuccess: (result) => {
+      setSuperAdminResetCode(result.code);
+      setSuperAdminResetExpiresAt(result.expiresAt);
+      setSuperAdminResetError('');
+      void passwordResetAuditQuery.refetch();
+      Alert.alert(
+        'Test Reset Code Generated',
+        `Code: ${result.code}\nFarm: ${result.farmId}\nRecovery Email: ${result.recoveryEmail}`
+      );
+    },
+    onError: (error) => {
+      setSuperAdminResetError(error.message || 'Failed to generate test reset code.');
+    },
+  });
 
   const handleFooterTap = useCallback(() => {
     footerTapCountRef.current += 1;
@@ -317,6 +388,60 @@ export default function SettingsScreen() {
       setIsFetchingAdminMembers(false);
     }
   };
+
+  const handleSelectPasswordFarm = useCallback((targetFarmId: string) => {
+    setSuperAdminFarmIdForPassword(targetFarmId);
+    setPasswordAdminError('');
+  }, []);
+
+  const handleForceSetFarmPassword = useCallback(async () => {
+    const targetId = superAdminFarmIdForPassword.trim();
+    const pw = superAdminNewPassword.trim();
+    const confirm = superAdminNewPasswordConfirm.trim();
+
+    if (!targetId) {
+      setPasswordAdminError('Enter a Farm ID.');
+      return;
+    }
+    if (!pw) {
+      setPasswordAdminError('Enter a new password.');
+      return;
+    }
+    if (pw.length < 4) {
+      setPasswordAdminError('Password must be at least 4 characters.');
+      return;
+    }
+    if (pw !== confirm) {
+      setPasswordAdminError('Passwords do not match.');
+      return;
+    }
+
+    setPasswordAdminError('');
+    await forceSetFarmPasswordMutation.mutateAsync({
+      superAdminPin: effectiveSuperAdminPin,
+      farmId: targetId,
+      newPassword: pw,
+    });
+  }, [
+    effectiveSuperAdminPin,
+    forceSetFarmPasswordMutation,
+    superAdminFarmIdForPassword,
+    superAdminNewPassword,
+    superAdminNewPasswordConfirm,
+  ]);
+
+  const handleGenerateTestResetCode = useCallback(async () => {
+    const targetId = superAdminResetFarmId.trim();
+    if (!targetId) {
+      setSuperAdminResetError('Enter a Farm ID.');
+      return;
+    }
+    setSuperAdminResetError('');
+    await superAdminGenerateResetCodeMutation.mutateAsync({
+      superAdminPin: effectiveSuperAdminPin,
+      farmId: targetId,
+    });
+  }, [effectiveSuperAdminPin, superAdminGenerateResetCodeMutation, superAdminResetFarmId]);
 
   const handleAdminChangeRole = async (member: FarmMember) => {
     const newRole = member.role === 'admin' ? 'member' : 'admin';
@@ -854,6 +979,67 @@ export default function SettingsScreen() {
       } finally {
         setIsCheckingDuplicates(false);
       }
+    }
+  };
+
+  const handleRequestForgotPassword = async () => {
+    const targetFarmId = joinFarmId.trim();
+    if (!targetFarmId) {
+      setForgotError('Enter the Farm ID first.');
+      return;
+    }
+    setForgotError('');
+    try {
+      const result = await requestFarmPasswordResetMutation.mutateAsync({ farmId: targetFarmId });
+      if (result.rateLimited) {
+        Alert.alert('Too Many Requests', 'Please wait a few minutes before requesting another reset code.');
+        return;
+      }
+      Alert.alert(
+        'Reset Requested',
+        'If this farm has a recovery email configured, a reset code has been sent.'
+      );
+    } catch (error) {
+      setForgotError(error instanceof Error ? error.message : 'Failed to request password reset.');
+    }
+  };
+
+  const handleCompleteForgotPassword = async () => {
+    const targetFarmId = joinFarmId.trim();
+    const code = forgotResetCode.trim();
+    const newPw = forgotNewPassword.trim();
+    const confirmPw = forgotConfirmPassword.trim();
+    if (!targetFarmId) {
+      setForgotError('Enter the Farm ID first.');
+      return;
+    }
+    if (!code) {
+      setForgotError('Enter the reset code from your email.');
+      return;
+    }
+    if (!newPw || newPw.length < 4) {
+      setForgotError('New password must be at least 4 characters.');
+      return;
+    }
+    if (newPw !== confirmPw) {
+      setForgotError('Passwords do not match.');
+      return;
+    }
+
+    setForgotError('');
+    try {
+      await completeFarmPasswordResetMutation.mutateAsync({
+        farmId: targetFarmId,
+        code,
+        newPassword: newPw,
+      });
+      setShowForgotPasswordModal(false);
+      setForgotResetCode('');
+      setForgotNewPassword('');
+      setForgotConfirmPassword('');
+      Alert.alert('Password Reset', 'Password updated. You can now join with the new password.');
+    } catch (error) {
+      setForgotError(error instanceof Error ? error.message : 'Failed to reset password.');
     }
   };
 
@@ -1917,6 +2103,41 @@ export default function SettingsScreen() {
             <Text style={[styles.sectionTitle, { color: colors.statusOverdue, marginBottom: 0 }]}>Super Admin</Text>
           </View>
 
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.superAdminTabScroll}
+            contentContainerStyle={styles.superAdminTabRow}
+          >
+            {([
+              { id: 'danger' as SuperAdminTab, label: 'Danger' },
+              { id: 'members' as SuperAdminTab, label: 'Members' },
+              { id: 'password' as SuperAdminTab, label: 'Passwords' },
+              { id: 'recovery' as SuperAdminTab, label: 'Recovery' },
+              { id: 'debug' as SuperAdminTab, label: 'Debug' },
+            ]).map(({ id, label }) => {
+              const active = superAdminTab === id;
+              return (
+                <TouchableOpacity
+                  key={id}
+                  style={[
+                    styles.superAdminTabPill,
+                    {
+                      backgroundColor: active ? colors.primary : colors.background,
+                      borderColor: active ? colors.primary : colors.border,
+                    },
+                  ]}
+                  onPress={() => setSuperAdminTab(id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.superAdminTabText, { color: active ? '#fff' : colors.text }]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {superAdminTab === 'danger' && (
+          <>
           <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.statusOverdue + '30' }]}>
             <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Delete Farm from Server</Text>
             <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -1972,7 +2193,10 @@ export default function SettingsScreen() {
               )}
             </TouchableOpacity>
           </View>
+          </>
+          )}
 
+          {superAdminTab === 'members' && (
           <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Farm Member Manager</Text>
             <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
@@ -2057,7 +2281,273 @@ export default function SettingsScreen() {
               </View>
             )}
           </View>
+          )}
 
+          {superAdminTab === 'password' && (
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Farm Password Manager</Text>
+            <Text style={[styles.settingDescription, { color: colors.textSecondary, marginBottom: 8 }]}>
+              View farms with join passwords and force-change one.
+            </Text>
+
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Enter or select Farm ID"
+                placeholderTextColor={colors.textSecondary}
+                value={superAdminFarmIdForPassword}
+                onChangeText={(t) => {
+                  setSuperAdminFarmIdForPassword(t);
+                  setPasswordAdminError('');
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, marginTop: 8 }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="New join password"
+                placeholderTextColor={colors.textSecondary}
+                value={superAdminNewPassword}
+                onChangeText={(t) => {
+                  setSuperAdminNewPassword(t);
+                  setPasswordAdminError('');
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+            </View>
+
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, marginTop: 8 }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Confirm new join password"
+                placeholderTextColor={colors.textSecondary}
+                value={superAdminNewPasswordConfirm}
+                onChangeText={(t) => {
+                  setSuperAdminNewPasswordConfirm(t);
+                  setPasswordAdminError('');
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+            </View>
+
+            {passwordAdminError ? (
+              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>{passwordAdminError}</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.statusOverdue + 'CC' }]}
+              onPress={handleForceSetFarmPassword}
+              disabled={forceSetFarmPasswordMutation.isPending}
+            >
+              {forceSetFarmPasswordMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Lock color="#fff" size={16} />
+                  <Text style={styles.superAdminButtonText}>Force Change Password</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.primary, marginTop: 8 }]}
+              onPress={() => { void passwordProtectedFarmsQuery.refetch(); }}
+              disabled={passwordProtectedFarmsQuery.isFetching}
+            >
+              {passwordProtectedFarmsQuery.isFetching ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <RefreshCw color="#fff" size={16} />
+                  <Text style={styles.superAdminButtonText}>Refresh Password-Protected Farms</Text>
+                </>
+              )}
+            </TouchableOpacity>
+
+            <View style={{ marginTop: 10, gap: 6 }}>
+              {(passwordProtectedFarmsQuery.data?.farms ?? []).slice(0, 40).map((farm) => (
+                <TouchableOpacity
+                  key={farm.farmId}
+                  style={[styles.memberRow, { backgroundColor: colors.background }]}
+                  onPress={() => handleSelectPasswordFarm(farm.farmId)}
+                >
+                  <View style={styles.memberInfo}>
+                    <View style={[styles.memberAvatar, { backgroundColor: colors.statusOverdue + '20' }]}>
+                      <Lock color={colors.statusOverdue} size={14} />
+                    </View>
+                    <View style={styles.memberDetails}>
+                      <Text style={[styles.memberDeviceId, { color: colors.text }]} numberOfLines={1}>
+                        {farm.farmId}
+                      </Text>
+                      <Text style={[styles.memberJoinDate, { color: colors.textSecondary }]}>
+                        Updated: {farm.updatedAt ? new Date(farm.updatedAt).toLocaleDateString() : 'Unknown'}
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+              {(passwordProtectedFarmsQuery.data?.farms?.length ?? 0) > 40 ? (
+                <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                  Showing first 40 farms. Refine by typing a Farm ID above.
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          )}
+
+          {superAdminTab === 'recovery' && (
+          <>
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Forgot Password Testing</Text>
+            <Text style={[styles.settingDescription, { color: colors.textSecondary, marginBottom: 8 }]}>
+              Generate a password reset code for a farm to test the recovery flow.
+            </Text>
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Farm ID for test reset"
+                placeholderTextColor={colors.textSecondary}
+                value={superAdminResetFarmId}
+                onChangeText={(t) => {
+                  setSuperAdminResetFarmId(t);
+                  setSuperAdminResetError('');
+                }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            {superAdminResetError ? (
+              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>{superAdminResetError}</Text>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.primary }]}
+              onPress={handleGenerateTestResetCode}
+              disabled={superAdminGenerateResetCodeMutation.isPending}
+            >
+              {superAdminGenerateResetCodeMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.superAdminButtonText}>Generate Test Reset Code</Text>
+              )}
+            </TouchableOpacity>
+            {superAdminResetCode ? (
+              <View style={{ marginTop: 8 }}>
+                <Text style={[styles.debugText, { color: colors.text }]}>Code: {superAdminResetCode}</Text>
+                <Text style={[styles.debugText, { color: colors.textSecondary }]}>
+                  Expires: {superAdminResetExpiresAt ? new Date(superAdminResetExpiresAt).toLocaleString() : 'Unknown'}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+              <Text style={[styles.superAdminLabel, { color: colors.textSecondary, marginBottom: 0 }]}>Password reset audit</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <TouchableOpacity
+                  style={[styles.superAdminButton, { backgroundColor: colors.accent, paddingVertical: 8, paddingHorizontal: 12 }]}
+                  onPress={() => {
+                    void Clipboard.setStringAsync(JSON.stringify(filteredAuditEvents, null, 2));
+                    Alert.alert(
+                      'Copied',
+                      `${filteredAuditEvents.length} event${filteredAuditEvents.length !== 1 ? 's' : ''} exported (current list${auditFarmFilter.trim() ? ', filter applied' : ''}).`
+                    );
+                  }}
+                  disabled={(passwordResetAuditQuery.data?.events?.length ?? 0) === 0}
+                >
+                  <Download color="#fff" size={14} />
+                  <Text style={[styles.superAdminButtonText, { fontSize: 12 }]}>Export</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.superAdminButton, { backgroundColor: colors.primary, paddingVertical: 8, paddingHorizontal: 12 }]}
+                  onPress={() => { void passwordResetAuditQuery.refetch(); }}
+                  disabled={passwordResetAuditQuery.isFetching}
+                >
+                  {passwordResetAuditQuery.isFetching ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={[styles.superAdminButtonText, { fontSize: 12 }]}>Refresh</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+            <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+              Latest 50 events from the server (newest first). Filter by farm ID; Export copies the visible list. Tap copy on a row for one event.
+            </Text>
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, marginTop: 4 }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Filter by farm ID (optional)"
+                placeholderTextColor={colors.textSecondary}
+                value={auditFarmFilter}
+                onChangeText={setAuditFarmFilter}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            {(passwordResetAuditQuery.data?.events?.length ?? 0) > 0 && auditFarmFilter.trim() ? (
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                Showing {filteredAuditEvents.length} of {passwordResetAuditQuery.data?.events?.length ?? 0} loaded events
+              </Text>
+            ) : null}
+            {passwordResetAuditQuery.isLoading ? (
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginVertical: 12 }} />
+            ) : (passwordResetAuditQuery.data?.events?.length ?? 0) === 0 ? (
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>No audit events yet.</Text>
+            ) : filteredAuditEvents.length === 0 ? (
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                No events match this farm ID filter.
+              </Text>
+            ) : (
+              <View style={{ gap: 8 }}>
+                {filteredAuditEvents.map((ev) => (
+                  <View
+                    key={ev.id}
+                    style={[styles.memberRow, { backgroundColor: colors.background, alignItems: 'flex-start' }]}
+                  >
+                    <View style={{ flex: 1, paddingRight: 8 }}>
+                      <Text style={{ color: colors.text, fontSize: 13, fontWeight: '600' as const }}>
+                        {ev.type.replace(/_/g, ' ')}
+                      </Text>
+                      <Text style={[styles.debugText, { color: colors.textSecondary, marginTop: 4 }]}>
+                        {ev.farmId} · {new Date(ev.at).toLocaleString()}
+                      </Text>
+                      {ev.clientId ? (
+                        <Text style={[styles.debugText, { color: colors.textSecondary, marginTop: 2 }]} numberOfLines={1}>
+                          Client: {ev.clientId}
+                        </Text>
+                      ) : null}
+                      {ev.metadata && Object.keys(ev.metadata).length > 0 ? (
+                        <Text style={[styles.debugText, { color: colors.textSecondary, marginTop: 4 }]} numberOfLines={2}>
+                          {JSON.stringify(ev.metadata)}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <TouchableOpacity
+                      style={[styles.copyButton, { backgroundColor: colors.accent + '20', marginTop: 2 }]}
+                      onPress={() => {
+                        void Clipboard.setStringAsync(JSON.stringify(ev, null, 2));
+                        Alert.alert('Copied', 'Audit event copied.');
+                      }}
+                    >
+                      <Copy color={colors.accent} size={14} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+          </>
+          )}
+
+          {superAdminTab === 'debug' && (
           <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Debug Info</Text>
             <Text style={[styles.debugText, { color: colors.text }]}>Farm ID: {farmId}</Text>
@@ -2103,6 +2593,7 @@ export default function SettingsScreen() {
               <Text style={styles.superAdminButtonText}>Show Paywall</Text>
             </TouchableOpacity>
           </View>
+          )}
         </View>
       )}
 
@@ -2234,6 +2725,11 @@ export default function SettingsScreen() {
                 {joinPasswordError ? (
                   <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>{joinPasswordError}</Text>
                 ) : null}
+                <TouchableOpacity onPress={() => { setShowForgotPasswordModal(true); setForgotError(''); }}>
+                  <Text style={[styles.settingDescription, { color: colors.primary, marginTop: 8 }]}>
+                    Forgot password?
+                  </Text>
+                </TouchableOpacity>
               </>
             )}
             
@@ -2248,6 +2744,110 @@ export default function SettingsScreen() {
                 <Text style={styles.joinButtonText}>
                   {joinStep === 'farm_id' ? 'Continue' : 'Join Farm'}
                 </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal
+        visible={showForgotPasswordModal}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowForgotPasswordModal(false)}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <Pressable style={styles.modalOverlayDismiss} onPress={() => { Keyboard.dismiss(); setShowForgotPasswordModal(false); }} />
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text }]}>Forgot Farm Password</Text>
+              <TouchableOpacity onPress={() => setShowForgotPasswordModal(false)}>
+                <X color={colors.textSecondary} size={24} />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.joinDescription, { color: colors.textSecondary }]}>
+              Request a reset code for this Farm ID, then enter the code from the recovery email.
+            </Text>
+
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Farm ID"
+                placeholderTextColor={colors.textSecondary}
+                value={joinFarmId}
+                onChangeText={setJoinFarmId}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.primary, marginTop: 8 }]}
+              onPress={handleRequestForgotPassword}
+              disabled={requestFarmPasswordResetMutation.isPending}
+            >
+              {requestFarmPasswordResetMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.superAdminButtonText}>Send Reset Code</Text>
+              )}
+            </TouchableOpacity>
+
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, marginTop: 10 }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Reset code"
+                placeholderTextColor={colors.textSecondary}
+                value={forgotResetCode}
+                onChangeText={(t) => { setForgotResetCode(t); setForgotError(''); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, marginTop: 8 }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="New password"
+                placeholderTextColor={colors.textSecondary}
+                value={forgotNewPassword}
+                onChangeText={(t) => { setForgotNewPassword(t); setForgotError(''); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+            </View>
+
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border, marginTop: 8 }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Confirm new password"
+                placeholderTextColor={colors.textSecondary}
+                value={forgotConfirmPassword}
+                onChangeText={(t) => { setForgotConfirmPassword(t); setForgotError(''); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                secureTextEntry
+              />
+            </View>
+
+            {forgotError ? (
+              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>{forgotError}</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={[styles.joinButton, { backgroundColor: colors.statusOverdue + 'CC', marginTop: 10 }]}
+              onPress={handleCompleteForgotPassword}
+              disabled={completeFarmPasswordResetMutation.isPending}
+            >
+              {completeFarmPasswordResetMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.joinButtonText}>Reset Password</Text>
               )}
             </TouchableOpacity>
           </View>
@@ -3145,6 +3745,27 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderRadius: 8,
     marginBottom: 12,
+  },
+  superAdminTabScroll: {
+    marginBottom: 12,
+    maxHeight: 44,
+  },
+  superAdminTabRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 4,
+    paddingBottom: 4,
+  },
+  superAdminTabPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  superAdminTabText: {
+    fontSize: 13,
+    fontWeight: '600' as const,
   },
   superAdminCard: {
     borderRadius: 12,
