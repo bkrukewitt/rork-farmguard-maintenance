@@ -7,6 +7,14 @@ import { useCallback, useMemo, useEffect, useState, useRef } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { Equipment, MaintenanceLog, MaintenanceInterval, Consumable, ServiceRoutine, InspectionRoutine, WorkOrder, Employee, FuelLog, CustomFuelType } from '@/types/equipment';
 import { generateId } from '@/utils/helpers';
+import {
+  isLocalImageUri,
+  uploadImage,
+  deleteFarmImageByPublicUrl,
+  getFarmImagesStoragePathFromPublicUrl,
+} from '@/utils/imageUpload';
+import { uploadAttachment, deleteAttachmentFromStorage } from '@/utils/attachmentUpload';
+import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/lib/supabase';
 import { trpcClient } from '@/lib/trpc';
 import {
@@ -240,6 +248,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const skipAutoMergeRef = useRef(false);
   const initialMergeDoneRef = useRef(false);
   const appStateRef = useRef<AppStateStatus>('active');
+  const localImageHydrationSyncInFlightRef = useRef(false);
 
   useEffect(() => {
     void getFarmId().then(setFarmId);
@@ -578,6 +587,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     () => (isDemoMode ? DEMO_CONSUMABLES : (consumablesQuery.data ?? [])),
     [consumablesQuery.data, isDemoMode],
   );
+
   const serviceRoutines = useMemo(
     () => (serviceRoutinesQuery.data ?? []),
     [serviceRoutinesQuery.data],
@@ -590,6 +600,44 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     () => (isDemoMode ? DEMO_WORK_ORDERS : (workOrdersQuery.data ?? [])),
     [workOrdersQuery.data, isDemoMode],
   );
+
+  const needsLocalAttachmentUpload = useCallback(
+    (a: { remotePath?: string; fileUri: string }) =>
+      !a.remotePath &&
+      !!a.fileUri &&
+      !a.fileUri.startsWith('http://') &&
+      !a.fileUri.startsWith('https://'),
+    []
+  );
+
+  const pendingFarmMediaFingerprint = useMemo(() => {
+    const keys: string[] = [
+      ...equipment
+        .filter(e => e.imageUrl && isLocalImageUri(e.imageUrl))
+        .map(e => `eimg:${e.id}`),
+      ...consumables
+        .filter(c => c.imageUrl && isLocalImageUri(c.imageUrl))
+        .map(c => `cimg:${c.id}`),
+      ...workOrders.flatMap(w =>
+        (w.images ?? [])
+          .filter(img => isLocalImageUri(img.uri))
+          .map(img => `wo:${w.id}:${img.id}`)
+      ),
+      ...equipment.flatMap(e =>
+        (e.attachments ?? [])
+          .filter(a => needsLocalAttachmentUpload(a))
+          .map(a => `eatt:${e.id}:${a.id}`)
+      ),
+      ...maintenanceLogs.flatMap(l =>
+        (l.attachments ?? [])
+          .filter(a => needsLocalAttachmentUpload(a))
+          .map(a => `latt:${l.id}:${a.id}`)
+      ),
+    ];
+    keys.sort();
+    return keys.join(',');
+  }, [equipment, consumables, workOrders, maintenanceLogs, needsLocalAttachmentUpload]);
+
   const employees = useMemo(
     () => (isDemoMode ? DEMO_EMPLOYEES : (employeesQuery.data ?? [])),
     [employeesQuery.data, isDemoMode],
@@ -884,13 +932,31 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const updateEquipmentMutation = useMutation({
     mutationFn: async (updates: Partial<Equipment> & { id: string }) => {
+      const prev = equipment.find(e => e.id === updates.id);
       const updated = equipment.map(e =>
         e.id === updates.id
           ? { ...e, ...updates, updatedAt: new Date().toISOString() }
           : e
       );
       await saveData(STORAGE_KEYS.EQUIPMENT, updated);
-      return updated.find(e => e.id === updates.id);
+      const nextEq = updated.find(e => e.id === updates.id);
+
+      if (
+        prev?.imageUrl &&
+        getFarmImagesStoragePathFromPublicUrl(prev.imageUrl) &&
+        prev.imageUrl !== nextEq?.imageUrl
+      ) {
+        void deleteFarmImageByPublicUrl(prev.imageUrl);
+      }
+
+      if (updates.attachments !== undefined && prev) {
+        const nextIds = new Set((nextEq?.attachments ?? []).map(a => a.id));
+        for (const pa of prev.attachments ?? []) {
+          if (!nextIds.has(pa.id)) void deleteAttachmentFromStorage(pa.remotePath);
+        }
+      }
+
+      return nextEq;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['equipment'] });
@@ -901,6 +967,14 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const deleteEquipmentMutation = useMutation({
     mutationFn: async (id: string) => {
       console.log(`[Delete] Deleting equipment: ${id}`);
+      const eq = equipment.find(e => e.id === id);
+      if (eq?.imageUrl) void deleteFarmImageByPublicUrl(eq.imageUrl);
+      for (const a of eq?.attachments ?? []) void deleteAttachmentFromStorage(a.remotePath);
+      const logsForEquip = maintenanceLogs.filter(l => l.equipmentId === id);
+      for (const log of logsForEquip) {
+        for (const a of log.attachments ?? []) void deleteAttachmentFromStorage(a.remotePath);
+      }
+
       const relatedLogIds = maintenanceLogs.filter(l => l.equipmentId === id).map(l => l.id);
       const relatedIntervalIds = intervals.filter(i => i.equipmentId === id).map(i => i.id);
       const relatedFuelLogIds = fuelLogs.filter(f => f.equipmentId === id).map(f => f.id);
@@ -928,10 +1002,10 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const addMaintenanceLogMutation = useMutation({
-    mutationFn: async (log: Omit<MaintenanceLog, 'id' | 'createdAt'>) => {
+    mutationFn: async (log: Omit<MaintenanceLog, 'id' | 'createdAt'> & { id?: string }) => {
       const newLog: MaintenanceLog = {
         ...log,
-        id: generateId(),
+        id: log.id ?? generateId(),
         createdAt: new Date().toISOString(),
       };
       const updated = [...maintenanceLogs, newLog];
@@ -960,13 +1034,22 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const updateMaintenanceLogMutation = useMutation({
     mutationFn: async (updates: Partial<MaintenanceLog> & { id: string }) => {
+      const prev = maintenanceLogs.find(l => l.id === updates.id);
       const updated = maintenanceLogs.map(l =>
         l.id === updates.id ? { ...l, ...updates } : l
       );
       await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
+      const nextLog = updated.find(l => l.id === updates.id);
+
+      if (updates.attachments !== undefined && prev) {
+        const nextIds = new Set((nextLog?.attachments ?? []).map(a => a.id));
+        for (const pa of prev.attachments ?? []) {
+          if (!nextIds.has(pa.id)) void deleteAttachmentFromStorage(pa.remotePath);
+        }
+      }
 
       if (updates.hoursAtService && updates.hoursAtService > 0) {
-        const log = updated.find(l => l.id === updates.id);
+        const log = nextLog;
         if (log) {
           const equip = equipment.find(e => e.id === log.equipmentId);
           if (equip && updates.hoursAtService > equip.currentHours) {
@@ -980,7 +1063,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         }
       }
 
-      return updated.find(l => l.id === updates.id);
+      return nextLog;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
@@ -991,6 +1074,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const deleteMaintenanceLogMutation = useMutation({
     mutationFn: async (id: string) => {
+      const log = maintenanceLogs.find(l => l.id === id);
+      for (const a of log?.attachments ?? []) void deleteAttachmentFromStorage(a.remotePath);
+
       await addTombstones([id]);
       const updated = maintenanceLogs.filter(l => l.id !== id);
       await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
@@ -1069,13 +1155,24 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const updateConsumableMutation = useMutation({
     mutationFn: async (updates: Partial<Consumable> & { id: string }) => {
+      const prev = consumables.find(c => c.id === updates.id);
       const updated = consumables.map(c =>
         c.id === updates.id
           ? { ...c, ...updates, updatedAt: new Date().toISOString() }
           : c
       );
       await saveData(STORAGE_KEYS.CONSUMABLES, updated);
-      return updated.find(c => c.id === updates.id);
+      const nextC = updated.find(c => c.id === updates.id);
+
+      if (
+        prev?.imageUrl &&
+        getFarmImagesStoragePathFromPublicUrl(prev.imageUrl) &&
+        prev.imageUrl !== nextC?.imageUrl
+      ) {
+        void deleteFarmImageByPublicUrl(prev.imageUrl);
+      }
+
+      return nextC;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['consumables'] });
@@ -1085,8 +1182,11 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const deleteConsumableMutation = useMutation({
     mutationFn: async (id: string) => {
+      const c = consumables.find(x => x.id === id);
+      if (c?.imageUrl) void deleteFarmImageByPublicUrl(c.imageUrl);
+
       await addTombstones([id]);
-      const updated = consumables.filter(c => c.id !== id);
+      const updated = consumables.filter(x => x.id !== id);
       await saveData(STORAGE_KEYS.CONSUMABLES, updated);
     },
     onSuccess: () => {
@@ -1360,13 +1460,31 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const updateWorkOrderMutation = useMutation({
     mutationFn: async (updates: Partial<WorkOrder> & { id: string }) => {
+      const prev = workOrders.find(w => w.id === updates.id);
       const updated = workOrders.map(w =>
         w.id === updates.id
           ? { ...w, ...updates, updatedAt: new Date().toISOString() }
           : w
       );
       await saveData(STORAGE_KEYS.WORK_ORDERS, updated);
-      return updated.find(w => w.id === updates.id);
+      const nextW = updated.find(w => w.id === updates.id);
+
+      if (updates.images !== undefined && prev) {
+        const nextById = new Map((nextW?.images ?? []).map(i => [i.id, i]));
+        for (const oldImg of prev.images ?? []) {
+          const still = nextById.get(oldImg.id);
+          const removed = !still;
+          const replaced = still !== undefined && still.uri !== oldImg.uri;
+          if (
+            (removed || replaced) &&
+            getFarmImagesStoragePathFromPublicUrl(oldImg.uri)
+          ) {
+            void deleteFarmImageByPublicUrl(oldImg.uri);
+          }
+        }
+      }
+
+      return nextW;
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['workOrders'] });
@@ -1376,6 +1494,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const deleteWorkOrderMutation = useMutation({
     mutationFn: async (id: string) => {
+      const wo = workOrders.find(w => w.id === id);
+      for (const img of wo?.images ?? []) void deleteFarmImageByPublicUrl(img.uri);
+
       await addTombstones([id]);
       const updated = workOrders.filter(w => w.id !== id);
       await saveData(STORAGE_KEYS.WORK_ORDERS, updated);
@@ -2253,6 +2374,206 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     inspectionRoutinesQuery.isLoading ||
     workOrdersQuery.isLoading ||
     employeesQuery.isLoading;
+
+  useEffect(() => {
+    if (isDemoMode || !effectiveFarmId || isLoading || !pendingFarmMediaFingerprint) return;
+    if (localImageHydrationSyncInFlightRef.current) return;
+    localImageHydrationSyncInFlightRef.current = true;
+
+    let cancelled = false;
+    const farmIdForPaths = effectiveFarmId;
+
+    const fileExists = async (uri: string): Promise<boolean> => {
+      if (Platform.OS === 'web') return true;
+      try {
+        const info = await FileSystem.getInfoAsync(uri);
+        return info.exists;
+      } catch {
+        return false;
+      }
+    };
+
+    void (async () => {
+      try {
+        let equipmentList = await loadData<Equipment>(STORAGE_KEYS.EQUIPMENT);
+        let consumablesList = await loadData<Consumable>(STORAGE_KEYS.CONSUMABLES);
+        let workOrdersList = await loadData<WorkOrder>(STORAGE_KEYS.WORK_ORDERS);
+        let maintenanceList = await loadData<MaintenanceLog>(STORAGE_KEYS.MAINTENANCE_LOGS);
+        let equipmentChanged = false;
+        let consumablesChanged = false;
+        let workOrdersChanged = false;
+        let maintenanceChanged = false;
+
+        for (const item of equipmentList) {
+          if (cancelled) break;
+          if (!item.imageUrl || !isLocalImageUri(item.imageUrl)) continue;
+          if (!(await fileExists(item.imageUrl))) {
+            console.log('[FarmMediaSync] Equipment image file missing, skipping:', item.id);
+            continue;
+          }
+          try {
+            const publicUrl = await uploadImage(item.imageUrl);
+            if (publicUrl !== item.imageUrl) {
+              equipmentList = equipmentList.map(e =>
+                e.id === item.id
+                  ? { ...e, imageUrl: publicUrl, updatedAt: new Date().toISOString() }
+                  : e
+              );
+              equipmentChanged = true;
+            }
+          } catch (err) {
+            console.error('[FarmMediaSync] Equipment image upload failed:', item.id, err);
+          }
+        }
+
+        for (const item of consumablesList) {
+          if (cancelled) break;
+          if (!item.imageUrl || !isLocalImageUri(item.imageUrl)) continue;
+          if (!(await fileExists(item.imageUrl))) {
+            console.log('[FarmMediaSync] Consumable image file missing, skipping:', item.id);
+            continue;
+          }
+          try {
+            const publicUrl = await uploadImage(item.imageUrl);
+            if (publicUrl !== item.imageUrl) {
+              consumablesList = consumablesList.map(c =>
+                c.id === item.id
+                  ? { ...c, imageUrl: publicUrl, updatedAt: new Date().toISOString() }
+                  : c
+              );
+              consumablesChanged = true;
+            }
+          } catch (err) {
+            console.error('[FarmMediaSync] Consumable image upload failed:', item.id, err);
+          }
+        }
+
+        for (let wi = 0; wi < workOrdersList.length; wi++) {
+          if (cancelled) break;
+          const wo = workOrdersList[wi];
+          let nextImages = [...(wo.images ?? [])];
+          let woTouched = false;
+          for (let ii = 0; ii < nextImages.length; ii++) {
+            const img = nextImages[ii];
+            if (!isLocalImageUri(img.uri)) continue;
+            if (!(await fileExists(img.uri))) continue;
+            try {
+              const publicUrl = await uploadImage(img.uri);
+              if (publicUrl !== img.uri) {
+                nextImages = nextImages.map(i => (i.id === img.id ? { ...i, uri: publicUrl } : i));
+                woTouched = true;
+              }
+            } catch (err) {
+              console.error('[FarmMediaSync] Work order image upload failed:', wo.id, img.id, err);
+            }
+          }
+          if (woTouched) {
+            workOrdersList = workOrdersList.map(w =>
+              w.id === wo.id ? { ...w, images: nextImages, updatedAt: new Date().toISOString() } : w
+            );
+            workOrdersChanged = true;
+          }
+        }
+
+        for (let ei = 0; ei < equipmentList.length; ei++) {
+          if (cancelled) break;
+          const eq = equipmentList[ei];
+          let nextAtts = [...(eq.attachments ?? [])];
+          let eqTouched = false;
+          for (let ai = 0; ai < nextAtts.length; ai++) {
+            const att = nextAtts[ai];
+            if (!needsLocalAttachmentUpload(att)) continue;
+            if (!(await fileExists(att.fileUri))) continue;
+            const ext = att.fileName.split('.').pop() || 'file';
+            const remotePath = `${farmIdForPaths}/equipment/${eq.id}/${att.id}.${ext}`;
+            try {
+              await uploadAttachment(att.fileUri, remotePath, att.fileName);
+              nextAtts = nextAtts.map(a =>
+                a.id === att.id ? { ...a, remotePath } : a
+              );
+              eqTouched = true;
+            } catch (err) {
+              console.error('[FarmMediaSync] Equipment attachment upload failed:', eq.id, att.id, err);
+            }
+          }
+          if (eqTouched) {
+            equipmentList = equipmentList.map(e =>
+              e.id === eq.id
+                ? { ...e, attachments: nextAtts, updatedAt: new Date().toISOString() }
+                : e
+            );
+            equipmentChanged = true;
+          }
+        }
+
+        for (let li = 0; li < maintenanceList.length; li++) {
+          if (cancelled) break;
+          const log = maintenanceList[li];
+          let nextAtts = [...(log.attachments ?? [])];
+          let logTouched = false;
+          for (let ai = 0; ai < nextAtts.length; ai++) {
+            const att = nextAtts[ai];
+            if (!needsLocalAttachmentUpload(att)) continue;
+            if (!(await fileExists(att.fileUri))) continue;
+            const ext = att.fileName.split('.').pop() || 'file';
+            const remotePath = `${farmIdForPaths}/maintenance/${log.id}/${att.id}.${ext}`;
+            try {
+              await uploadAttachment(att.fileUri, remotePath, att.fileName);
+              nextAtts = nextAtts.map(a =>
+                a.id === att.id ? { ...a, remotePath } : a
+              );
+              logTouched = true;
+            } catch (err) {
+              console.error('[FarmMediaSync] Maintenance attachment upload failed:', log.id, att.id, err);
+            }
+          }
+          if (logTouched) {
+            maintenanceList = maintenanceList.map(l =>
+              l.id === log.id ? { ...l, attachments: nextAtts } : l
+            );
+            maintenanceChanged = true;
+          }
+        }
+
+        if (cancelled) return;
+
+        if (equipmentChanged) {
+          await saveData(STORAGE_KEYS.EQUIPMENT, equipmentList);
+          void queryClient.invalidateQueries({ queryKey: ['equipment'] });
+        }
+        if (consumablesChanged) {
+          await saveData(STORAGE_KEYS.CONSUMABLES, consumablesList);
+          void queryClient.invalidateQueries({ queryKey: ['consumables'] });
+        }
+        if (workOrdersChanged) {
+          await saveData(STORAGE_KEYS.WORK_ORDERS, workOrdersList);
+          void queryClient.invalidateQueries({ queryKey: ['workOrders'] });
+        }
+        if (maintenanceChanged) {
+          await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, maintenanceList);
+          void queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
+        }
+        if (equipmentChanged || consumablesChanged || workOrdersChanged || maintenanceChanged) {
+          console.log('[FarmMediaSync] Migrated local media to Supabase storage');
+          await syncToServer({ skipMerge: true });
+        }
+      } finally {
+        localImageHydrationSyncInFlightRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isDemoMode,
+    effectiveFarmId,
+    isLoading,
+    pendingFarmMediaFingerprint,
+    queryClient,
+    syncToServer,
+    needsLocalAttachmentUpload,
+  ]);
 
   useEffect(() => {
     if (!isLoading) {

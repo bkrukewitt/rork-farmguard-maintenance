@@ -45,6 +45,7 @@ import {
   Zap,
   AlertTriangle,
   MessageSquare,
+  Megaphone,
 } from 'lucide-react-native';
 import * as Clipboard from 'expo-clipboard';
 import Constants from 'expo-constants';
@@ -179,9 +180,11 @@ export default function SettingsScreen() {
   const [superAdminResetCode, setSuperAdminResetCode] = useState('');
   const [superAdminResetExpiresAt, setSuperAdminResetExpiresAt] = useState('');
   const [superAdminResetError, setSuperAdminResetError] = useState('');
-  type SuperAdminTab = 'danger' | 'members' | 'password' | 'recovery' | 'debug';
+  type SuperAdminTab = 'danger' | 'members' | 'password' | 'recovery' | 'announce' | 'debug';
   const [superAdminTab, setSuperAdminTab] = useState<SuperAdminTab>('danger');
   const [auditFarmFilter, setAuditFarmFilter] = useState('');
+  const [announceBody, setAnnounceBody] = useState('');
+  const [announceDurationHours, setAnnounceDurationHours] = useState(48);
 
   const [showSetPasswordModal, setShowSetPasswordModal] = useState(false);
   const [showLeaveFarmModal, setShowLeaveFarmModal] = useState(false);
@@ -262,6 +265,31 @@ export default function SettingsScreen() {
     },
     onError: (error) => {
       setSuperAdminResetError(error.message || 'Failed to generate test reset code.');
+    },
+  });
+
+  const trpcUtils = trpc.useUtils();
+  const globalAnnouncementPreviewQuery = trpc.farm.getGlobalAnnouncement.useQuery(undefined, {
+    enabled: isSuperAdmin && superAdminTab === 'announce',
+    staleTime: 30_000,
+  });
+  const superAdminSetAnnouncementMutation = trpc.farm.superAdminSetGlobalAnnouncement.useMutation({
+    onSuccess: () => {
+      void trpcUtils.farm.getGlobalAnnouncement.invalidate();
+      setAnnounceBody('');
+      Alert.alert('Published', 'Users will see this banner after their next refresh (within a few minutes).');
+    },
+    onError: (error) => {
+      Alert.alert('Error', error.message || 'Failed to publish announcement.');
+    },
+  });
+  const superAdminClearAnnouncementMutation = trpc.farm.superAdminClearGlobalAnnouncement.useMutation({
+    onSuccess: () => {
+      void trpcUtils.farm.getGlobalAnnouncement.invalidate();
+      Alert.alert('Cleared', 'The global announcement has been removed.');
+    },
+    onError: (error) => {
+      Alert.alert('Error', error.message || 'Failed to clear announcement.');
     },
   });
 
@@ -2114,6 +2142,7 @@ export default function SettingsScreen() {
               { id: 'members' as SuperAdminTab, label: 'Members' },
               { id: 'password' as SuperAdminTab, label: 'Passwords' },
               { id: 'recovery' as SuperAdminTab, label: 'Recovery' },
+              { id: 'announce' as SuperAdminTab, label: 'Announce' },
               { id: 'debug' as SuperAdminTab, label: 'Debug' },
             ]).map(({ id, label }) => {
               const active = superAdminTab === id;
@@ -2545,6 +2574,148 @@ export default function SettingsScreen() {
             )}
           </View>
           </>
+          )}
+
+          {superAdminTab === 'announce' && (
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Megaphone color={colors.primary} size={20} />
+              <Text style={[styles.superAdminLabel, { color: colors.text, marginBottom: 0 }]}>
+                Global announcement
+              </Text>
+            </View>
+            <Text style={[styles.settingDescription, { color: colors.textSecondary, marginBottom: 10 }]}>
+              Short message shown to all users at the top of the app until the end time. Stored on the API server
+              (Rork DB), not per farm.
+            </Text>
+            {globalAnnouncementPreviewQuery.data?.active && globalAnnouncementPreviewQuery.data.message ? (
+              <View
+                style={{
+                  padding: 10,
+                  borderRadius: 8,
+                  backgroundColor: colors.primary + '18',
+                  marginBottom: 12,
+                }}
+              >
+                <Text style={[styles.settingDescription, { color: colors.text, fontWeight: '600' }]}>
+                  Currently live
+                </Text>
+                <Text style={{ color: colors.text, marginTop: 4, fontSize: 14 }}>
+                  {globalAnnouncementPreviewQuery.data.message}
+                </Text>
+                {globalAnnouncementPreviewQuery.data.endsAt ? (
+                  <Text style={[styles.settingDescription, { color: colors.textSecondary, marginTop: 6 }]}>
+                    Until {new Date(globalAnnouncementPreviewQuery.data.endsAt).toLocaleString()}
+                  </Text>
+                ) : null}
+              </View>
+            ) : (
+              <Text style={[styles.settingDescription, { color: colors.textSecondary, marginBottom: 12 }]}>
+                No active announcement.
+              </Text>
+            )}
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Message (max 800 characters)</Text>
+            <TextInput
+              style={[
+                styles.joinInputText,
+                {
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                  borderWidth: 1,
+                  borderRadius: 8,
+                  color: colors.text,
+                  minHeight: 100,
+                  marginTop: 6,
+                  marginBottom: 12,
+                  padding: 12,
+                  textAlignVertical: 'top',
+                },
+              ]}
+              placeholder="e.g. Planned maintenance Sunday 6–8 AM ET — sync may be delayed."
+              placeholderTextColor={colors.textSecondary}
+              value={announceBody}
+              onChangeText={setAnnounceBody}
+              multiline
+              maxLength={800}
+            />
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Show for</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, marginBottom: 12 }}>
+              {[
+                { h: 6, label: '6 h' },
+                { h: 24, label: '24 h' },
+                { h: 72, label: '3 d' },
+                { h: 168, label: '7 d' },
+              ].map(({ h, label }) => (
+                <TouchableOpacity
+                  key={h}
+                  onPress={() => setAnnounceDurationHours(h)}
+                  style={[
+                    styles.superAdminTabPill,
+                    {
+                      backgroundColor: announceDurationHours === h ? colors.primary : colors.background,
+                      borderColor: announceDurationHours === h ? colors.primary : colors.border,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.superAdminTabText,
+                      { color: announceDurationHours === h ? '#fff' : colors.text },
+                    ]}
+                  >
+                    {label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.superAdminButton,
+                { backgroundColor: colors.primary, marginBottom: 8 },
+              ]}
+              disabled={superAdminSetAnnouncementMutation.isPending || !announceBody.trim()}
+              onPress={() => {
+                superAdminSetAnnouncementMutation.mutate({
+                  superAdminPin: effectiveSuperAdminPin,
+                  message: announceBody.trim(),
+                  durationHours: announceDurationHours,
+                });
+              }}
+            >
+              {superAdminSetAnnouncementMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.superAdminButtonText}>Publish announcement</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.statusOverdue + 'DD' }]}
+              disabled={superAdminClearAnnouncementMutation.isPending}
+              onPress={() => {
+                Alert.alert(
+                  'Clear announcement?',
+                  'Users will stop seeing the banner on their next refresh.',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'Clear',
+                      style: 'destructive',
+                      onPress: () =>
+                        superAdminClearAnnouncementMutation.mutate({
+                          superAdminPin: effectiveSuperAdminPin,
+                        }),
+                    },
+                  ]
+                );
+              }}
+            >
+              {superAdminClearAnnouncementMutation.isPending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.superAdminButtonText}>Clear announcement</Text>
+              )}
+            </TouchableOpacity>
+          </View>
           )}
 
           {superAdminTab === 'debug' && (

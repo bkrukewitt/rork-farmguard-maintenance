@@ -2,7 +2,7 @@
   "expo": {
     "name": "FarmGuard Maintenance",
     "slug": "farmguard-maintenance",
-    "version": "2.1.6",
+    "version": "2.1.7",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "rork-app",
@@ -23,7 +23,7 @@
         "ITSAppUsesNonExemptEncryption": false
       },
       "usesIcloudStorage": true,
-      "buildNumber": "4"
+      "buildNumber": "6"
     },
     "android": {
       "adaptiveIcon": {
@@ -35,10 +35,9 @@
         "android.permission.CAMERA",
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.INTERNET",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.INTERNET"
       ],
-      "versionCode": 15
+      "versionCode": 16
     },
     "web": {
       "favicon": "./assets/images/favicon.png"
@@ -50,7 +49,7 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "The app accesses your photos to let you share them with your friends."
+          "photosPermission": "Allows FarmGuard Maintenance to access photos you select from your library to attach to maintenance records, such as choosing an existing photo of equipment or a repair."
         }
       ],
       [

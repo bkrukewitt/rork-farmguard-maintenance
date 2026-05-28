@@ -4,6 +4,37 @@ import * as FileSystem from 'expo-file-system/legacy';
 
 const BUCKET_NAME = 'farm-images';
 
+const FARM_IMAGES_PUBLIC_MARKER = '/object/public/farm-images/';
+
+/** Extract storage object path from a Supabase public URL for `farm-images`, or null if not from this bucket. */
+export function getFarmImagesStoragePathFromPublicUrl(url: string): string | null {
+  const i = url.indexOf(FARM_IMAGES_PUBLIC_MARKER);
+  if (i === -1) return null;
+  return decodeURIComponent(url.slice(i + FARM_IMAGES_PUBLIC_MARKER.length).split(/[?#]/)[0]);
+}
+
+/** Remove an object from `farm-images` when the app no longer references this public URL. */
+export async function deleteFarmImageByPublicUrl(url: string | undefined | null): Promise<void> {
+  const path = url ? getFarmImagesStoragePathFromPublicUrl(url) : null;
+  if (!path) return;
+  const { error } = await supabase.storage.from(BUCKET_NAME).remove([path]);
+  if (error) {
+    console.error('[ImageUpload] Storage delete failed:', path, error.message);
+  }
+}
+
+/**
+ * True when the URI still points at device storage (or another non-remote source)
+ * and should be uploaded to Supabase `farm-images` for cross-device access.
+ */
+export function isLocalImageUri(uri: string): boolean {
+  const t = uri.trim().toLowerCase();
+  if (!t || t.length < 4) return false;
+  if (t.startsWith('http://') || t.startsWith('https://')) return false;
+  if (t.startsWith('data:')) return false;
+  return true;
+}
+
 function generateFileName(extension: string = 'jpg'): string {
   const timestamp = Date.now();
   const random = Math.random().toString(36).substring(2, 10);

@@ -194,6 +194,37 @@ function requireSuperAdminPin(pin: string): void {
   }
 }
 
+const GLOBAL_ANNOUNCEMENT_KEY = "global_announcement:v1";
+
+interface GlobalAnnouncementRecord {
+  message: string;
+  startsAt?: string | null;
+  endsAt: string;
+  updatedAt: string;
+}
+
+function resolveActiveAnnouncement(raw: GlobalAnnouncementRecord | null): {
+  active: boolean;
+  message?: string;
+  endsAt?: string;
+} {
+  if (!raw || typeof raw.message !== "string" || !raw.message.trim() || !raw.endsAt) {
+    return { active: false };
+  }
+  const now = Date.now();
+  const endsMs = new Date(raw.endsAt).getTime();
+  if (Number.isNaN(endsMs) || endsMs <= now) {
+    return { active: false };
+  }
+  if (raw.startsAt) {
+    const startsMs = new Date(raw.startsAt).getTime();
+    if (!Number.isNaN(startsMs) && startsMs > now) {
+      return { active: false };
+    }
+  }
+  return { active: true, message: raw.message.trim(), endsAt: raw.endsAt };
+}
+
 interface PasswordResetAuditEvent {
   id: string;
   type:
@@ -315,6 +346,61 @@ export const farmRouter = createTRPCRouter({
     .query(() => {
       console.log(`[Farm] Min required version requested: ${MIN_REQUIRED_VERSION}`);
       return { minVersion: MIN_REQUIRED_VERSION };
+    }),
+
+  /** Short-lived global message for all app users (stored in Rork DB). */
+  getGlobalAnnouncement: publicProcedure.query(async () => {
+    const raw = await getValue<GlobalAnnouncementRecord>(GLOBAL_ANNOUNCEMENT_KEY);
+    return resolveActiveAnnouncement(raw);
+  }),
+
+  superAdminSetGlobalAnnouncement: publicProcedure
+    .input(
+      z.object({
+        superAdminPin: z.string().min(1),
+        message: z.string().min(1).max(800).trim(),
+        durationHours: z.number().min(1).max(336),
+      })
+    )
+    .mutation(async ({ input }) => {
+      requireSuperAdminPin(input.superAdminPin);
+      const now = Date.now();
+      const endsAt = new Date(now + input.durationHours * 60 * 60 * 1000).toISOString();
+      const record: GlobalAnnouncementRecord = {
+        message: input.message.trim(),
+        startsAt: null,
+        endsAt,
+        updatedAt: new Date().toISOString(),
+      };
+      const ok = await setValue(GLOBAL_ANNOUNCEMENT_KEY, record);
+      if (!ok) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to save global announcement.",
+        });
+      }
+      console.log(`[Farm] Global announcement set, ends ${endsAt}`);
+      return resolveActiveAnnouncement(record);
+    }),
+
+  superAdminClearGlobalAnnouncement: publicProcedure
+    .input(z.object({ superAdminPin: z.string().min(1) }))
+    .mutation(async ({ input }) => {
+      requireSuperAdminPin(input.superAdminPin);
+      const cleared: GlobalAnnouncementRecord = {
+        message: "",
+        endsAt: new Date(0).toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      const ok = await setValue(GLOBAL_ANNOUNCEMENT_KEY, cleared);
+      if (!ok) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to clear global announcement.",
+        });
+      }
+      console.log("[Farm] Global announcement cleared");
+      return { success: true as const };
     }),
 
   verifyFarmPassword: publicProcedure

@@ -140,3 +140,12 @@ export function getAttachmentPublicUrl(path: string): string {
   return data.publicUrl;
 }
 
+/** Remove an object from `farm-attachments` by its storage path (e.g. farmId/equipment/...). */
+export async function deleteAttachmentFromStorage(remotePath: string | undefined | null): Promise<void> {
+  if (!remotePath) return;
+  const { error } = await supabase.storage.from(ATTACHMENTS_BUCKET).remove([remotePath]);
+  if (error) {
+    console.error('[AttachmentUpload] Storage delete failed:', remotePath, error.message);
+  }
+}
+

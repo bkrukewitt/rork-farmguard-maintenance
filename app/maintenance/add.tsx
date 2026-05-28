@@ -287,12 +287,13 @@ export default function AddMaintenanceScreen() {
         quantity: c.quantity,
       }));
 
-      // Save attachment files to persistent storage
+      const logId = generateId();
       const savedAttachments = attachments.length > 0
-        ? await saveAttachmentFiles(selectedEquipmentId)
+        ? await saveAttachmentFiles(logId)
         : undefined;
 
       const log = await addMaintenanceLog({
+        id: logId,
         equipmentId: selectedEquipmentId,
         date,
         hoursAtService: parseFloat(hoursAtService) || 0,

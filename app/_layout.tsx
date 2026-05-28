@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import React, { useLayoutEffect } from "react";
+import { View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { FarmDataProvider } from "@/contexts/FarmDataContext";
 import { ThemeProvider, useTheme } from "@/contexts/ThemeContext";
@@ -10,6 +11,7 @@ import { trpc, trpcClient } from "@/lib/trpc";
 import VersionGate from "@/components/VersionGate";
 import SubscriptionGate from "@/components/SubscriptionGate";
 import RecoveryEmailGate from "@/components/RecoveryEmailGate";
+import GlobalAnnouncementBanner from "@/components/GlobalAnnouncementBanner";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -128,10 +130,15 @@ export default function RootLayout() {
             <FarmDataProvider>
               <PurchasesProvider>
                 <VersionGate>
-                  <SubscriptionGate>
-                    <RootLayoutNav />
-                    <RecoveryEmailGate />
-                  </SubscriptionGate>
+                  <View style={{ flex: 1 }}>
+                    <GlobalAnnouncementBanner />
+                    <View style={{ flex: 1, minHeight: 0 }}>
+                      <SubscriptionGate>
+                        <RootLayoutNav />
+                        <RecoveryEmailGate />
+                      </SubscriptionGate>
+                    </View>
+                  </View>
                 </VersionGate>
               </PurchasesProvider>
             </FarmDataProvider>
