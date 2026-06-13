@@ -1,9 +1,12 @@
+import { getFarmLegacyProFromDb } from './supabase-server';
+
 const REVENUECAT_API_URL = 'https://api.revenuecat.com/v1';
-const ENTITLEMENT_ID = 'pro';
+/** Must match PurchasesContext / RevenueCat dashboard entitlement identifier. */
+const ENTITLEMENT_ID = 'FarmGuard Maintenance Pro';
 
 const GRANDFATHER_IOS_MAX_BUILD = '1';
-const GRANDFATHER_ANDROID_MAX_VERSION_CODE = '12';
-const GRANDFATHER_CUTOFF_DATE = '2026-03-09T00:00:00Z';
+const GRANDFATHER_ANDROID_MAX_VERSION_CODE = '15';
+const GRANDFATHER_CUTOFF_DATE = '2026-03-15T00:00:00Z';
 
 function getServerApiKey(): string {
   return process.env.REVENUECAT_SERVER_API_KEY ?? '';
@@ -63,7 +66,10 @@ async function fetchSubscriberInfo(rcUserId: string): Promise<RCSubscriberRespon
   }
 }
 
-function checkGrandfathered(subscriber: RCSubscriberResponse['subscriber']): boolean {
+function checkGrandfathered(
+  subscriber: RCSubscriberResponse['subscriber'],
+  platform?: 'ios' | 'android',
+): boolean {
   const originalVersion = subscriber.original_application_version;
   const originalPurchaseDate = subscriber.original_purchase_date;
 
@@ -72,11 +78,20 @@ function checkGrandfathered(subscriber: RCSubscriberResponse['subscriber']): boo
 
   if (originalVersion) {
     const buildNum = parseInt(originalVersion, 10);
-    const iosCutoff = parseInt(GRANDFATHER_IOS_MAX_BUILD, 10);
-    const androidCutoff = parseInt(GRANDFATHER_ANDROID_MAX_VERSION_CODE, 10);
-
     if (!isNaN(buildNum)) {
-      grantedByBuild = buildNum <= iosCutoff || buildNum <= androidCutoff;
+      if (platform === 'ios') {
+        const cutoff = parseInt(GRANDFATHER_IOS_MAX_BUILD, 10);
+        if (!isNaN(cutoff)) grantedByBuild = buildNum <= cutoff;
+      } else if (platform === 'android') {
+        const cutoff = parseInt(GRANDFATHER_ANDROID_MAX_VERSION_CODE, 10);
+        if (!isNaN(cutoff)) grantedByBuild = buildNum <= cutoff;
+      } else {
+        const iosCutoff = parseInt(GRANDFATHER_IOS_MAX_BUILD, 10);
+        const androidCutoff = parseInt(GRANDFATHER_ANDROID_MAX_VERSION_CODE, 10);
+        grantedByBuild =
+          (!isNaN(iosCutoff) && buildNum <= iosCutoff) ||
+          (!isNaN(androidCutoff) && buildNum <= androidCutoff);
+      }
     }
   }
 
@@ -140,6 +155,12 @@ export async function verifySubscription(rcUserId: string | null | undefined): P
 }
 
 export async function requireSubscription(rcUserId: string | null | undefined, farmId: string): Promise<void> {
+  const legacyPro = await getFarmLegacyProFromDb(farmId);
+  if (legacyPro) {
+    console.log(`[RevenueCat] Farm ${farmId} has legacy Pro flag — allowing access`);
+    return;
+  }
+
   const status = await verifySubscription(rcUserId);
 
   if (status.hasAccess) {

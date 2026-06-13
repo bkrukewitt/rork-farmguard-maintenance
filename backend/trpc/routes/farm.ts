@@ -2,7 +2,7 @@ import * as z from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, publicProcedure } from "../create-context";
 import { getFarmData, upsertFarmData, getFarmMembers, upsertFarmMember, updateMemberActivity, getValue, setValue } from "../../utils/rork-db";
-import { verifyFarmAccess, getFarmPasswordFromDb, listPasswordProtectedFarmsFromDb, setFarmPasswordInDb, requestFarmPasswordResetInDb, completeFarmPasswordResetInDb } from "../../utils/supabase-server";
+import { verifyFarmAccess, getFarmPasswordFromDb, listPasswordProtectedFarmsFromDb, setFarmPasswordInDb, requestFarmPasswordResetInDb, completeFarmPasswordResetInDb, getFarmLegacyProFromDb, setFarmLegacyProInDb } from "../../utils/supabase-server";
 import { sanitizeObject } from "../../utils/sanitize";
 import { requireSubscription, startTrial, getTrialInfo, verifySubscription } from "../../utils/revenuecat";
 import { checkRateLimit, getClientIdentifier } from "../../utils/rate-limiter";
@@ -639,6 +639,40 @@ export const farmRouter = createTRPCRouter({
       return await getTrialInfo(input.farmId);
     }),
 
+  getFarmAccessFlags: publicProcedure
+    .input(z.object({ farmId: z.string().min(1) }))
+    .query(async ({ input }) => {
+      const legacyPro = await getFarmLegacyProFromDb(input.farmId);
+      const trial = await getTrialInfo(input.farmId);
+      return {
+        legacyPro,
+        trialActive: trial.active,
+        trialDaysRemaining: trial.daysRemaining,
+        trialAlreadyUsed: trial.alreadyUsed,
+      };
+    }),
+
+  superAdminSetLegacyPro: publicProcedure
+    .input(
+      z.object({
+        superAdminPin: z.string().min(1),
+        farmId: z.string().min(1),
+        legacyPro: z.boolean(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      requireSuperAdminPin(input.superAdminPin);
+      const ok = await setFarmLegacyProInDb(input.farmId, input.legacyPro);
+      if (!ok) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to update legacy Pro flag for this farm.',
+        });
+      }
+      console.log(`[Farm] Legacy Pro for ${input.farmId} set to ${input.legacyPro}`);
+      return { success: true as const, legacyPro: input.legacyPro };
+    }),
+
   startTrial: publicProcedure
     .input(z.object({
       farmId: z.string().min(1),
@@ -659,11 +693,13 @@ export const farmRouter = createTRPCRouter({
       console.log(`[Farm] Checking subscription for RC user: ${input.rcUserId}`);
       const status = await verifySubscription(input.rcUserId);
       const trial = await getTrialInfo(input.farmId);
+      const legacyPro = await getFarmLegacyProFromDb(input.farmId);
       return {
         ...status,
+        legacyPro,
         isTrial: trial.active,
         trialDaysRemaining: trial.daysRemaining,
-        hasAccess: status.hasAccess || trial.active,
+        hasAccess: status.hasAccess || trial.active || legacyPro,
       };
     }),
 

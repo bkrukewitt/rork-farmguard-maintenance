@@ -57,10 +57,6 @@ export default function EditEquipmentScreen() {
 
   const equipment = getEquipmentById(id ?? '');
 
-  if (!isSubscribed && isDemoMode) {
-    return <Paywall onDismiss={() => router.back()} />;
-  }
-
   const [name, setName] = useState('');
   const [type, setType] = useState<EquipmentType>('tractor');
   const [make, setMake] = useState('');
@@ -201,6 +197,10 @@ export default function EditEquipmentScreen() {
   const handleSave = () => {
     saveMutation.mutate();
   };
+
+  if (!isSubscribed && isDemoMode) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   if (isLoading) {
     return (

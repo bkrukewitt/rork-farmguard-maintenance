@@ -7,6 +7,7 @@ export interface SubscriptionStatus {
   isProUser: boolean;
   hasEntitlement: boolean;
   grandfathered: boolean;
+  farmLegacyPro: boolean;
   productIdentifier: string | null;
   expirationDate: string | null;
   willRenew: boolean | null;
@@ -19,6 +20,7 @@ export function useSubscription(): SubscriptionStatus {
   const {
     customerInfo,
     isGrandfathered,
+    isFarmLegacyPro,
     isRestoring,
     restorePurchases,
     refetchCustomerInfo,
@@ -27,7 +29,8 @@ export function useSubscription(): SubscriptionStatus {
   const entitlement = customerInfo?.entitlements?.active?.[ENTITLEMENT_ID];
   const hasEntitlement = Boolean(entitlement);
   const grandfathered = Boolean(isGrandfathered);
-  const isProUser = grandfathered || hasEntitlement;
+  const farmLegacyPro = Boolean(isFarmLegacyPro);
+  const isProUser = grandfathered || farmLegacyPro || hasEntitlement;
 
   const productIdentifier =
     entitlement?.productIdentifier ??
@@ -50,6 +53,7 @@ export function useSubscription(): SubscriptionStatus {
       isProUser,
       hasEntitlement,
       grandfathered,
+      farmLegacyPro,
       productIdentifier,
       expirationDate,
       willRenew,
@@ -61,6 +65,7 @@ export function useSubscription(): SubscriptionStatus {
       isProUser,
       hasEntitlement,
       grandfathered,
+      farmLegacyPro,
       productIdentifier,
       expirationDate,
       willRenew,

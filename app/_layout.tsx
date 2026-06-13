@@ -12,6 +12,7 @@ import VersionGate from "@/components/VersionGate";
 import SubscriptionGate from "@/components/SubscriptionGate";
 import RecoveryEmailGate from "@/components/RecoveryEmailGate";
 import GlobalAnnouncementBanner from "@/components/GlobalAnnouncementBanner";
+import FarmPurchasesSync from "@/components/FarmPurchasesSync";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -129,6 +130,7 @@ export default function RootLayout() {
           <ThemeProvider>
             <FarmDataProvider>
               <PurchasesProvider>
+                <FarmPurchasesSync />
                 <VersionGate>
                   <View style={{ flex: 1 }}>
                     <GlobalAnnouncementBanner />

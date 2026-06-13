@@ -476,7 +476,10 @@ export default function Paywall({ onDismiss }: PaywallProps) {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <View style={styles.pinModal}>
-            <Text style={styles.pinTitle}>Enter PIN</Text>
+            <Text style={styles.pinTitle}>Access code</Text>
+            <Text style={styles.pinSubtitle}>
+              Enter the code from FarmGuard support if you were given temporary access.
+            </Text>
             <TextInput
               style={styles.pinInput}
               value={pinInput}
@@ -850,7 +853,14 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700' as const,
     color: '#1A2E10',
-    marginBottom: 20,
+    marginBottom: 8,
+  },
+  pinSubtitle: {
+    fontSize: 14,
+    color: '#5C6B54',
+    textAlign: 'center',
+    marginBottom: 16,
+    lineHeight: 20,
   },
   pinInput: {
     width: '100%',

@@ -71,6 +71,62 @@ export async function listPasswordProtectedFarmsFromDb(): Promise<PasswordProtec
   }
 }
 
+/** Farm-level legacy Pro flag (manual grant for early adopters). Stored in farm_data JSON. */
+export async function getFarmLegacyProFromDb(farmId: string): Promise<boolean> {
+  try {
+    const { data, error } = await supabaseServer
+      .from('farm_data')
+      .select('data')
+      .eq('farm_id', farmId)
+      .maybeSingle();
+
+    if (error || !data?.data) return false;
+    const rowData = data.data as Record<string, unknown>;
+    return rowData._legacyPro === true;
+  } catch (err) {
+    console.error('[SupabaseServer] Error reading legacy Pro flag:', err);
+    return false;
+  }
+}
+
+export async function setFarmLegacyProInDb(farmId: string, legacyPro: boolean): Promise<boolean> {
+  try {
+    const { data: existing, error: fetchError } = await supabaseServer
+      .from('farm_data')
+      .select('data')
+      .eq('farm_id', farmId)
+      .maybeSingle();
+
+    if (fetchError) {
+      console.error('[SupabaseServer] Error fetching farm before legacy Pro update:', fetchError);
+      return false;
+    }
+
+    const existingData = ((existing?.data as Record<string, unknown> | null) ?? {});
+
+    const { error: upsertError } = await supabaseServer
+      .from('farm_data')
+      .upsert({
+        farm_id: farmId,
+        data: {
+          ...existingData,
+          _legacyPro: legacyPro,
+        },
+        updated_at: new Date().toISOString(),
+      });
+
+    if (upsertError) {
+      console.error('[SupabaseServer] Error updating legacy Pro flag:', upsertError);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error('[SupabaseServer] Error updating legacy Pro flag:', err);
+    return false;
+  }
+}
+
 export async function setFarmPasswordInDb(farmId: string, password: string): Promise<boolean> {
   try {
     const { data: existing, error: fetchError } = await supabaseServer

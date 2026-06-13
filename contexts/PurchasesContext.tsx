@@ -138,10 +138,11 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   const [isTrial, setIsTrial] = useState(false);
   const [trialDaysRemaining, setTrialDaysRemaining] = useState(0);
   const [rcUserId, setRcUserId] = useState<string | null>(null);
+  const [isFarmLegacyPro, setIsFarmLegacyPro] = useState(false);
   // Session-only admin override — not persisted, clears on app close
   const [adminOverride, setAdminOverride] = useState(false);
 
-  const isSubscribed = hasActiveEntitlement || isGrandfathered || adminOverride;
+  const isSubscribed = hasActiveEntitlement || isGrandfathered || isFarmLegacyPro || adminOverride;
 
   // Unsubscribed users need packages for Paywall / PaywallModal (including read-only demo).
   // Subscribers skip this fetch via !isSubscribed.
@@ -176,6 +177,9 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
 
   if (isGrandfathered) {
     console.log('[Purchases] User is grandfathered — full access granted');
+  }
+  if (isFarmLegacyPro) {
+    console.log('[Purchases] Farm has legacy Pro flag — full access granted');
   }
 
   useEffect(() => {
@@ -238,6 +242,35 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     }
   }, []);
 
+  const refreshFarmAccess = useCallback(async (farmId: string | null) => {
+    if (!farmId) {
+      setIsFarmLegacyPro(false);
+      setIsTrial(false);
+      setTrialDaysRemaining(0);
+      await AsyncStorage.removeItem('farmguard_trial_active');
+      return;
+    }
+
+    try {
+      const flags = await trpcClient.farm.getFarmAccessFlags.query({ farmId });
+      setIsFarmLegacyPro(flags.legacyPro);
+      setIsTrial(flags.trialActive);
+      setTrialDaysRemaining(flags.trialDaysRemaining);
+      if (flags.trialActive) {
+        await AsyncStorage.setItem('farmguard_trial_active', 'true');
+      } else {
+        await AsyncStorage.removeItem('farmguard_trial_active');
+      }
+      console.log(
+        `[Purchases] Farm access flags: legacyPro=${flags.legacyPro}, trial=${flags.trialActive}, trialDays=${flags.trialDaysRemaining}`,
+      );
+    } catch (error) {
+      console.error('[Purchases] Error refreshing farm access flags:', error);
+      await checkTrialStatus(farmId);
+      setIsFarmLegacyPro(false);
+    }
+  }, [checkTrialStatus]);
+
   const endTrial = useCallback(async () => {
     await AsyncStorage.removeItem('farmguard_trial_active');
     setIsTrial(false);
@@ -265,6 +298,7 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   return useMemo(() => ({
     isSubscribed,
     isGrandfathered,
+    isFarmLegacyPro,
     adminOverride,
     setAdminOverride,
     isTrial,
@@ -272,6 +306,7 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     rcUserId,
     startTrial,
     checkTrialStatus,
+    refreshFarmAccess,
     endTrial,
     isLoadingCustomerInfo: customerInfoQuery.isLoading,
     customerInfo: customerInfoQuery.data ?? null,
@@ -287,6 +322,7 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
   }), [
     isSubscribed,
     isGrandfathered,
+    isFarmLegacyPro,
     adminOverride,
     setAdminOverride,
     isTrial,
@@ -294,6 +330,7 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
     rcUserId,
     startTrial,
     checkTrialStatus,
+    refreshFarmAccess,
     endTrial,
     customerInfoQuery.isLoading,
     customerInfoQuery.data,

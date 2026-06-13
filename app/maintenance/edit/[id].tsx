@@ -59,10 +59,6 @@ export default function EditMaintenanceScreen() {
   const log = getMaintenanceLogById(id ?? '');
   const equipment = log ? getEquipmentById(log.equipmentId) : undefined;
 
-  if (!isSubscribed && isDemoMode) {
-    return <Paywall onDismiss={() => router.back()} />;
-  }
-
   const [type, setType] = useState<MaintenanceLog['type']>('routine');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState('');
@@ -289,6 +285,10 @@ export default function EditMaintenanceScreen() {
   const handleSave = () => {
     saveMutation.mutate();
   };
+
+  if (!isSubscribed && isDemoMode) {
+    return <Paywall onDismiss={() => router.back()} />;
+  }
 
   if (isLoading) {
     return (
