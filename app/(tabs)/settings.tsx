@@ -59,6 +59,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { trpc } from '@/lib/trpc';
 import { Equipment, Consumable, ServiceRoutine, InspectionRoutine, BUILT_IN_FUEL_TYPES, FuelLog } from '@/types/equipment';
 import ExportRecordsModal from '@/components/ExportRecordsModal';
+import TruncatableStatusText from '@/components/TruncatableStatusText';
 import PaywallModal from '@/components/PaywallModal';
 import { useSubscription } from '@/hooks/useSubscription';
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL, SUPPORT_FEEDBACK_FORM_URL } from '@/constants/legalUrls';
@@ -1120,18 +1121,26 @@ export default function SettingsScreen() {
   };
 
   const planSummary = grandfathered
-    ? 'Pro — Legacy (device)'
+    ? 'Legacy Pro (this device)'
     : farmLegacyPro
-      ? 'Pro — Legacy (farm)'
+      ? 'Legacy Pro (this farm)'
       : isProUser
         ? 'Pro'
         : isTrial
-          ? `Trial (${trialDaysRemaining}d)`
+          ? `Trial (${trialDaysRemaining} days left)`
           : 'Free';
   const syncSummary = farmId
-    ? (lastSyncTime ? `Last sync ${new Date(lastSyncTime).toLocaleDateString()}` : 'Not synced yet')
+    ? (lastSyncTime
+      ? `Last sync ${new Date(lastSyncTime).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+      : 'Not synced yet')
     : 'Not configured';
   const farmSummary = farmName || farmId || 'No farm configured';
+
+  const quickStatusRows = [
+    { key: 'plan', Icon: Zap, iconColor: colors.primary, iconBg: colors.primary + '15', label: 'Plan', value: planSummary },
+    { key: 'sync', Icon: RefreshCw, iconColor: colors.secondary, iconBg: colors.secondary + '15', label: 'Sync', value: syncSummary },
+    { key: 'farm', Icon: Cloud, iconColor: colors.accent, iconBg: colors.accent + '15', label: 'Farm', value: farmSummary },
+  ];
 
   return (
     <ScrollView
@@ -1166,34 +1175,30 @@ export default function SettingsScreen() {
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Quick Status</Text>
-        <View style={styles.quickStatusGrid}>
-          <View style={[styles.quickStatusCard, { backgroundColor: colors.surface }]}>
-            <View style={[styles.settingIcon, { backgroundColor: colors.primary + '15' }]}>
-              <Zap color={colors.primary} size={18} />
+        <View style={[styles.quickStatusCard, { backgroundColor: colors.surface }]}>
+          {quickStatusRows.map((row, index) => (
+            <View
+              key={row.key}
+              style={[
+                styles.quickStatusRow,
+                index < quickStatusRows.length - 1 && {
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: colors.borderLight,
+                },
+              ]}
+            >
+              <View style={[styles.quickStatusIcon, { backgroundColor: row.iconBg }]}>
+                <row.Icon color={row.iconColor} size={18} />
+              </View>
+              <Text style={[styles.quickStatusRowLabel, { color: colors.textSecondary }]}>{row.label}</Text>
+              <TruncatableStatusText
+                label={row.label}
+                value={row.value}
+                style={styles.quickStatusRowValue}
+                color={colors.text}
+              />
             </View>
-            <Text style={[styles.quickStatusLabel, { color: colors.textSecondary }]}>Plan</Text>
-            <Text style={[styles.quickStatusValue, { color: colors.text }]} numberOfLines={1}>
-              {planSummary}
-            </Text>
-          </View>
-          <View style={[styles.quickStatusCard, { backgroundColor: colors.surface }]}>
-            <View style={[styles.settingIcon, { backgroundColor: colors.secondary + '15' }]}>
-              <RefreshCw color={colors.secondary} size={18} />
-            </View>
-            <Text style={[styles.quickStatusLabel, { color: colors.textSecondary }]}>Sync</Text>
-            <Text style={[styles.quickStatusValue, { color: colors.text }]} numberOfLines={1}>
-              {syncSummary}
-            </Text>
-          </View>
-          <View style={[styles.quickStatusCard, { backgroundColor: colors.surface }]}>
-            <View style={[styles.settingIcon, { backgroundColor: colors.accent + '15' }]}>
-              <Cloud color={colors.accent} size={18} />
-            </View>
-            <Text style={[styles.quickStatusLabel, { color: colors.textSecondary }]}>Farm</Text>
-            <Text style={[styles.quickStatusValue, { color: colors.text }]} numberOfLines={1}>
-              {farmSummary}
-            </Text>
-          </View>
+          ))}
         </View>
       </View>
 
@@ -3377,24 +3382,39 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '400' as const,
   },
-  quickStatusGrid: {
-    flexDirection: 'row',
-    gap: 10,
-  },
   quickStatusCard: {
-    flex: 1,
-    borderRadius: 14,
-    padding: 12,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    shadowColor: 'rgba(0, 0, 0, 0.08)',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  quickStatusLabel: {
-    fontSize: 12,
-    fontWeight: '500' as const,
-    marginTop: 8,
+  quickStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 12,
   },
-  quickStatusValue: {
+  quickStatusIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quickStatusRowLabel: {
     fontSize: 14,
-    fontWeight: '700' as const,
-    marginTop: 2,
+    fontWeight: '500' as const,
+    minWidth: 44,
+  },
+  quickStatusRowValue: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600' as const,
+    textAlign: 'right',
+    flexShrink: 1,
   },
   feedbackCategoryRow: {
     flexDirection: 'row',
