@@ -62,7 +62,7 @@ export const [AdminAccessProvider, useAdminAccess] = createContextHook(() => {
 
   const submitPin = useCallback(() => {
     const effectiveSuperAdminPin = getEffectiveSuperAdminPin();
-    if (pinInput === SUPER_ADMIN_PIN || pinInput === effectiveSuperAdminPin) {
+    if (pinInput === effectiveSuperAdminPin) {
       setIsSuperAdmin(true);
       setIsDebugMode(false);
       setShowPinModal(false);
