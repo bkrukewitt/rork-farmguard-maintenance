@@ -43,6 +43,7 @@ import {
   Lock,
   Zap,
   MessageSquare,
+  Star,
   Fuel,
   User,
 } from 'lucide-react-native';
@@ -62,6 +63,7 @@ import ExportRecordsModal from '@/components/ExportRecordsModal';
 import TruncatableStatusText from '@/components/TruncatableStatusText';
 import PaywallModal from '@/components/PaywallModal';
 import { useSubscription } from '@/hooks/useSubscription';
+import { useRateAppPrompt } from '@/hooks/useRateAppPrompt';
 import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL, SUPPORT_FEEDBACK_FORM_URL } from '@/constants/legalUrls';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import { useAdminAccess } from '@/contexts/AdminAccessContext';
@@ -180,6 +182,7 @@ export default function SettingsScreen() {
     restore,
     refresh: refreshSubscription,
   } = useSubscription();
+  const { showRatePrompt } = useRateAppPrompt();
 
   const {
     rcUserId,
@@ -1647,6 +1650,24 @@ export default function SettingsScreen() {
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Support</Text>
         
+        <TouchableOpacity
+          style={[styles.settingRow, { backgroundColor: colors.surface }]}
+          onPress={showRatePrompt}
+        >
+          <View style={styles.settingLeft}>
+            <View style={[styles.settingIcon, { backgroundColor: '#F5A623' + '15' }]}>
+              <Star color="#F5A623" size={20} />
+            </View>
+            <View>
+              <Text style={[styles.settingLabel, { color: colors.text }]}>Rate FarmGuard</Text>
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                Share your rating or feedback
+              </Text>
+            </View>
+          </View>
+          <ChevronRight color={colors.textSecondary} size={20} />
+        </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.settingRow, { backgroundColor: colors.surface }]}
           onPress={handleOpenFeedbackForm}

@@ -5,13 +5,13 @@ import {
   StyleSheet,
   Linking,
   TouchableOpacity,
-  Platform,
   Animated,
 } from 'react-native';
 import Constants from 'expo-constants';
 import { trpc } from '@/lib/trpc';
 import colors from '@/constants/colors';
 import { BUNDLED_MIN_SUPPORTED_VERSION } from '@/constants/minAppVersion';
+import { getStoreListingUrl } from '@/lib/storeReview';
 import { AlertTriangle, RefreshCw } from 'lucide-react-native';
 
 function compareVersions(current: string, minimum: string): number {
@@ -81,11 +81,7 @@ export default function VersionGate({ children }: VersionGateProps) {
             style={styles.updateButton}
             activeOpacity={0.85}
             onPress={() => {
-              const url =
-                Platform.OS === 'ios'
-                  ? 'https://apps.apple.com/app/id6746048789'
-                  : 'https://play.google.com/store/apps/details?id=app.rork.farmguardmaintenance';
-              Linking.openURL(url).catch(() =>
+              Linking.openURL(getStoreListingUrl()).catch(() =>
                 console.warn('[VersionGate] Could not open store URL')
               );
             }}

@@ -37,6 +37,7 @@ import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import Paywall from '@/components/Paywall';
+import { useRateAppPrompt } from '@/hooks/useRateAppPrompt';
 import { MaintenanceLog, Consumable, ServiceRoutine, ChecklistItem, EquipmentAttachment, ConsumableCategory, CONSUMABLE_CATEGORIES } from '@/types/equipment';
 import { uploadAttachment } from '@/utils/attachmentUpload';
 import { generateId } from '@/utils/helpers';
@@ -58,6 +59,7 @@ export default function AddMaintenanceScreen() {
   const { equipmentId: preselectedEquipmentId } = useLocalSearchParams<{ equipmentId?: string }>();
   const { farmId, equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines, updateEquipment, addConsumable, isDemoMode } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
+  const { maybeShowRatePrompt } = useRateAppPrompt();
 
   const [selectedEquipmentId, setSelectedEquipmentId] = useState(preselectedEquipmentId ?? '');
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
@@ -333,6 +335,10 @@ export default function AddMaintenanceScreen() {
     onSuccess: (result) => {
       const equip = equipment.find(e => e.id === result.equipmentId);
       const serviceHours = result.serviceHours;
+      const finish = () => {
+        router.back();
+        maybeShowRatePrompt();
+      };
       
       if (equip && serviceHours > 0 && serviceHours !== equip.currentHours) {
         Alert.alert(
@@ -342,7 +348,7 @@ export default function AddMaintenanceScreen() {
             {
               text: 'No',
               style: 'cancel',
-              onPress: () => router.back(),
+              onPress: finish,
             },
             {
               text: 'Yes, Update',
@@ -352,17 +358,17 @@ export default function AddMaintenanceScreen() {
                     id: result.equipmentId,
                     currentHours: serviceHours,
                   });
-                  router.back();
+                  finish();
                 } catch (error) {
                   console.log('Error updating equipment hours:', error);
-                  router.back();
+                  finish();
                 }
               },
             },
           ]
         );
       } else {
-        router.back();
+        finish();
       }
     },
     onError: (error: Error) => {

@@ -34,6 +34,7 @@ import DateTimePicker, { DateTimePickerEvent } from '@react-native-community/dat
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { usePurchases } from '@/contexts/PurchasesContext';
+import { useRateAppPrompt } from '@/hooks/useRateAppPrompt';
 import { uploadImage } from '@/utils/imageUpload';
 import { 
   WorkOrderPriority, 
@@ -57,6 +58,7 @@ export default function WorkOrderDetailScreen() {
     isDemoMode,
   } = useFarmData();
   const { isSubscribed } = usePurchases();
+  const { maybeShowRatePrompt } = useRateAppPrompt();
   
   const workOrder = getWorkOrderById(id);
   
@@ -126,6 +128,7 @@ export default function WorkOrderDetailScreen() {
 
     setIsSaving(true);
     try {
+      const becameCompleted = status === 'completed' && workOrder.status !== 'completed';
       await updateWorkOrder({
         id: workOrder.id,
         title: title.trim(),
@@ -138,12 +141,15 @@ export default function WorkOrderDetailScreen() {
         notes: notes.trim() || undefined,
         assignedTo: assignedTo.length > 0 ? assignedTo : undefined,
         images: images.length > 0 ? images : undefined,
-        completedAt: status === 'completed' && workOrder.status !== 'completed' 
+        completedAt: becameCompleted
           ? new Date().toISOString() 
           : workOrder.completedAt,
       });
       
       setIsEditing(false);
+      if (becameCompleted) {
+        maybeShowRatePrompt();
+      }
     } catch (error) {
       console.error('Error updating work order:', error);
       Alert.alert('Error', 'Failed to update work order');
@@ -177,11 +183,15 @@ export default function WorkOrderDetailScreen() {
 
   const handleQuickStatusChange = async (newStatus: WorkOrderStatus) => {
     try {
+      const becameCompleted = newStatus === 'completed' && workOrder.status !== 'completed';
       await updateWorkOrder({
         id: workOrder.id,
         status: newStatus,
         completedAt: newStatus === 'completed' ? new Date().toISOString() : undefined,
       });
+      if (becameCompleted) {
+        maybeShowRatePrompt();
+      }
     } catch (error) {
       console.error('Error updating status:', error);
     }

@@ -12,7 +12,9 @@ import VersionGate from "@/components/VersionGate";
 import SubscriptionGate from "@/components/SubscriptionGate";
 import RecoveryEmailGate from "@/components/RecoveryEmailGate";
 import GlobalAnnouncementBanner from "@/components/GlobalAnnouncementBanner";
+import RateAppPrompt from "@/components/RateAppPrompt";
 import FarmPurchasesSync from "@/components/FarmPurchasesSync";
+import { RateAppPromptProvider } from "@/hooks/useRateAppPrompt";
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -130,18 +132,21 @@ export default function RootLayout() {
           <ThemeProvider>
             <FarmDataProvider>
               <PurchasesProvider>
-                <FarmPurchasesSync />
-                <VersionGate>
-                  <View style={{ flex: 1 }}>
-                    <GlobalAnnouncementBanner />
-                    <View style={{ flex: 1, minHeight: 0 }}>
-                      <SubscriptionGate>
-                        <RootLayoutNav />
-                        <RecoveryEmailGate />
-                      </SubscriptionGate>
+                <RateAppPromptProvider>
+                  <FarmPurchasesSync />
+                  <VersionGate>
+                    <View style={{ flex: 1 }}>
+                      <GlobalAnnouncementBanner />
+                      <View style={{ flex: 1, minHeight: 0 }}>
+                        <SubscriptionGate>
+                          <RootLayoutNav />
+                          <RecoveryEmailGate />
+                        </SubscriptionGate>
+                      </View>
+                      <RateAppPrompt />
                     </View>
-                  </View>
-                </VersionGate>
+                  </VersionGate>
+                </RateAppPromptProvider>
               </PurchasesProvider>
             </FarmDataProvider>
           </ThemeProvider>
