@@ -39,12 +39,14 @@ import {
   Share2,
   X,
   CarFront,
+  Warehouse,
 } from 'lucide-react-native';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Equipment, EquipmentType } from '@/types/equipment';
-import { formatMetric, getMaintenanceStatus } from '@/utils/helpers';
+import { getMaintenanceStatus } from '@/utils/helpers';
 import { generateEquipmentCSVTemplate, exportEquipmentToCSV } from '@/utils/csvHelpers';
+import { getEquipmentListCardSubtitle } from '@/utils/equipmentFormConfig';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
   tractor: Tractor,
@@ -56,6 +58,7 @@ const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string
   loader: Container,
   mower: Fan,
   utv: CarFront,
+  building: Warehouse,
   other: Settings,
 };
 
@@ -236,7 +239,7 @@ export default function EquipmentScreen() {
             {item.year} {item.make} {item.model}
           </Text>
           <View style={styles.cardFooter}>
-            <Text style={[styles.hoursText, { color: colors.primary }]}>{formatMetric(item.currentHours, item.metric)}</Text>
+            <Text style={[styles.hoursText, { color: colors.primary }]}>{getEquipmentListCardSubtitle(item)}</Text>
             <Text style={[styles.typeText, { color: colors.textSecondary }]}>{item.type.charAt(0).toUpperCase() + item.type.slice(1)}</Text>
           </View>
         </View>

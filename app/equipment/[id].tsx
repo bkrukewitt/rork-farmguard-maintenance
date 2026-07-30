@@ -45,6 +45,7 @@ import {
   CarFront,
   Fuel,
   Copy,
+  Warehouse,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -54,6 +55,10 @@ import { uploadAttachment, getAttachmentPublicUrl } from '@/utils/attachmentUplo
 import { formatDate, formatMetric, getMaintenanceStatus, generateId } from '@/utils/helpers';
 import { generateMaintenancePdf, shareFile, getDateRangeForPreset } from '@/utils/exportHelpers';
 import { Download } from 'lucide-react-native';
+import {
+  getEquipmentDetailConfig,
+  formatMaintenanceIntervalLabel,
+} from '@/utils/equipmentFormConfig';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
   tractor: Tractor,
@@ -65,6 +70,7 @@ const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string
   loader: Container,
   mower: Fan,
   utv: CarFront,
+  building: Warehouse,
   other: Settings,
 };
 
@@ -97,6 +103,7 @@ export default function EquipmentDetailScreen() {
 
   const handleQuickExport = async () => {
     if (!equipment) return;
+    const exportConfig = getEquipmentDetailConfig(equipment.type);
     try {
       setIsQuickExporting(true);
       const allDates = logs.map((l) => l.date).concat(fuelLogs.map((l) => l.date));
@@ -104,11 +111,11 @@ export default function EquipmentDetailScreen() {
       const uri = await generateMaintenancePdf({
         equipment: [equipment],
         maintenanceLogs: logs,
-        fuelLogs,
+        fuelLogs: exportConfig.includeFuelInExport ? fuelLogs : [],
         consumables,
         colorScheme: currentScheme,
         dateRange,
-        includeFuel: true,
+        includeFuel: exportConfig.includeFuelInExport,
         includeNotes: true,
         includeAttachments: true,
         isBatchSummary: false,
@@ -370,6 +377,7 @@ export default function EquipmentDetailScreen() {
   }
 
   const Icon = EQUIPMENT_ICONS[equipment.type] || Settings;
+  const detailConfig = getEquipmentDetailConfig(equipment.type);
 
   return (
     <>
@@ -384,10 +392,12 @@ export default function EquipmentDetailScreen() {
               <Text style={styles.imageEquipmentDetails}>
                 {equipment.year} {equipment.make} {equipment.model}
               </Text>
-              <View style={styles.imageHoursContainer}>
-                <Clock color="#fff" size={18} />
-                <Text style={styles.imageHoursText}>{formatMetric(equipment.currentHours, equipment.metric)}</Text>
-              </View>
+              {detailConfig.showUsageMetric && (
+                <View style={styles.imageHoursContainer}>
+                  <Clock color="#fff" size={18} />
+                  <Text style={styles.imageHoursText}>{formatMetric(equipment.currentHours, equipment.metric)}</Text>
+                </View>
+              )}
             </View>
           </View>
         ) : (
@@ -399,10 +409,12 @@ export default function EquipmentDetailScreen() {
             <Text style={styles.equipmentDetails}>
               {equipment.year} {equipment.make} {equipment.model}
             </Text>
-            <View style={styles.hoursContainer}>
-              <Clock color={Colors.accent} size={18} />
-              <Text style={styles.hoursText}>{formatMetric(equipment.currentHours, equipment.metric)}</Text>
-            </View>
+            {detailConfig.showUsageMetric && (
+              <View style={styles.hoursContainer}>
+                <Clock color={Colors.accent} size={18} />
+                <Text style={styles.hoursText}>{formatMetric(equipment.currentHours, equipment.metric)}</Text>
+              </View>
+            )}
           </View>
         )}
 
@@ -449,13 +461,13 @@ export default function EquipmentDetailScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Equipment Details</Text>
+          <Text style={styles.sectionTitle}>{detailConfig.detailsSectionTitle}</Text>
           <View style={styles.detailsCard}>
             <View style={styles.detailRow}>
               <View style={styles.detailIcon}>
                 <Hash color={Colors.textSecondary} size={16} />
               </View>
-              <Text style={styles.detailLabel}>Serial Number</Text>
+              <Text style={styles.detailLabel}>{detailConfig.serialNumberLabel}</Text>
               <Text style={styles.detailValue}>{equipment.serialNumber || '—'}</Text>
               {equipment.serialNumber ? (
                 <TouchableOpacity
@@ -473,7 +485,7 @@ export default function EquipmentDetailScreen() {
               <View style={styles.detailIcon}>
                 <Calendar color={Colors.textSecondary} size={16} />
               </View>
-              <Text style={styles.detailLabel}>Purchase Date</Text>
+              <Text style={styles.detailLabel}>{detailConfig.purchaseDateLabel}</Text>
               <Text style={styles.detailValue}>
                 {equipment.purchaseDate ? formatDate(equipment.purchaseDate) : '—'}
               </Text>
@@ -491,7 +503,7 @@ export default function EquipmentDetailScreen() {
                 <View style={styles.detailIcon}>
                   <Droplet color={Colors.textSecondary} size={16} />
                 </View>
-                <Text style={styles.detailLabel}>Oil Capacity</Text>
+                <Text style={styles.detailLabel}>{detailConfig.oilCapacityLabel}</Text>
                 <Text style={styles.detailValue}>{equipment.oilCapacity}</Text>
               </View>
             ) : null}
@@ -577,8 +589,7 @@ export default function EquipmentDetailScreen() {
                   <View style={styles.scheduleContent}>
                     <Text style={styles.scheduleName}>{item.name}</Text>
                     <Text style={styles.scheduleInterval}>
-                      {item.intervalHours ? `Every ${item.intervalHours} hours` : 
-                       item.intervalDays ? `Every ${item.intervalDays} days` : '—'}
+                      {formatMaintenanceIntervalLabel(item.intervalHours, item.intervalDays)}
                     </Text>
                   </View>
                   <View style={styles.scheduleRight}>
@@ -595,6 +606,7 @@ export default function EquipmentDetailScreen() {
           )}
         </View>
 
+        {detailConfig.showFuelHistory && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Fuel History</Text>
@@ -670,6 +682,7 @@ export default function EquipmentDetailScreen() {
             </>
           )}
         </View>
+        )}
 
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Service History</Text>
@@ -702,9 +715,11 @@ export default function EquipmentDetailScreen() {
                   </Text>
                 </View>
                 <Text style={styles.logDescription}>{log.description}</Text>
-                <View style={styles.logMeta}>
-                  <Text style={styles.logMetaText}>@ {formatMetric(log.hoursAtService, equipment.metric)}</Text>
-                </View>
+                {detailConfig.showHoursInServiceLogs && (
+                  <View style={styles.logMeta}>
+                    <Text style={styles.logMetaText}>@ {formatMetric(log.hoursAtService, equipment.metric)}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             ))
           )}

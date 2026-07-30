@@ -8,8 +8,8 @@ import { requireSubscription, startTrial, getTrialInfo, verifySubscription } fro
 import { checkRateLimit, getClientIdentifier } from "../../utils/rate-limiter";
 
 const EquipmentTypeSchema = z.enum([
-  'tractor', 'combine', 'truck', 'implement', 'sprayer', 
-  'planter', 'loader', 'mower', 'utv', 'other'
+  'tractor', 'combine', 'truck', 'implement', 'sprayer',
+  'planter', 'loader', 'mower', 'utv', 'building', 'other'
 ]);
 
 const ConsumableCategorySchema = z.enum([

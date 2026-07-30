@@ -534,6 +534,14 @@ function normalizeEquipmentType(typeStr: string): EquipmentType | null {
     'loaders': 'loader',
     'mower': 'mower',
     'mowers': 'mower',
+    'building': 'building',
+    'buildings': 'building',
+    'barn': 'building',
+    'barns': 'building',
+    'shed': 'building',
+    'sheds': 'building',
+    'shop': 'building',
+    'structure': 'building',
     'other': 'other',
   };
   

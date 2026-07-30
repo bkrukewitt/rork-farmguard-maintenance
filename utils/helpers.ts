@@ -89,6 +89,9 @@ export function getEquipmentTypeIcon(type: string): string {
     sprayer: 'Droplets',
     planter: 'Sprout',
     loader: 'Container',
+    mower: 'Fan',
+    utv: 'CarFront',
+    building: 'Warehouse',
     other: 'Settings',
   };
   return icons[type] || 'Settings';

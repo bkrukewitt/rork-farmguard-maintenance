@@ -28,13 +28,15 @@ import {
   Image as ImageIcon,
   X,
   CarFront,
+  Warehouse,
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import Paywall from '@/components/Paywall';
-import { EquipmentType, EquipmentMetric, DEFAULT_MAINTENANCE_INTERVALS } from '@/types/equipment';
+import { EquipmentType, EquipmentMetric } from '@/types/equipment';
 import { uploadImage } from '@/utils/imageUpload';
+import { getEquipmentFormConfig, validateEquipmentForm, getDefaultMaintenanceIntervalsForType } from '@/utils/equipmentFormConfig';
 
 const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
   { value: 'tractor', label: 'Tractor', Icon: Tractor },
@@ -46,6 +48,7 @@ const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.Compon
   { value: 'loader', label: 'Loader', Icon: Container },
   { value: 'mower', label: 'Mower', Icon: Fan },
   { value: 'utv', label: 'UTV', Icon: CarFront },
+  { value: 'building', label: 'Building', Icon: Warehouse },
   { value: 'other', label: 'Other', Icon: Settings },
 ];
 
@@ -140,14 +143,9 @@ export default function AddEquipmentScreen() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      if (!name.trim()) {
-        throw new Error('Equipment name is required');
-      }
-      if (!make.trim()) {
-        throw new Error('Make is required');
-      }
-      if (!model.trim()) {
-        throw new Error('Model is required');
+      const validationError = validateEquipmentForm(type, { name, make, model });
+      if (validationError) {
+        throw new Error(validationError);
       }
 
       const equipment = await addEquipment({
@@ -165,13 +163,13 @@ export default function AddEquipmentScreen() {
         oilCapacity: oilCapacity.trim() || undefined,
       });
 
-      for (const interval of DEFAULT_MAINTENANCE_INTERVALS) {
+      for (const interval of getDefaultMaintenanceIntervalsForType(type)) {
         await addInterval({
           equipmentId: equipment.id,
           name: interval.name,
           intervalHours: interval.intervalHours,
           intervalDays: interval.intervalDays,
-          lastPerformedHours: parseFloat(currentHours) || 0,
+          lastPerformedHours: interval.intervalHours != null ? parseFloat(currentHours) || 0 : undefined,
           lastPerformedDate: new Date().toISOString(),
         });
       }
@@ -194,6 +192,8 @@ export default function AddEquipmentScreen() {
     saveMutation.mutate();
   };
 
+  const formConfig = getEquipmentFormConfig(type);
+
   const footer = (
     <View style={styles.footer}>
       <TouchableOpacity
@@ -209,7 +209,7 @@ export default function AddEquipmentScreen() {
       >
         <Check color={Colors.textOnPrimary} size={20} />
         <Text style={styles.saveButtonText}>
-          {saveMutation.isPending ? 'Saving...' : 'Save Equipment'}
+          {saveMutation.isPending ? 'Saving...' : formConfig.saveButtonText}
         </Text>
       </TouchableOpacity>
     </View>
@@ -222,7 +222,7 @@ export default function AddEquipmentScreen() {
       stickyFooter={footer}
     >
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Equipment Photo</Text>
+        <Text style={styles.sectionTitle}>{formConfig.photoSectionTitle}</Text>
         {imageUri ? (
           <View style={styles.imagePreviewContainer}>
             <Image source={{ uri: imageUri }} style={styles.imagePreview} />
@@ -281,34 +281,34 @@ export default function AddEquipmentScreen() {
         <Text style={styles.sectionTitle}>Basic Information</Text>
         
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Name / Nickname *</Text>
+          <Text style={styles.inputLabel}>{formConfig.name.label}</Text>
           <TextInput
             style={styles.input}
             value={name}
             onChangeText={setName}
-            placeholder="e.g., Main Tractor, Big Red"
+            placeholder={formConfig.name.placeholder}
             placeholderTextColor={Colors.textSecondary}
           />
         </View>
 
         <View style={styles.row}>
           <View style={[styles.inputGroup, { flex: 1 }]}>
-            <Text style={styles.inputLabel}>Make *</Text>
+            <Text style={styles.inputLabel}>{formConfig.make.label}</Text>
             <TextInput
               style={styles.input}
               value={make}
               onChangeText={setMake}
-              placeholder="John Deere"
+              placeholder={formConfig.make.placeholder}
               placeholderTextColor={Colors.textSecondary}
             />
           </View>
           <View style={[styles.inputGroup, { flex: 1 }]}>
-            <Text style={styles.inputLabel}>Model *</Text>
+            <Text style={styles.inputLabel}>{formConfig.model.label}</Text>
             <TextInput
               style={styles.input}
               value={model}
               onChangeText={setModel}
-              placeholder="8R 410"
+              placeholder={formConfig.model.placeholder}
               placeholderTextColor={Colors.textSecondary}
             />
           </View>
@@ -316,73 +316,81 @@ export default function AddEquipmentScreen() {
 
         <View style={styles.row}>
           <View style={[styles.inputGroup, { flex: 1 }]}>
-            <Text style={styles.inputLabel}>Year</Text>
+            <Text style={styles.inputLabel}>{formConfig.year.label}</Text>
             <TextInput
               style={styles.input}
               value={year}
               onChangeText={setYear}
-              placeholder="2024"
+              placeholder={formConfig.year.placeholder}
               placeholderTextColor={Colors.textSecondary}
               keyboardType="number-pad"
               maxLength={4}
             />
           </View>
-          <View style={[styles.inputGroup, { flex: 1 }]}>
-            <Text style={styles.inputLabel}>{metric === 'miles' ? 'Current Miles' : 'Current Hours'}</Text>
+          {formConfig.showHours && (
+            <View style={[styles.inputGroup, { flex: 1 }]}>
+              <Text style={styles.inputLabel}>{metric === 'miles' ? 'Current Miles' : 'Current Hours'}</Text>
+              <TextInput
+                style={styles.input}
+                value={currentHours}
+                onChangeText={setCurrentHours}
+                placeholder="0"
+                placeholderTextColor={Colors.textSecondary}
+                keyboardType="decimal-pad"
+              />
+            </View>
+          )}
+        </View>
+
+        {formConfig.showMetric && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Usage Metric</Text>
+            <View style={styles.metricToggle}>
+              <TouchableOpacity
+                style={[styles.metricOption, metric === 'hours' && styles.metricOptionActive]}
+                onPress={() => setMetric('hours')}
+              >
+                <Text style={[styles.metricOptionText, metric === 'hours' && styles.metricOptionTextActive]}>Hours</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.metricOption, metric === 'miles' && styles.metricOptionActive]}
+                onPress={() => setMetric('miles')}
+              >
+                <Text style={[styles.metricOptionText, metric === 'miles' && styles.metricOptionTextActive]}>Miles</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
+        {formConfig.showSerialNumber && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>{formConfig.serialNumber.label}</Text>
             <TextInput
               style={styles.input}
-              value={currentHours}
-              onChangeText={setCurrentHours}
-              placeholder="0"
+              value={serialNumber}
+              onChangeText={setSerialNumber}
+              placeholder={formConfig.serialNumber.placeholder}
               placeholderTextColor={Colors.textSecondary}
-              keyboardType="decimal-pad"
+              autoCapitalize="characters"
             />
           </View>
-        </View>
+        )}
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Usage Metric</Text>
-          <View style={styles.metricToggle}>
-            <TouchableOpacity
-              style={[styles.metricOption, metric === 'hours' && styles.metricOptionActive]}
-              onPress={() => setMetric('hours')}
-            >
-              <Text style={[styles.metricOptionText, metric === 'hours' && styles.metricOptionTextActive]}>Hours</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.metricOption, metric === 'miles' && styles.metricOptionActive]}
-              onPress={() => setMetric('miles')}
-            >
-              <Text style={[styles.metricOptionText, metric === 'miles' && styles.metricOptionTextActive]}>Miles</Text>
-            </TouchableOpacity>
+        {formConfig.showOilCapacity && (
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>{formConfig.oilCapacity.label}</Text>
+            <TextInput
+              style={styles.input}
+              value={oilCapacity}
+              onChangeText={setOilCapacity}
+              placeholder={formConfig.oilCapacity.placeholder}
+              placeholderTextColor={Colors.textSecondary}
+            />
           </View>
-        </View>
+        )}
 
         <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Serial Number</Text>
-          <TextInput
-            style={styles.input}
-            value={serialNumber}
-            onChangeText={setSerialNumber}
-            placeholder="Enter serial number"
-            placeholderTextColor={Colors.textSecondary}
-            autoCapitalize="characters"
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Oil Capacity</Text>
-          <TextInput
-            style={styles.input}
-            value={oilCapacity}
-            onChangeText={setOilCapacity}
-            placeholder="e.g., 15 quarts, 3.5 gallons"
-            placeholderTextColor={Colors.textSecondary}
-          />
-        </View>
-
-        <View style={styles.inputGroup}>
-          <Text style={styles.inputLabel}>Purchase Date</Text>
+          <Text style={styles.inputLabel}>{formConfig.purchaseDate.label}</Text>
           <TextInput
             style={styles.input}
             value={purchaseDate}
@@ -398,7 +406,7 @@ export default function AddEquipmentScreen() {
             style={[styles.input, styles.textArea]}
             value={notes}
             onChangeText={setNotes}
-            placeholder="Additional notes about this equipment..."
+            placeholder={formConfig.notes.placeholder}
             placeholderTextColor={Colors.textSecondary}
             multiline
             numberOfLines={3}
@@ -408,10 +416,9 @@ export default function AddEquipmentScreen() {
       </View>
 
       <View style={styles.infoCard}>
-        <Text style={styles.infoTitle}>Default Maintenance Schedules</Text>
+        <Text style={styles.infoTitle}>{formConfig.maintenanceInfoTitle}</Text>
         <Text style={styles.infoText}>
-          Standard maintenance intervals will be automatically created for this equipment. 
-          You can customize them later from the equipment details screen.
+          {formConfig.maintenanceInfoText}
         </Text>
       </View>
     </KeyboardAwareScrollView>

@@ -61,6 +61,21 @@ export const DEMO_EQUIPMENT: Equipment[] = [
     createdAt: isoDaysAgo(90),
     updatedAt: isoDaysAgo(1),
   },
+  {
+    id: 'demo-eq-building-1',
+    name: 'North Machine Shed',
+    type: 'building',
+    make: 'Morton Buildings',
+    model: '40x60 Pole Barn',
+    year: 2023,
+    serialNumber: 'BLDG-2023-NMS',
+    purchaseDate: '2023-09-15',
+    currentHours: 0,
+    oilCapacity: '2,400 sq ft',
+    notes: '40x60 machine shed with 16\' lean-to. Morton paint warranty through 2033.',
+    createdAt: isoDaysAgo(200),
+    updatedAt: isoDaysAgo(10),
+  },
 ];
 
 export const DEMO_MAINTENANCE_LOGS: MaintenanceLog[] = [
@@ -91,6 +106,17 @@ export const DEMO_MAINTENANCE_LOGS: MaintenanceLog[] = [
     performedByName: 'Shop',
     createdAt: isoDaysAgo(30),
   },
+  {
+    id: 'demo-log-building-1',
+    equipmentId: 'demo-eq-building-1',
+    date: isoDaysAgo(20),
+    hoursAtService: 0,
+    type: 'routine',
+    description: 'Door & hardware check — lubricated overhead door tracks',
+    consumablesUsed: [],
+    performedBy: 'owner',
+    createdAt: isoDaysAgo(20),
+  },
 ];
 
 export const DEMO_INTERVALS: MaintenanceInterval[] = [
@@ -109,6 +135,27 @@ export const DEMO_INTERVALS: MaintenanceInterval[] = [
     intervalHours: 50,
     lastPerformedHours: 2375,
     lastPerformedDate: isoDaysAgo(2),
+  },
+  {
+    id: 'demo-int-building-1',
+    equipmentId: 'demo-eq-building-1',
+    name: 'Roof inspection',
+    intervalDays: 365,
+    lastPerformedDate: isoDaysAgo(45),
+  },
+  {
+    id: 'demo-int-building-2',
+    equipmentId: 'demo-eq-building-1',
+    name: 'Gutter cleaning',
+    intervalDays: 180,
+    lastPerformedDate: isoDaysAgo(120),
+  },
+  {
+    id: 'demo-int-building-3',
+    equipmentId: 'demo-eq-building-1',
+    name: 'Door & hardware check',
+    intervalDays: 90,
+    lastPerformedDate: isoDaysAgo(20),
   },
 ];
 
@@ -169,6 +216,16 @@ export const DEMO_WORK_ORDERS: WorkOrder[] = [
     createdAt: isoDaysAgo(80),
     updatedAt: isoDaysAgo(60),
     completedAt: isoDaysAgo(60),
+  },
+  {
+    id: 'demo-wo-building-1',
+    title: 'Seal north lean-to flashing',
+    description: 'Inspector noted minor gap at lean-to roof junction after spring storms',
+    equipmentId: 'demo-eq-building-1',
+    priority: 'medium',
+    status: 'pending',
+    createdAt: isoDaysAgo(5),
+    updatedAt: isoDaysAgo(5),
   },
 ];
 
