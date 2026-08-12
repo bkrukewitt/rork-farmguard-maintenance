@@ -184,8 +184,21 @@ async function requireFarmAccess(farmId: string, farmPassword: string | null | u
   console.log(`[Auth] Access granted for farm: ${farmId}`);
 }
 
-function requireSuperAdminPin(pin: string): void {
-  const configuredPin = process.env.SUPER_ADMIN_PIN || "9173";
+function requireSuperAdminPin(pin: string, clientId: string): void {
+  const limit = checkRateLimit(`superadmin:pin:${clientId}`, 5, 5 * 60 * 1000);
+  if (!limit.allowed) {
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: "Too many super admin attempts. Please wait and try again.",
+    });
+  }
+  const configuredPin = process.env.SUPER_ADMIN_PIN;
+  if (!configuredPin) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Super admin functionality is not configured on this server.",
+    });
+  }
   if (pin !== configuredPin) {
     throw new TRPCError({
       code: "UNAUTHORIZED",
@@ -425,8 +438,8 @@ export const farmRouter = createTRPCRouter({
     .input(z.object({
       superAdminPin: z.string().min(1),
     }))
-    .query(async ({ input }) => {
-      requireSuperAdminPin(input.superAdminPin);
+    .query(async ({ input, ctx }) => {
+      requireSuperAdminPin(input.superAdminPin, getClientIdentifier(ctx.req));
       const farms = await listPasswordProtectedFarmsFromDb();
       return { farms };
     }),
@@ -437,8 +450,8 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string().min(1),
       newPassword: z.string().min(4),
     }))
-    .mutation(async ({ input }) => {
-      requireSuperAdminPin(input.superAdminPin);
+    .mutation(async ({ input, ctx }) => {
+      requireSuperAdminPin(input.superAdminPin, getClientIdentifier(ctx.req));
       const updated = await setFarmPasswordInDb(input.farmId.trim(), input.newPassword);
       if (!updated) {
         throw new TRPCError({
@@ -454,8 +467,8 @@ export const farmRouter = createTRPCRouter({
       superAdminPin: z.string().min(1),
       limit: z.number().min(1).max(100).optional().default(50),
     }))
-    .query(async ({ input }) => {
-      requireSuperAdminPin(input.superAdminPin);
+    .query(async ({ input, ctx }) => {
+      requireSuperAdminPin(input.superAdminPin, getClientIdentifier(ctx.req));
       const events = await fetchRecentPasswordResetAuditEvents(input.limit ?? 50);
       return { events };
     }),
@@ -565,8 +578,8 @@ export const farmRouter = createTRPCRouter({
       superAdminPin: z.string().min(1),
       farmId: z.string().min(1),
     }))
-    .mutation(async ({ input }) => {
-      requireSuperAdminPin(input.superAdminPin);
+    .mutation(async ({ input, ctx }) => {
+      requireSuperAdminPin(input.superAdminPin, getClientIdentifier(ctx.req));
       const targetFarmId = input.farmId.trim();
       const result = await requestFarmPasswordResetInDb(targetFarmId);
       if (!result) {
