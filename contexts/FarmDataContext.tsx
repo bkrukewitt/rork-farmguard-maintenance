@@ -45,6 +45,7 @@ const STORAGE_KEYS = {
   IS_FARM_CREATOR: 'farmguard_is_farm_creator',
   DISPLAY_NAME: 'farmguard_display_name',
   FARM_PASSWORD: 'farmguard_farm_password',
+  RECOVERY_EMAIL: 'farmguard_recovery_email',
   DEMO_MODE: 'farmguard_demo_mode',
 };
 
@@ -271,6 +272,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         }
       });
     });
+    void AsyncStorage.getItem(STORAGE_KEYS.RECOVERY_EMAIL).then(email => {
+      if (email) setRecoveryEmail(email);
+    });
     void loadData<string>(STORAGE_KEYS.DELETED_IDS).then(ids => {
       if (ids.length > 0) {
         console.log(`[Init] Loaded ${ids.length} tombstoned IDs`);
@@ -467,11 +471,18 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   useEffect(() => {
     if (remoteDataQuery.data) {
-      setRecoveryEmail(remoteDataQuery.data.recoveryEmail ?? null);
+      const email = remoteDataQuery.data.recoveryEmail ?? null;
+      setRecoveryEmail(email);
+      if (email) {
+        void AsyncStorage.setItem(STORAGE_KEYS.RECOVERY_EMAIL, email);
+      } else {
+        void AsyncStorage.removeItem(STORAGE_KEYS.RECOVERY_EMAIL);
+      }
       return;
     }
     if (!farmId) {
       setRecoveryEmail(null);
+      void AsyncStorage.removeItem(STORAGE_KEYS.RECOVERY_EMAIL);
     }
   }, [remoteDataQuery.data, farmId]);
 
@@ -2041,6 +2052,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       }
 
       setRecoveryEmail(normalized);
+      void AsyncStorage.setItem(STORAGE_KEYS.RECOVERY_EMAIL, normalized);
       console.log(`[Farm] Recovery email updated for farm ${farmId}`);
       return normalized;
     },
