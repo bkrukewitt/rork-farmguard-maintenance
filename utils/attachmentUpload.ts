@@ -21,43 +21,6 @@ function getMimeType(fileName: string): string {
   return 'application/octet-stream';
 }
 
-async function ensureAttachmentsBucketExists(): Promise<boolean> {
-  try {
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const exists = buckets?.some((b) => b.name === ATTACHMENTS_BUCKET);
-    if (!exists) {
-      console.log('[AttachmentUpload] Creating bucket:', ATTACHMENTS_BUCKET);
-      const { error } = await supabase.storage.createBucket(ATTACHMENTS_BUCKET, {
-        public: true,
-        // Allow common doc/image types; can be expanded in Supabase UI if needed
-        allowedMimeTypes: [
-          'application/pdf',
-          'application/msword',
-          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-          'application/vnd.ms-excel',
-          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'image/jpeg',
-          'image/png',
-          'text/plain',
-        ],
-        fileSizeLimit: 20 * 1024 * 1024, // 20MB
-      });
-      if (error) {
-        console.error('[AttachmentUpload] Error creating bucket:', error.message);
-        // If bucket already exists, ignore; otherwise surface as non-fatal
-        if (!error.message.includes('already exists')) {
-          return false;
-        }
-      }
-    }
-    return true;
-  } catch (error) {
-    console.error('[AttachmentUpload] Error checking bucket:', error);
-    // Fail open so attachments still work locally even if bucket check fails
-    return true;
-  }
-}
-
 async function uploadFromNative(localUri: string, remotePath: string, mimeType: string): Promise<string> {
   console.log('[AttachmentUpload] Reading file as base64:', localUri);
   const base64 = await FileSystem.readAsStringAsync(localUri, {
@@ -120,8 +83,6 @@ export async function uploadAttachment(localUri: string, remotePath: string, fil
     console.log('[AttachmentUpload] Already a remote URL, skipping upload');
     return remotePath;
   }
-
-  await ensureAttachmentsBucketExists();
 
   const mimeType = getMimeType(fileName);
 

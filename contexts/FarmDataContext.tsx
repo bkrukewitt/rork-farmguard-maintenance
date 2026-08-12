@@ -1788,6 +1788,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
     await supabase.from('farms').upsert({ id: newFarmId });
     const storedName = await AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME);
+    const appMeta = getClientAppMeta();
     await supabase.from('farm_members').upsert(
       {
         farm_id: newFarmId,
@@ -1796,6 +1797,10 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         display_name: storedName || null,
         joined_at: new Date().toISOString(),
         last_active_at: new Date().toISOString(),
+        app_last_seen: new Date().toISOString(),
+        platform: appMeta.platform,
+        app_version: appMeta.app_version,
+        build_number: appMeta.build_number,
       },
       { onConflict: 'farm_id,device_id' }
     );

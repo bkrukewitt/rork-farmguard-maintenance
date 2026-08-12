@@ -41,31 +41,6 @@ function generateFileName(extension: string = 'jpg'): string {
   return `${timestamp}_${random}.${extension}`;
 }
 
-async function ensureBucketExists(): Promise<boolean> {
-  try {
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const exists = buckets?.some(b => b.name === BUCKET_NAME);
-    if (!exists) {
-      console.log('[ImageUpload] Creating bucket:', BUCKET_NAME);
-      const { error } = await supabase.storage.createBucket(BUCKET_NAME, {
-        public: true,
-        allowedMimeTypes: ['image/jpeg', 'image/png', 'image/webp'],
-        fileSizeLimit: 10 * 1024 * 1024,
-      });
-      if (error) {
-        console.error('[ImageUpload] Error creating bucket:', error.message);
-        if (!error.message.includes('already exists')) {
-          return false;
-        }
-      }
-    }
-    return true;
-  } catch (error) {
-    console.error('[ImageUpload] Error checking bucket:', error);
-    return true;
-  }
-}
-
 async function uploadFromNative(localUri: string, fileName: string): Promise<string> {
   console.log('[ImageUpload] Reading file as base64:', localUri);
   const base64 = await FileSystem.readAsStringAsync(localUri, {
@@ -129,8 +104,6 @@ export async function uploadImage(localUri: string): Promise<string> {
     console.log('[ImageUpload] Already a remote URL, skipping upload');
     return localUri;
   }
-
-  await ensureBucketExists();
 
   const extension = localUri.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
   const fileName = generateFileName(extension);

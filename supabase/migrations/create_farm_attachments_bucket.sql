@@ -1,7 +1,17 @@
 -- =============================================================================
 -- FarmGuard: Create farm-attachments storage bucket and policies
--- Run this in Supabase Dashboard → SQL Editor (or via Supabase CLI migration)
+-- Run on the PRIMARY writable database as postgres (SQL Editor or direct URI).
+-- Client apps cannot create buckets — supabase_storage_admin hits RLS on buckets.
 -- =============================================================================
+
+DO $$
+BEGIN
+  IF current_user = 'supabase_read_only_user' OR pg_is_in_recovery() THEN
+    RAISE EXCEPTION
+      'Read-only connection detected (user=%, replica=%). Restore project or connect via direct postgres URI.',
+      current_user, pg_is_in_recovery();
+  END IF;
+END $$;
 
 -- 1. Create the storage bucket (if it doesn't exist)
 --    Supabase uses id as the bucket identifier; name is the display name.
@@ -53,3 +63,5 @@ USING ( bucket_id = 'farm-attachments' );
 CREATE POLICY "farm_attachments_public_delete"
 ON storage.objects FOR DELETE
 USING ( bucket_id = 'farm-attachments' );
+
+SELECT id, name, public FROM storage.buckets WHERE id IN ('farm-images', 'farm-attachments');
