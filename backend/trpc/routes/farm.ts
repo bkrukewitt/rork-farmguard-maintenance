@@ -185,7 +185,13 @@ async function requireFarmAccess(farmId: string, farmPassword: string | null | u
 }
 
 function requireSuperAdminPin(pin: string): void {
-  const configuredPin = process.env.SUPER_ADMIN_PIN || "9173";
+  const configuredPin = process.env.SUPER_ADMIN_PIN;
+  if (!configuredPin) {
+    throw new TRPCError({
+      code: "INTERNAL_SERVER_ERROR",
+      message: "Super admin access is not configured on this server.",
+    });
+  }
   if (pin !== configuredPin) {
     throw new TRPCError({
       code: "UNAUTHORIZED",
@@ -408,7 +414,16 @@ export const farmRouter = createTRPCRouter({
       farmId: z.string().min(1),
       password: z.string(),
     }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ input, ctx }) => {
+      const clientId = getClientIdentifier(ctx.req);
+      const limit = checkRateLimit(`pwverify:${input.farmId}:${clientId}`, 10, 5 * 60 * 1000);
+      if (!limit.allowed) {
+        throw new TRPCError({
+          code: 'TOO_MANY_REQUESTS',
+          message: 'Too many password attempts. Please wait and try again.',
+        });
+      }
+
       console.log(`[Auth] Password verification requested for farm: ${input.farmId}`);
       const storedPassword = await getFarmPasswordFromDb(input.farmId);
 
