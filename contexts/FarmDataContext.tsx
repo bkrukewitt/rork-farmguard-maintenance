@@ -819,8 +819,11 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       let finalCustomFuelTypes = currentCustomFuelTypes;
       let finalDeletedIds = currentDeletedIds;
 
+      // Hoist remoteData so the final upsert can use it as a fallback for security fields.
+      let remoteData: FarmDataPayload | null = null;
+
       if (!shouldSkipMerge) {
-        const remoteData = await fetchRemoteData(farmId);
+        remoteData = await fetchRemoteData(farmId);
         console.log('[Sync] Remote data fetched:', remoteData ? 'found' : 'none');
 
         if (remoteData) {
@@ -861,7 +864,19 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         }
       } else {
         console.log('[Sync] Skipping merge, pushing local data as source of truth');
+        // When skipping the merge, security fields may be absent from local state (e.g.
+        // a member who joined before a password was set). Fetch remote data only for
+        // those fields so we don't accidentally erase them from the DB.
+        if (!joinPassword || !recoveryEmail) {
+          remoteData = await fetchRemoteData(farmId);
+        }
       }
+
+      // Prefer non-null local state; fall back to the server-side value to avoid
+      // silently erasing a farm password or recovery email that this device doesn't
+      // happen to know about.
+      const passwordToWrite = joinPassword || remoteData?.joinPassword || null;
+      const recoveryEmailToWrite = recoveryEmail || remoteData?.recoveryEmail || null;
 
       const { error } = await supabase
         .from('farm_data')
@@ -879,8 +894,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
             fuelLogs: finalFuelLogs,
             customFuelTypes: finalCustomFuelTypes,
             deletedIds: finalDeletedIds,
-            _joinPassword: joinPassword || null,
-            _recoveryEmail: recoveryEmail || null,
+            _joinPassword: passwordToWrite,
+            _recoveryEmail: recoveryEmailToWrite,
           },
           updated_at: new Date().toISOString(),
         });
