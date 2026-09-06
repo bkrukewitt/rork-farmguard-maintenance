@@ -12,6 +12,7 @@ import VersionGate from "@/components/VersionGate";
 import SubscriptionGate from "@/components/SubscriptionGate";
 import RecoveryEmailGate from "@/components/RecoveryEmailGate";
 import GlobalAnnouncementBanner from "@/components/GlobalAnnouncementBanner";
+import TrialBanner from "@/components/TrialBanner";
 import RateAppPrompt from "@/components/RateAppPrompt";
 import FarmPurchasesSync from "@/components/FarmPurchasesSync";
 import { RateAppPromptProvider } from "@/hooks/useRateAppPrompt";
@@ -139,6 +140,7 @@ export default function RootLayout() {
                       <GlobalAnnouncementBanner />
                       <View style={{ flex: 1, minHeight: 0 }}>
                         <SubscriptionGate>
+                          <TrialBanner />
                           <RootLayoutNav />
                           <RecoveryEmailGate />
                         </SubscriptionGate>

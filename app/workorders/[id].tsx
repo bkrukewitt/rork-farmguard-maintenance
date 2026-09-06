@@ -715,10 +715,6 @@ export default function WorkOrderDetailScreen() {
           headerRight: () => (
             <TouchableOpacity
               onPress={() => {
-                if (!isSubscribed && isDemoMode) {
-                  Alert.alert('Demo mode', 'Subscribe to edit or create work orders.');
-                  return;
-                }
                 setIsEditing(true);
               }}
               hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}

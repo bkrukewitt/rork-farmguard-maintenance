@@ -69,7 +69,7 @@ export default function AddWorkOrderScreen() {
   const selectedPriority = WORK_ORDER_PRIORITIES.find((p) => p.value === priority);
   const selectedStatus = WORK_ORDER_STATUSES.find((s) => s.value === status);
 
-  if (!isSubscribed && (isTrial || isDemoMode)) {
+  if (!isSubscribed && !isTrial && !isDemoMode) {
     return <Paywall onDismiss={() => router.back()} />;
   }
 

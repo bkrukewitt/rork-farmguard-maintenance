@@ -140,7 +140,7 @@ export default function AddConsumableScreen() {
     },
   });
 
-  if (!isSubscribed && (isTrial || isDemoMode)) {
+  if (!isSubscribed && !isTrial && !isDemoMode) {
     return <Paywall onDismiss={() => router.back()} />;
   }
 

@@ -16,6 +16,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { File, Paths } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useRouter } from 'expo-router';
 import { 
@@ -33,7 +34,11 @@ import {
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Consumable, CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
-import { generateCSVTemplate, exportConsumablesToCSV, exportConsumablesToHTML } from '@/utils/csvHelpers';
+import { exportConsumablesToCSV, exportConsumablesToHTML } from '@/utils/csvHelpers';
+import {
+  generatePartsExcelTemplateBase64,
+  base64ToUint8Array,
+} from '@/utils/excelTemplateHelpers';
 
 export default function InventoryScreen() {
   const router = useRouter();
@@ -56,42 +61,43 @@ export default function InventoryScreen() {
   const lowStockItems = useMemo(() => getLowStockConsumables(), [getLowStockConsumables]);
 
   const handleDownloadTemplate = async () => {
-    const templateContent = generateCSVTemplate();
-    
-    if (Platform.OS === 'web') {
-      const blob = new Blob([templateContent], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'parts_template.csv';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      Alert.alert('Success', 'Template downloaded successfully!');
-    } else {
-      try {
-        const file = new File(Paths.cache, 'parts_template.csv');
-        file.create({ overwrite: true });
-        file.write(templateContent);
-        
+    try {
+      const base64 = await generatePartsExcelTemplateBase64();
+      const fileName = 'parts_template.xlsx';
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob([base64ToUint8Array(base64)], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        Alert.alert('Success', 'Excel template downloaded. Use the Category dropdown when filling it out.');
+      } else {
+        const fileUri = FileSystem.cacheDirectory + fileName;
+        await FileSystem.writeAsStringAsync(fileUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
-          await Sharing.shareAsync(file.uri, {
-            mimeType: 'text/csv',
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             dialogTitle: 'Save Parts Template',
-            UTI: 'public.comma-separated-values-text',
+            UTI: 'com.microsoft.excel.xlsx',
           });
         } else {
-          await Share.share({
-            message: templateContent,
-            title: 'Parts Import Template',
-          });
+          Alert.alert('Error', 'Sharing is not available on this device.');
         }
-      } catch (error) {
-        console.log('Error sharing template:', error);
-        Alert.alert('Error', 'Failed to download template. Please try again.');
       }
+    } catch (error) {
+      console.log('Error sharing template:', error);
+      Alert.alert('Error', 'Failed to download template. Please try again.');
     }
     setShowAddMenu(false);
   };
@@ -403,7 +409,7 @@ export default function InventoryScreen() {
               </View>
               <View style={styles.menuTextContainer}>
                 <Text style={[styles.menuItemTitle, { color: colors.text }]}>Import from Spreadsheet</Text>
-                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Bulk import parts from a CSV file</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Bulk import parts from Excel or CSV</Text>
               </View>
             </TouchableOpacity>
 
@@ -419,7 +425,7 @@ export default function InventoryScreen() {
               </View>
               <View style={styles.menuTextContainer}>
                 <Text style={[styles.menuItemTitle, { color: colors.text }]}>Download Template</Text>
-                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Get a CSV template with example data</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Excel template with Category dropdowns</Text>
               </View>
             </TouchableOpacity>
 

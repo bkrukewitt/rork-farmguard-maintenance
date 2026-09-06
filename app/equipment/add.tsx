@@ -37,6 +37,7 @@ import Paywall from '@/components/Paywall';
 import { EquipmentType, EquipmentMetric } from '@/types/equipment';
 import { uploadImage } from '@/utils/imageUpload';
 import { getEquipmentFormConfig, validateEquipmentForm, getDefaultMaintenanceIntervalsForType } from '@/utils/equipmentFormConfig';
+import { TRIAL_LIMITS, isCapError, capErrorMessage } from '@/constants/trialLimits';
 
 const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
   { value: 'tractor', label: 'Tractor', Icon: Tractor },
@@ -54,8 +55,9 @@ const EQUIPMENT_TYPES: { value: EquipmentType; label: string; Icon: React.Compon
 
 export default function AddEquipmentScreen() {
   const router = useRouter();
-  const { addEquipment, addInterval, isDemoMode } = useFarmData();
+  const { addEquipment, addInterval, isDemoMode, equipment } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
+  const limitsActive = !isSubscribed && (isTrial || isDemoMode);
 
   const [name, setName] = useState('');
   const [type, setType] = useState<EquipmentType>('tractor');
@@ -70,6 +72,7 @@ export default function AddEquipmentScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [oilCapacity, setOilCapacity] = useState('');
+  const [showCapPaywall, setShowCapPaywall] = useState(false);
 
   const takePhoto = async () => {
     try {
@@ -143,12 +146,16 @@ export default function AddEquipmentScreen() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (limitsActive && equipment.length >= TRIAL_LIMITS.MAX_EQUIPMENT) {
+        throw new Error('EQUIPMENT_CAP_REACHED');
+      }
+
       const validationError = validateEquipmentForm(type, { name, make, model });
       if (validationError) {
         throw new Error(validationError);
       }
 
-      const equipment = await addEquipment({
+      const equipmentItem = await addEquipment({
         name: name.trim(),
         type,
         make: make.trim(),
@@ -165,7 +172,7 @@ export default function AddEquipmentScreen() {
 
       for (const interval of getDefaultMaintenanceIntervalsForType(type)) {
         await addInterval({
-          equipmentId: equipment.id,
+          equipmentId: equipmentItem.id,
           name: interval.name,
           intervalHours: interval.intervalHours,
           intervalDays: interval.intervalDays,
@@ -174,18 +181,29 @@ export default function AddEquipmentScreen() {
         });
       }
 
-      return equipment;
+      return equipmentItem;
     },
     onSuccess: () => {
       router.back();
     },
     onError: (error: Error) => {
+      if (isCapError(error.message)) {
+        Alert.alert('Limit reached', capErrorMessage(error.message), [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Subscribe', onPress: () => setShowCapPaywall(true) },
+        ]);
+        return;
+      }
       Alert.alert('Error', error.message);
     },
   });
 
-  if (!isSubscribed && (isTrial || isDemoMode)) {
+  if (!isSubscribed && !isTrial && !isDemoMode) {
     return <Paywall onDismiss={() => router.back()} />;
+  }
+
+  if (showCapPaywall) {
+    return <Paywall onDismiss={() => setShowCapPaywall(false)} />;
   }
 
   const handleSave = () => {

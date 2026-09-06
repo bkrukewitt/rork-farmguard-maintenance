@@ -34,6 +34,7 @@ import {
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { parseCSV, ParsedPart } from '@/utils/csvHelpers';
+import { readSpreadsheetAsCsv, responseToCsv } from '@/utils/spreadsheetImport';
 import { CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
 
 interface ProcessedPart extends ParsedPart {
@@ -138,54 +139,17 @@ export default function ImportInventoryScreen() {
     return Array.from(partMap.values());
   };
 
-  const readFileContent = async (uri: string): Promise<string> => {
-    console.log('=== File Reading Debug ===');
-    console.log('Original URI:', uri);
-    console.log('Platform:', Platform.OS);
-
-    try {
-      const response = await fetch(uri);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch file: ${response.status}`);
-      }
-      const content = await response.text();
-      if (!content || content.trim().length === 0) {
-        throw new Error('File is empty (0 bytes)');
-      }
-      console.log(`File read successfully: ${content.length} characters`);
-      return content.replace(/^\uFEFF/, '');
-    } catch (fetchError) {
-      const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
-      console.error('Fetch read failed:', errorMsg);
-      throw new Error(
-        `Unable to read the file. Please try: 1) Selecting the file again, 2) Moving the file to a different location (like Files app root), or 3) Using a Dropbox link instead.`
-      );
-    }
-  };
-
   const processFile = async (uri: string, name: string) => {
     try {
       setFileName(name);
 
-      let content: string;
-      
-      // For web platform, use fetch
-      if (Platform.OS === 'web') {
-        const response = await fetch(uri);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch file: ${response.status}`);
-        }
-        content = await response.text();
-      } else {
-        // For native platforms, use advanced file reading
-        content = await readFileContent(uri);
-      }
+      const content = await readSpreadsheetAsCsv(uri, name);
 
       console.log('File content length:', content.length);
       console.log('File content preview:', content.substring(0, 500));
 
       if (!content || content.trim().length === 0) {
-        Alert.alert('Error', 'The file appears to be empty. Please select a valid CSV file.');
+        Alert.alert('Error', 'The file appears to be empty. Please select a valid Excel or CSV file.');
         return;
       }
 
@@ -217,7 +181,7 @@ export default function ImportInventoryScreen() {
     } catch (error) {
       console.log('Error processing file:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid CSV and try again.`);
+      Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid Excel or CSV and try again.`);
     }
   }
 
@@ -355,16 +319,11 @@ export default function ImportInventoryScreen() {
       if (!response.ok) {
         throw new Error(`Failed to fetch file: ${response.status}`);
       }
-      
-      const content = await response.text();
-      
-      if (!content || content.trim().length === 0) {
-        Alert.alert('Error', 'The file appears to be empty.');
-        return;
-      }
 
       const urlParts = dropboxUrl.split('/');
-      const fileNameFromUrl = urlParts[urlParts.length - 1]?.split('?')[0] || 'dropbox_file.csv';
+      const fileNameFromUrl = decodeURIComponent(urlParts[urlParts.length - 1]?.split('?')[0] || 'dropbox_file.csv');
+      
+      const content = await responseToCsv(response, fileNameFromUrl);
       
       setFileName(fileNameFromUrl);
       
@@ -479,10 +438,10 @@ export default function ImportInventoryScreen() {
           <View style={styles.uploadIcon}>
             <FileSpreadsheet color={Colors.primary} size={48} />
           </View>
-          <Text style={styles.uploadTitle}>Import Parts from CSV</Text>
+          <Text style={styles.uploadTitle}>Import Parts from Spreadsheet</Text>
           <Text style={styles.uploadDescription}>
-            Select a CSV file to bulk import parts into your inventory. 
-            The file should have columns for Part Name, Part Number, Category, etc.
+            Select an Excel (.xlsx) or CSV file to bulk import parts into your inventory.
+            Excel templates include Category dropdowns for easier entry.
           </Text>
           
           <TouchableOpacity
@@ -496,7 +455,7 @@ export default function ImportInventoryScreen() {
               <>
                 <Upload color={Colors.textOnPrimary} size={20} />
                 <Text style={styles.uploadButtonText}>
-                  {fileName ? 'Select Different File' : 'Select CSV File'}
+                  {fileName ? 'Select Different File' : 'Select Spreadsheet'}
                 </Text>
               </>
             )}
@@ -696,7 +655,7 @@ export default function ImportInventoryScreen() {
           >
             <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Select File Source</Text>
-            <Text style={styles.modalSubtitle}>Choose where to import your CSV file from</Text>
+            <Text style={styles.modalSubtitle}>Choose where to import your Excel or CSV file from</Text>
             
             <TouchableOpacity
               style={styles.sourceOption}
@@ -744,7 +703,7 @@ export default function ImportInventoryScreen() {
                 {isLoadingDropbox ? (
                   <ActivityIndicator color={Colors.textOnPrimary} size="small" />
                 ) : (
-                  <Text style={styles.dropboxLoadButtonText}>Load CSV from Dropbox</Text>
+                  <Text style={styles.dropboxLoadButtonText}>Load from Dropbox</Text>
                 )}
               </TouchableOpacity>
               

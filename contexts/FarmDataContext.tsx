@@ -18,15 +18,17 @@ import * as FileSystem from 'expo-file-system/legacy';
 import { supabase } from '@/lib/supabase';
 import { trpcClient } from '@/lib/trpc';
 import {
-  DEMO_CONSUMABLES,
-  DEMO_CUSTOM_FUEL_TYPES,
-  DEMO_EMPLOYEES,
-  DEMO_EQUIPMENT,
-  DEMO_FUEL_LOGS,
-  DEMO_INTERVALS,
-  DEMO_MAINTENANCE_LOGS,
-  DEMO_WORK_ORDERS,
-} from '@/constants/demoData';
+  EQUIPMENT_CAP_ERROR,
+  LOG_CAP_ERROR,
+  TRIAL_LIMITS,
+} from '@/constants/trialLimits';
+import {
+  clearLiveFarmEntityData,
+  clearSandboxData,
+  sandboxHasEquipment,
+  sandboxKey,
+  seedSandboxData,
+} from '@/utils/sandboxStorage';
 
 const STORAGE_KEYS = {
   EQUIPMENT: 'farmguard_equipment',
@@ -244,17 +246,38 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   const [joinPassword, setJoinPassword] = useState<string | null>(null);
   const [recoveryEmail, setRecoveryEmail] = useState<string | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const isDemoModeRef = useRef(false);
   const deletedIdsRef = useRef<string[]>([]);
   const skipAutoMergeRef = useRef(false);
   const initialMergeDoneRef = useRef(false);
   const appStateRef = useRef<AppStateStatus>('active');
   const localImageHydrationSyncInFlightRef = useRef(false);
 
+  const resolveEntityKey = useCallback((key: string) => {
+    return isDemoModeRef.current ? sandboxKey(key) : key;
+  }, []);
+
+  const loadEntityData = useCallback(async <T,>(key: string): Promise<T[]> => {
+    return loadData<T>(resolveEntityKey(key));
+  }, [resolveEntityKey]);
+
+  const saveEntityData = useCallback(async <T,>(key: string, data: T[]): Promise<void> => {
+    await saveData(resolveEntityKey(key), data);
+  }, [resolveEntityKey]);
+
+  const shouldEnforceTrialCaps = useCallback(async (): Promise<boolean> => {
+    if (isDemoModeRef.current) return true;
+    const trial = await AsyncStorage.getItem('farmguard_trial_active');
+    return trial === 'true';
+  }, []);
+
   useEffect(() => {
     void getFarmId().then(setFarmId);
     void getDeviceId().then(setDeviceId);
     void AsyncStorage.getItem(STORAGE_KEYS.DEMO_MODE).then(val => {
-      setIsDemoMode(val === 'true');
+      const demo = val === 'true';
+      isDemoModeRef.current = demo;
+      setIsDemoMode(demo);
     });
     void AsyncStorage.getItem(STORAGE_KEYS.DISPLAY_NAME).then(name => {
       if (name) setDisplayName(name);
@@ -279,15 +302,98 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     });
   }, []);
 
+  useEffect(() => {
+    void loadEntityData<string>(STORAGE_KEYS.DELETED_IDS).then(ids => {
+      deletedIdsRef.current = ids;
+    });
+  }, [isDemoMode, loadEntityData]);
+
   const enterDemoMode = useCallback(async () => {
+    const hasSeed = await sandboxHasEquipment();
+    if (!hasSeed) {
+      await seedSandboxData();
+    }
     await AsyncStorage.setItem(STORAGE_KEYS.DEMO_MODE, 'true');
+    isDemoModeRef.current = true;
     setIsDemoMode(true);
-  }, []);
+    void queryClient.invalidateQueries();
+  }, [queryClient]);
 
   const exitDemoMode = useCallback(async () => {
     await AsyncStorage.removeItem(STORAGE_KEYS.DEMO_MODE);
+    isDemoModeRef.current = false;
     setIsDemoMode(false);
-  }, []);
+    await clearSandboxData();
+    void queryClient.invalidateQueries();
+  }, [queryClient]);
+
+  /** Leave sandbox, wipe live local entities, create empty farm, and start limited trial. */
+  const convertDemoToLimitedFarm = useCallback(async (options?: { farmName?: string }) => {
+    await AsyncStorage.removeItem(STORAGE_KEYS.DEMO_MODE);
+    isDemoModeRef.current = false;
+    setIsDemoMode(false);
+    await clearSandboxData();
+    await clearLiveFarmEntityData();
+    deletedIdsRef.current = [];
+
+    const newFarmId = generateId();
+    const { data: existing } = await supabase
+      .from('farms')
+      .select('id')
+      .eq('id', newFarmId)
+      .maybeSingle();
+    if (existing) {
+      throw new Error('Could not create farm. Please try again.');
+    }
+
+    const { error: farmError } = await supabase
+      .from('farms')
+      .insert({ id: newFarmId, display_name: options?.farmName?.trim() || null });
+    if (farmError) throw new Error(`Failed to create farm: ${farmError.message}`);
+
+    await AsyncStorage.setItem(STORAGE_KEYS.FARM_ID, newFarmId);
+    await AsyncStorage.setItem(STORAGE_KEYS.IS_FARM_CREATOR, 'true');
+    setFarmId(newFarmId);
+    setFarmName(options?.farmName?.trim() || null);
+
+    initialMergeDoneRef.current = false;
+    skipAutoMergeRef.current = false;
+
+    await Promise.all([
+      saveData(STORAGE_KEYS.EQUIPMENT, []),
+      saveData(STORAGE_KEYS.MAINTENANCE_LOGS, []),
+      saveData(STORAGE_KEYS.INTERVALS, []),
+      saveData(STORAGE_KEYS.CONSUMABLES, []),
+      saveData(STORAGE_KEYS.SERVICE_ROUTINES, []),
+      saveData(STORAGE_KEYS.INSPECTION_ROUTINES, []),
+      saveData(STORAGE_KEYS.WORK_ORDERS, []),
+      saveData(STORAGE_KEYS.EMPLOYEES, []),
+      saveData(STORAGE_KEYS.FUEL_LOGS, []),
+      saveData(STORAGE_KEYS.CUSTOM_FUEL_TYPES, []),
+      saveData(STORAGE_KEYS.DELETED_IDS, []),
+    ]);
+
+    // Start server trial before consumers react to the new farmId (avoids refresh race).
+    let trialResult: { success?: boolean; alreadyUsed?: boolean } = {};
+    try {
+      trialResult = await trpcClient.farm.startTrial.mutate({
+        farmId: newFarmId,
+        farmPassword: null,
+      });
+      if (trialResult.success) {
+        await AsyncStorage.setItem('farmguard_trial_active', 'true');
+      } else {
+        await AsyncStorage.removeItem('farmguard_trial_active');
+      }
+    } catch (err) {
+      console.error('[Farm] Failed to start trial after demo convert:', err);
+      await AsyncStorage.removeItem('farmguard_trial_active');
+    }
+
+    void queryClient.invalidateQueries();
+    console.log(`[Farm] Converted demo → limited trial farm: ${newFarmId}`);
+    return { farmId: newFarmId, trial: trialResult };
+  }, [queryClient]);
 
   const effectiveFarmId = isDemoMode ? '' : farmId;
   const effectiveJoinPassword = isDemoMode ? null : joinPassword;
@@ -338,10 +444,10 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     const current = deletedIdsRef.current;
     const updated = [...new Set([...current, ...ids])];
     deletedIdsRef.current = updated;
-    await saveData(STORAGE_KEYS.DELETED_IDS, updated);
+    await saveEntityData(STORAGE_KEYS.DELETED_IDS, updated);
     console.log(`[Tombstone] Added ${ids.length} IDs. Total tombstones: ${updated.length}`);
     return updated;
-  }, []);
+  }, [saveEntityData]);
 
   const memberRegistrationQuery = useQuery({
     queryKey: ['memberRegistration', farmId, deviceId],
@@ -476,8 +582,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   }, [remoteDataQuery.data, farmId]);
 
   const equipmentQuery = useQuery({
-    queryKey: ['equipment'],
-    queryFn: () => loadData<Equipment>(STORAGE_KEYS.EQUIPMENT),
+    queryKey: ['equipment', isDemoMode ? 'demo' : 'live'],
+    queryFn: () => loadEntityData<Equipment>(STORAGE_KEYS.EQUIPMENT),
     staleTime: 120000,
     gcTime: 300000,
     refetchOnMount: true,
@@ -488,8 +594,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const maintenanceLogsQuery = useQuery({
-    queryKey: ['maintenanceLogs'],
-    queryFn: () => loadData<MaintenanceLog>(STORAGE_KEYS.MAINTENANCE_LOGS),
+    queryKey: ['maintenanceLogs', isDemoMode ? 'demo' : 'live'],
+    queryFn: () => loadEntityData<MaintenanceLog>(STORAGE_KEYS.MAINTENANCE_LOGS),
     staleTime: 120000,
     gcTime: 300000,
     refetchOnMount: true,
@@ -500,8 +606,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const intervalsQuery = useQuery({
-    queryKey: ['intervals'],
-    queryFn: () => loadData<MaintenanceInterval>(STORAGE_KEYS.INTERVALS),
+    queryKey: ['intervals', isDemoMode ? 'demo' : 'live'],
+    queryFn: () => loadEntityData<MaintenanceInterval>(STORAGE_KEYS.INTERVALS),
     staleTime: 120000,
     gcTime: 300000,
     refetchOnMount: true,
@@ -512,8 +618,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const consumablesQuery = useQuery({
-    queryKey: ['consumables'],
-    queryFn: () => loadData<Consumable>(STORAGE_KEYS.CONSUMABLES),
+    queryKey: ['consumables', isDemoMode ? 'demo' : 'live'],
+    queryFn: () => loadEntityData<Consumable>(STORAGE_KEYS.CONSUMABLES),
     staleTime: 120000,
     gcTime: 300000,
     refetchOnMount: true,
@@ -524,8 +630,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const serviceRoutinesQuery = useQuery({
-    queryKey: ['serviceRoutines'],
-    queryFn: () => loadData<ServiceRoutine>(STORAGE_KEYS.SERVICE_ROUTINES),
+    queryKey: ['serviceRoutines', isDemoMode ? 'demo' : 'live'],
+    queryFn: () => loadEntityData<ServiceRoutine>(STORAGE_KEYS.SERVICE_ROUTINES),
     staleTime: 120000,
     gcTime: 300000,
     refetchOnMount: true,
@@ -536,8 +642,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const inspectionRoutinesQuery = useQuery({
-    queryKey: ['inspectionRoutines'],
-    queryFn: () => loadData<InspectionRoutine>(STORAGE_KEYS.INSPECTION_ROUTINES),
+    queryKey: ['inspectionRoutines', isDemoMode ? 'demo' : 'live'],
+    queryFn: () => loadEntityData<InspectionRoutine>(STORAGE_KEYS.INSPECTION_ROUTINES),
     staleTime: 120000,
     gcTime: 300000,
     refetchOnMount: true,
@@ -548,8 +654,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const workOrdersQuery = useQuery({
-    queryKey: ['workOrders'],
-    queryFn: () => loadData<WorkOrder>(STORAGE_KEYS.WORK_ORDERS),
+    queryKey: ['workOrders', isDemoMode ? 'demo' : 'live'],
+    queryFn: () => loadEntityData<WorkOrder>(STORAGE_KEYS.WORK_ORDERS),
     staleTime: 120000,
     gcTime: 300000,
     refetchOnMount: true,
@@ -560,8 +666,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const employeesQuery = useQuery({
-    queryKey: ['employees'],
-    queryFn: () => loadData<Employee>(STORAGE_KEYS.EMPLOYEES),
+    queryKey: ['employees', isDemoMode ? 'demo' : 'live'],
+    queryFn: () => loadEntityData<Employee>(STORAGE_KEYS.EMPLOYEES),
     staleTime: 120000,
     gcTime: 300000,
     refetchOnMount: true,
@@ -572,20 +678,20 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const equipment = useMemo(
-    () => (isDemoMode ? DEMO_EQUIPMENT : (equipmentQuery.data ?? [])),
-    [equipmentQuery.data, isDemoMode],
+    () => equipmentQuery.data ?? [],
+    [equipmentQuery.data],
   );
   const maintenanceLogs = useMemo(
-    () => (isDemoMode ? DEMO_MAINTENANCE_LOGS : (maintenanceLogsQuery.data ?? [])),
-    [maintenanceLogsQuery.data, isDemoMode],
+    () => maintenanceLogsQuery.data ?? [],
+    [maintenanceLogsQuery.data],
   );
   const intervals = useMemo(
-    () => (isDemoMode ? DEMO_INTERVALS : (intervalsQuery.data ?? [])),
-    [intervalsQuery.data, isDemoMode],
+    () => intervalsQuery.data ?? [],
+    [intervalsQuery.data],
   );
   const consumables = useMemo(
-    () => (isDemoMode ? DEMO_CONSUMABLES : (consumablesQuery.data ?? [])),
-    [consumablesQuery.data, isDemoMode],
+    () => consumablesQuery.data ?? [],
+    [consumablesQuery.data],
   );
 
   const serviceRoutines = useMemo(
@@ -597,8 +703,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     [inspectionRoutinesQuery.data],
   );
   const workOrders = useMemo(
-    () => (isDemoMode ? DEMO_WORK_ORDERS : (workOrdersQuery.data ?? [])),
-    [workOrdersQuery.data, isDemoMode],
+    () => workOrdersQuery.data ?? [],
+    [workOrdersQuery.data],
   );
 
   const needsLocalAttachmentUpload = useCallback(
@@ -639,13 +745,13 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   }, [equipment, consumables, workOrders, maintenanceLogs, needsLocalAttachmentUpload]);
 
   const employees = useMemo(
-    () => (isDemoMode ? DEMO_EMPLOYEES : (employeesQuery.data ?? [])),
-    [employeesQuery.data, isDemoMode],
+    () => employeesQuery.data ?? [],
+    [employeesQuery.data],
   );
 
   const fuelLogsQuery = useQuery({
-    queryKey: ['fuelLogs'],
-    queryFn: () => loadData<FuelLog>(STORAGE_KEYS.FUEL_LOGS),
+    queryKey: ['fuelLogs', isDemoMode ? 'demo' : 'live'],
+    queryFn: () => loadEntityData<FuelLog>(STORAGE_KEYS.FUEL_LOGS),
     staleTime: 120000,
     gcTime: 300000,
     refetchOnMount: true,
@@ -656,8 +762,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const customFuelTypesQuery = useQuery({
-    queryKey: ['customFuelTypes'],
-    queryFn: () => loadData<CustomFuelType>(STORAGE_KEYS.CUSTOM_FUEL_TYPES),
+    queryKey: ['customFuelTypes', isDemoMode ? 'demo' : 'live'],
+    queryFn: () => loadEntityData<CustomFuelType>(STORAGE_KEYS.CUSTOM_FUEL_TYPES),
     staleTime: 120000,
     gcTime: 300000,
     refetchOnMount: true,
@@ -668,12 +774,12 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   });
 
   const fuelLogs = useMemo(
-    () => (isDemoMode ? DEMO_FUEL_LOGS : (fuelLogsQuery.data ?? [])),
-    [fuelLogsQuery.data, isDemoMode],
+    () => fuelLogsQuery.data ?? [],
+    [fuelLogsQuery.data],
   );
   const customFuelTypes = useMemo(
-    () => (isDemoMode ? DEMO_CUSTOM_FUEL_TYPES : (customFuelTypesQuery.data ?? [])),
-    [customFuelTypesQuery.data, isDemoMode],
+    () => customFuelTypesQuery.data ?? [],
+    [customFuelTypesQuery.data],
   );
 
   const mergeArraysSmart = useCallback(<T extends { id: string }>(local: T[], remoteArr: T[], tombstoneSet: Set<string>): T[] => {
@@ -709,7 +815,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
   }, []);
 
   useEffect(() => {
-    if (remoteDataQuery.data && farmId) {
+    if (remoteDataQuery.data && farmId && !isDemoMode) {
       if (skipAutoMergeRef.current) {
         console.log('[AutoMerge] Skipping auto-merge (recently mutated or resolved duplicates)');
         skipAutoMergeRef.current = false;
@@ -784,10 +890,15 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         initialMergeDoneRef.current = true;
       }
     }
-  }, [remoteDataQuery.data, farmId, equipment, maintenanceLogs, consumables, intervals, serviceRoutines, inspectionRoutines, workOrders, employees, fuelLogs, customFuelTypes, mergeArraysSmart, mergeDeletedIds, queryClient]);
+  }, [remoteDataQuery.data, farmId, isDemoMode, equipment, maintenanceLogs, consumables, intervals, serviceRoutines, inspectionRoutines, workOrders, employees, fuelLogs, customFuelTypes, mergeArraysSmart, mergeDeletedIds, queryClient]);
 
   const syncToServer = useCallback(async (options?: { skipMerge?: boolean }) => {
-    if (!farmId) return;
+    if (!farmId || isDemoModeRef.current) {
+      if (isDemoModeRef.current) {
+        console.log('[Sync] Skipping sync while in demo sandbox');
+      }
+      return;
+    }
 
     const shouldSkipMerge = options?.skipMerge ?? false;
     setIsSyncing(true);
@@ -860,7 +971,32 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           ]);
         }
       } else {
-        console.log('[Sync] Skipping merge, pushing local data as source of truth');
+        // Mutation push: keep local entities as source of truth, but always union remote
+        // tombstones so another device's deletes cannot be overwritten away.
+        const remoteData = await fetchRemoteData(farmId);
+        const remoteDeletedIds = remoteData?.deletedIds ?? [];
+        finalDeletedIds = mergeDeletedIds(currentDeletedIds, remoteDeletedIds);
+        const tombstoneSet = new Set(finalDeletedIds);
+        const filterAlive = <T extends { id: string }>(items: T[]) =>
+          items.filter(item => !tombstoneSet.has(item.id));
+
+        finalEquipment = filterAlive(currentEquipment);
+        finalLogs = filterAlive(currentLogs);
+        finalIntervals = filterAlive(currentIntervals);
+        finalConsumables = filterAlive(currentConsumables);
+        finalServiceRoutines = filterAlive(currentServiceRoutines);
+        finalInspectionRoutines = filterAlive(currentInspectionRoutines);
+        finalWorkOrders = filterAlive(currentWorkOrders);
+        finalEmployees = filterAlive(currentEmployees);
+        finalFuelLogs = filterAlive(currentFuelLogs);
+        finalCustomFuelTypes = filterAlive(currentCustomFuelTypes);
+
+        deletedIdsRef.current = finalDeletedIds;
+        await saveData(STORAGE_KEYS.DELETED_IDS, finalDeletedIds);
+
+        console.log(
+          `[Sync] skipMerge push with tombstone union: ${finalDeletedIds.length} (local: ${currentDeletedIds.length}, remote: ${remoteDeletedIds.length})`,
+        );
       }
 
       const { error } = await supabase
@@ -913,6 +1049,12 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const addEquipmentMutation = useMutation({
     mutationFn: async (newEquipment: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>) => {
+      if (await shouldEnforceTrialCaps()) {
+        const current = await loadEntityData<Equipment>(STORAGE_KEYS.EQUIPMENT);
+        if (current.length >= TRIAL_LIMITS.MAX_EQUIPMENT) {
+          throw new Error(EQUIPMENT_CAP_ERROR);
+        }
+      }
       const now = new Date().toISOString();
       const equipmentItem: Equipment = {
         ...newEquipment,
@@ -921,7 +1063,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         updatedAt: now,
       };
       const updated = [...equipment, equipmentItem];
-      await saveData(STORAGE_KEYS.EQUIPMENT, updated);
+      await saveEntityData(STORAGE_KEYS.EQUIPMENT, updated);
       return equipmentItem;
     },
     onSuccess: () => {
@@ -938,7 +1080,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           ? { ...e, ...updates, updatedAt: new Date().toISOString() }
           : e
       );
-      await saveData(STORAGE_KEYS.EQUIPMENT, updated);
+      await saveEntityData(STORAGE_KEYS.EQUIPMENT, updated);
       const nextEq = updated.find(e => e.id === updates.id);
 
       if (
@@ -983,13 +1125,13 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       await addTombstones(allTombstoneIds);
 
       const updated = equipment.filter(e => e.id !== id);
-      await saveData(STORAGE_KEYS.EQUIPMENT, updated);
+      await saveEntityData(STORAGE_KEYS.EQUIPMENT, updated);
       const updatedLogs = maintenanceLogs.filter(l => l.equipmentId !== id);
-      await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updatedLogs);
+      await saveEntityData(STORAGE_KEYS.MAINTENANCE_LOGS, updatedLogs);
       const updatedIntervals = intervals.filter(i => i.equipmentId !== id);
-      await saveData(STORAGE_KEYS.INTERVALS, updatedIntervals);
+      await saveEntityData(STORAGE_KEYS.INTERVALS, updatedIntervals);
       const updatedFuelLogs = fuelLogs.filter(f => f.equipmentId !== id);
-      await saveData(STORAGE_KEYS.FUEL_LOGS, updatedFuelLogs);
+      await saveEntityData(STORAGE_KEYS.FUEL_LOGS, updatedFuelLogs);
       console.log(`[Delete] Equipment deleted with ${allTombstoneIds.length} tombstones. Remaining: ${updated.length}`);
     },
     onSuccess: () => {
@@ -1003,13 +1145,20 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const addMaintenanceLogMutation = useMutation({
     mutationFn: async (log: Omit<MaintenanceLog, 'id' | 'createdAt'> & { id?: string }) => {
+      if (await shouldEnforceTrialCaps()) {
+        const current = await loadEntityData<MaintenanceLog>(STORAGE_KEYS.MAINTENANCE_LOGS);
+        // New logs only: updates reuse id
+        if (!log.id && current.length >= TRIAL_LIMITS.MAX_MAINTENANCE_LOGS) {
+          throw new Error(LOG_CAP_ERROR);
+        }
+      }
       const newLog: MaintenanceLog = {
         ...log,
         id: log.id ?? generateId(),
         createdAt: new Date().toISOString(),
       };
       const updated = [...maintenanceLogs, newLog];
-      await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
+      await saveEntityData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
 
       if (log.hoursAtService > 0) {
         const equip = equipment.find(e => e.id === log.equipmentId);
@@ -1019,7 +1168,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
               ? { ...e, currentHours: log.hoursAtService, updatedAt: new Date().toISOString() }
               : e
           );
-          await saveData(STORAGE_KEYS.EQUIPMENT, updatedEquipment);
+          await saveEntityData(STORAGE_KEYS.EQUIPMENT, updatedEquipment);
         }
       }
 
@@ -1038,7 +1187,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       const updated = maintenanceLogs.map(l =>
         l.id === updates.id ? { ...l, ...updates } : l
       );
-      await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
+      await saveEntityData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
       const nextLog = updated.find(l => l.id === updates.id);
 
       if (updates.attachments !== undefined && prev) {
@@ -1058,7 +1207,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
                 ? { ...e, currentHours: updates.hoursAtService!, updatedAt: new Date().toISOString() }
                 : e
             );
-            await saveData(STORAGE_KEYS.EQUIPMENT, updatedEquipment);
+            await saveEntityData(STORAGE_KEYS.EQUIPMENT, updatedEquipment);
           }
         }
       }
@@ -1079,7 +1228,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
       await addTombstones([id]);
       const updated = maintenanceLogs.filter(l => l.id !== id);
-      await saveData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
+      await saveEntityData(STORAGE_KEYS.MAINTENANCE_LOGS, updated);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['maintenanceLogs'] });
@@ -1094,7 +1243,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         id: generateId(),
       };
       const updated = [...intervals, newInterval];
-      await saveData(STORAGE_KEYS.INTERVALS, updated);
+      await saveEntityData(STORAGE_KEYS.INTERVALS, updated);
       return newInterval;
     },
     onSuccess: () => {
@@ -1108,7 +1257,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       const updated = intervals.map(i =>
         i.id === updates.id ? { ...i, ...updates } : i
       );
-      await saveData(STORAGE_KEYS.INTERVALS, updated);
+      await saveEntityData(STORAGE_KEYS.INTERVALS, updated);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['intervals'] });
@@ -1144,7 +1293,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         updatedAt: now,
       };
       const updated = [...consumables, consumableItem];
-      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
+      await saveEntityData(STORAGE_KEYS.CONSUMABLES, updated);
       return consumableItem;
     },
     onSuccess: () => {
@@ -1161,7 +1310,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           ? { ...c, ...updates, updatedAt: new Date().toISOString() }
           : c
       );
-      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
+      await saveEntityData(STORAGE_KEYS.CONSUMABLES, updated);
       const nextC = updated.find(c => c.id === updates.id);
 
       if (
@@ -1187,7 +1336,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
       await addTombstones([id]);
       const updated = consumables.filter(x => x.id !== id);
-      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
+      await saveEntityData(STORAGE_KEYS.CONSUMABLES, updated);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['consumables'] });
@@ -1208,7 +1357,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         }
         return c;
       });
-      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
+      await saveEntityData(STORAGE_KEYS.CONSUMABLES, updated);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['consumables'] });
@@ -1239,7 +1388,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         createdAt: new Date().toISOString(),
       };
       const updated = [...fuelLogs, newLog];
-      await saveData(STORAGE_KEYS.FUEL_LOGS, updated);
+      await saveEntityData(STORAGE_KEYS.FUEL_LOGS, updated);
       return newLog;
     },
     onSuccess: () => {
@@ -1252,7 +1401,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     mutationFn: async (id: string) => {
       await addTombstones([id]);
       const updated = fuelLogs.filter(f => f.id !== id);
-      await saveData(STORAGE_KEYS.FUEL_LOGS, updated);
+      await saveEntityData(STORAGE_KEYS.FUEL_LOGS, updated);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['fuelLogs'] });
@@ -1276,7 +1425,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         createdAt: new Date().toISOString(),
       };
       const updated = [...customFuelTypes, newType];
-      await saveData(STORAGE_KEYS.CUSTOM_FUEL_TYPES, updated);
+      await saveEntityData(STORAGE_KEYS.CUSTOM_FUEL_TYPES, updated);
       return newType;
     },
     onSuccess: () => {
@@ -1289,7 +1438,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     mutationFn: async (id: string) => {
       await addTombstones([id]);
       const updated = customFuelTypes.filter(t => t.id !== id);
-      await saveData(STORAGE_KEYS.CUSTOM_FUEL_TYPES, updated);
+      await saveEntityData(STORAGE_KEYS.CUSTOM_FUEL_TYPES, updated);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['customFuelTypes'] });
@@ -1307,7 +1456,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         updatedAt: now,
       }));
       const updated = [...consumables, ...consumableItems];
-      await saveData(STORAGE_KEYS.CONSUMABLES, updated);
+      await saveEntityData(STORAGE_KEYS.CONSUMABLES, updated);
       return consumableItems;
     },
     onSuccess: () => {
@@ -1318,6 +1467,12 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
   const bulkAddEquipmentMutation = useMutation({
     mutationFn: async (newEquipmentList: Omit<Equipment, 'id' | 'createdAt' | 'updatedAt'>[]) => {
+      if (await shouldEnforceTrialCaps()) {
+        const current = await loadEntityData<Equipment>(STORAGE_KEYS.EQUIPMENT);
+        const room = TRIAL_LIMITS.MAX_EQUIPMENT - current.length;
+        if (room <= 0) throw new Error(EQUIPMENT_CAP_ERROR);
+        if (newEquipmentList.length > room) throw new Error(EQUIPMENT_CAP_ERROR);
+      }
       const now = new Date().toISOString();
       const equipmentItems: Equipment[] = newEquipmentList.map(e => ({
         ...e,
@@ -1326,7 +1481,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         updatedAt: now,
       }));
       const updated = [...equipment, ...equipmentItems];
-      await saveData(STORAGE_KEYS.EQUIPMENT, updated);
+      await saveEntityData(STORAGE_KEYS.EQUIPMENT, updated);
       return equipmentItems;
     },
     onSuccess: () => {
@@ -1345,7 +1500,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         updatedAt: now,
       };
       const updated = [...serviceRoutines, routineItem];
-      await saveData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
+      await saveEntityData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
       return routineItem;
     },
     onSuccess: () => {
@@ -1361,7 +1516,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           ? { ...r, ...updates, updatedAt: new Date().toISOString() }
           : r
       );
-      await saveData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
+      await saveEntityData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
       return updated.find(r => r.id === updates.id);
     },
     onSuccess: () => {
@@ -1374,7 +1529,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     mutationFn: async (id: string) => {
       await addTombstones([id]);
       const updated = serviceRoutines.filter(r => r.id !== id);
-      await saveData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
+      await saveEntityData(STORAGE_KEYS.SERVICE_ROUTINES, updated);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['serviceRoutines'] });
@@ -1397,7 +1552,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         updatedAt: now,
       };
       const updated = [...inspectionRoutines, routineItem];
-      await saveData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
+      await saveEntityData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
       return routineItem;
     },
     onSuccess: () => {
@@ -1413,7 +1568,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           ? { ...r, ...updates, updatedAt: new Date().toISOString() }
           : r
       );
-      await saveData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
+      await saveEntityData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
       return updated.find(r => r.id === updates.id);
     },
     onSuccess: () => {
@@ -1426,7 +1581,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     mutationFn: async (id: string) => {
       await addTombstones([id]);
       const updated = inspectionRoutines.filter(r => r.id !== id);
-      await saveData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
+      await saveEntityData(STORAGE_KEYS.INSPECTION_ROUTINES, updated);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['inspectionRoutines'] });
@@ -1449,7 +1604,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         updatedAt: now,
       };
       const updated = [...workOrders, workOrderItem];
-      await saveData(STORAGE_KEYS.WORK_ORDERS, updated);
+      await saveEntityData(STORAGE_KEYS.WORK_ORDERS, updated);
       return workOrderItem;
     },
     onSuccess: () => {
@@ -1466,7 +1621,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           ? { ...w, ...updates, updatedAt: new Date().toISOString() }
           : w
       );
-      await saveData(STORAGE_KEYS.WORK_ORDERS, updated);
+      await saveEntityData(STORAGE_KEYS.WORK_ORDERS, updated);
       const nextW = updated.find(w => w.id === updates.id);
 
       if (updates.images !== undefined && prev) {
@@ -1499,7 +1654,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
 
       await addTombstones([id]);
       const updated = workOrders.filter(w => w.id !== id);
-      await saveData(STORAGE_KEYS.WORK_ORDERS, updated);
+      await saveEntityData(STORAGE_KEYS.WORK_ORDERS, updated);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['workOrders'] });
@@ -1522,7 +1677,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
         updatedAt: now,
       };
       const updated = [...employees, employeeItem];
-      await saveData(STORAGE_KEYS.EMPLOYEES, updated);
+      await saveEntityData(STORAGE_KEYS.EMPLOYEES, updated);
       return employeeItem;
     },
     onSuccess: () => {
@@ -1538,7 +1693,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
           ? { ...e, ...updates, updatedAt: new Date().toISOString() }
           : e
       );
-      await saveData(STORAGE_KEYS.EMPLOYEES, updated);
+      await saveEntityData(STORAGE_KEYS.EMPLOYEES, updated);
       return updated.find(e => e.id === updates.id);
     },
     onSuccess: () => {
@@ -1551,7 +1706,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     mutationFn: async (id: string) => {
       await addTombstones([id]);
       const updated = employees.filter(e => e.id !== id);
-      await saveData(STORAGE_KEYS.EMPLOYEES, updated);
+      await saveEntityData(STORAGE_KEYS.EMPLOYEES, updated);
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
@@ -2609,6 +2764,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     isDemoMode,
     enterDemoMode,
     exitDemoMode,
+    convertDemoToLimitedFarm,
     joinPassword: effectiveJoinPassword,
     recoveryEmail,
     setFarmPassword: setJoinPasswordMutation.mutateAsync,
@@ -2683,7 +2839,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     refreshFarmMembers,
   }), [
     effectiveFarmId, deviceId, setFarmIdAndSync, isSyncing, lastSyncTime, syncToServer,
-    farmMembers, isAdmin, isDemoMode, enterDemoMode, exitDemoMode, effectiveJoinPassword, recoveryEmail, displayName,
+    farmMembers, isAdmin, isDemoMode, enterDemoMode, exitDemoMode, convertDemoToLimitedFarm, effectiveJoinPassword, recoveryEmail, displayName,
     removeMemberMutation.mutateAsync, leaveFarmMutation.mutateAsync, leaveFarmMutation.isPending,
     deleteFarmFromServerMutation.mutateAsync, deleteFarmFromServerMutation.isPending,
     forceDeleteEquipmentMutation.mutateAsync, forceDeleteConsumableMutation.mutateAsync,

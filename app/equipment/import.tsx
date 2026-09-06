@@ -34,6 +34,7 @@ import {
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
 import { parseEquipmentCSV, ParsedEquipment } from '@/utils/csvHelpers';
+import { readSpreadsheetAsCsv, responseToCsv } from '@/utils/spreadsheetImport';
 import { EQUIPMENT_TYPES, EquipmentType } from '@/types/equipment';
 
 export default function ImportEquipmentScreen() {
@@ -54,25 +55,13 @@ export default function ImportEquipmentScreen() {
     try {
       setFileName(name);
 
-      let content: string;
-      
-      // For web platform, use fetch
-      if (Platform.OS === 'web') {
-        const response = await fetch(uri);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch file: ${response.status}`);
-        }
-        content = await response.text();
-      } else {
-        // For native platforms, use advanced file reading
-        content = await readFileContent(uri);
-      }
+      const content = await readSpreadsheetAsCsv(uri, name);
 
       console.log('File content length:', content.length);
       console.log('File content preview:', content.substring(0, 500));
 
       if (!content || content.trim().length === 0) {
-        Alert.alert('Error', 'The file appears to be empty. Please select a valid CSV file.');
+        Alert.alert('Error', 'The file appears to be empty. Please select a valid Excel or CSV file.');
         return;
       }
 
@@ -86,34 +75,9 @@ export default function ImportEquipmentScreen() {
     } catch (error) {
       console.log('Error processing file:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid CSV and try again.`);
+      Alert.alert('Error', `Failed to read the file: ${errorMessage}. Please ensure the file is a valid Excel or CSV and try again.`);
     }
   };
-
-  const readFileContent = async (uri: string): Promise<string> => {
-    console.log('=== File Reading Debug ===');
-    console.log('Original URI:', uri);
-    console.log('Platform:', Platform.OS);
-
-    try {
-      const response = await fetch(uri);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch file: ${response.status}`);
-      }
-      const content = await response.text();
-      if (!content || content.trim().length === 0) {
-        throw new Error('File is empty (0 bytes)');
-      }
-      console.log(`File read successfully: ${content.length} characters`);
-      return content.replace(/^\uFEFF/, '');
-    } catch (fetchError) {
-      const errorMsg = fetchError instanceof Error ? fetchError.message : String(fetchError);
-      console.error('Fetch read failed:', errorMsg);
-      throw new Error(
-        `Unable to read the file. Please try: 1) Selecting the file again, 2) Moving the file to a different location (like Files app root), or 3) Using a Dropbox link instead.`
-      );
-    }
-  }
 
   const handlePickFromDevice = async () => {
     setShowSourceModal(false);
@@ -249,18 +213,13 @@ export default function ImportEquipmentScreen() {
       if (!response.ok) {
         throw new Error(`Failed to fetch file: ${response.status}`);
       }
-      
-      const content = await response.text();
-      
-      if (!content || content.trim().length === 0) {
-        Alert.alert('Error', 'The file appears to be empty.');
-        return;
-      }
 
       const urlParts = dropboxUrl.split('/');
-      const fileName = urlParts[urlParts.length - 1]?.split('?')[0] || 'dropbox_file.csv';
+      const dropboxFileName = decodeURIComponent(urlParts[urlParts.length - 1]?.split('?')[0] || 'dropbox_file.csv');
       
-      setFileName(fileName);
+      const content = await responseToCsv(response, dropboxFileName);
+      
+      setFileName(dropboxFileName);
       
       const parseResult = parseEquipmentCSV(content);
       setParsedData(parseResult.data);
@@ -356,10 +315,10 @@ export default function ImportEquipmentScreen() {
           <View style={styles.uploadIcon}>
             <Tractor color={Colors.primary} size={48} />
           </View>
-          <Text style={styles.uploadTitle}>Import Equipment from CSV</Text>
+          <Text style={styles.uploadTitle}>Import Equipment from Spreadsheet</Text>
           <Text style={styles.uploadDescription}>
-            Select a CSV file to bulk import equipment into your fleet. 
-            The file should have columns for Name, Type, Make, Model, etc.
+            Select an Excel (.xlsx) or CSV file to bulk import equipment into your fleet.
+            Excel templates include Type dropdowns for easier entry.
           </Text>
           
           <TouchableOpacity
@@ -373,7 +332,7 @@ export default function ImportEquipmentScreen() {
               <>
                 <Upload color={Colors.textOnPrimary} size={20} />
                 <Text style={styles.uploadButtonText}>
-                  {fileName ? 'Select Different File' : 'Select CSV File'}
+                  {fileName ? 'Select Different File' : 'Select Spreadsheet'}
                 </Text>
               </>
             )}
@@ -545,7 +504,7 @@ export default function ImportEquipmentScreen() {
           >
             <Pressable style={styles.modalContent} onPress={(e) => e.stopPropagation()}>
             <Text style={styles.modalTitle}>Select File Source</Text>
-            <Text style={styles.modalSubtitle}>Choose where to import your CSV file from</Text>
+            <Text style={styles.modalSubtitle}>Choose where to import your Excel or CSV file from</Text>
             
             <TouchableOpacity
               style={styles.sourceOption}
@@ -593,7 +552,7 @@ export default function ImportEquipmentScreen() {
                 {isLoadingDropbox ? (
                   <ActivityIndicator color={Colors.textOnPrimary} size="small" />
                 ) : (
-                  <Text style={styles.dropboxLoadButtonText}>Load CSV from Dropbox</Text>
+                  <Text style={styles.dropboxLoadButtonText}>Load from Dropbox</Text>
                 )}
               </TouchableOpacity>
               

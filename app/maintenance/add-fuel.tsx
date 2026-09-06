@@ -67,7 +67,7 @@ export default function AddFuelLogScreen() {
     return [...built, ...custom];
   }, [customFuelTypes]);
 
-  if (!isSubscribed && (isTrial || isDemoMode)) {
+  if (!isSubscribed && !isTrial && !isDemoMode) {
     return <Paywall onDismiss={() => router.back()} />;
   }
 

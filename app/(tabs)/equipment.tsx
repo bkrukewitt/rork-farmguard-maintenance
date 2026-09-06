@@ -16,6 +16,7 @@ import {
   Keyboard,
 } from 'react-native';
 import { File, Paths } from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { 
@@ -45,7 +46,11 @@ import { useFarmData } from '@/contexts/FarmDataContext';
 import { useTheme } from '@/contexts/ThemeContext';
 import { Equipment, EquipmentType } from '@/types/equipment';
 import { getMaintenanceStatus } from '@/utils/helpers';
-import { generateEquipmentCSVTemplate, exportEquipmentToCSV } from '@/utils/csvHelpers';
+import { exportEquipmentToCSV } from '@/utils/csvHelpers';
+import {
+  generateEquipmentExcelTemplateBase64,
+  base64ToUint8Array,
+} from '@/utils/excelTemplateHelpers';
 import { getEquipmentListCardSubtitle } from '@/utils/equipmentFormConfig';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
@@ -88,42 +93,43 @@ export default function EquipmentScreen() {
   }, [showAddMenuParam, router]);
 
   const handleDownloadTemplate = async () => {
-    const templateContent = generateEquipmentCSVTemplate();
-    
-    if (Platform.OS === 'web') {
-      const blob = new Blob([templateContent], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'equipment_template.csv';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      Alert.alert('Success', 'Template downloaded successfully!');
-    } else {
-      try {
-        const file = new File(Paths.cache, 'equipment_template.csv');
-        file.create({ overwrite: true });
-        file.write(templateContent);
-        
+    try {
+      const base64 = await generateEquipmentExcelTemplateBase64();
+      const fileName = 'equipment_template.xlsx';
+
+      if (Platform.OS === 'web') {
+        const blob = new Blob([base64ToUint8Array(base64)], {
+          type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        Alert.alert('Success', 'Excel template downloaded. Use the Type dropdown when filling it out.');
+      } else {
+        const fileUri = FileSystem.cacheDirectory + fileName;
+        await FileSystem.writeAsStringAsync(fileUri, base64, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+
         const canShare = await Sharing.isAvailableAsync();
         if (canShare) {
-          await Sharing.shareAsync(file.uri, {
-            mimeType: 'text/csv',
+          await Sharing.shareAsync(fileUri, {
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             dialogTitle: 'Save Equipment Template',
-            UTI: 'public.comma-separated-values-text',
+            UTI: 'com.microsoft.excel.xlsx',
           });
         } else {
-          await Share.share({
-            message: templateContent,
-            title: 'Equipment Import Template',
-          });
+          Alert.alert('Error', 'Sharing is not available on this device.');
         }
-      } catch (error) {
-        console.log('Error sharing template:', error);
-        Alert.alert('Error', 'Failed to download template. Please try again.');
       }
+    } catch (error) {
+      console.log('Error sharing template:', error);
+      Alert.alert('Error', 'Failed to download template. Please try again.');
     }
     setShowAddMenu(false);
   };
@@ -358,7 +364,7 @@ export default function EquipmentScreen() {
               </View>
               <View style={styles.menuItemContent}>
                 <Text style={[styles.menuItemTitle, { color: colors.text }]}>Download Template</Text>
-                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Get CSV template with examples</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Excel template with Type dropdowns</Text>
               </View>
               <ChevronRight color={colors.textSecondary} size={20} />
             </TouchableOpacity>
@@ -374,8 +380,8 @@ export default function EquipmentScreen() {
                 <Upload color={colors.success} size={22} />
               </View>
               <View style={styles.menuItemContent}>
-                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Import from CSV</Text>
-                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Upload completed spreadsheet</Text>
+                <Text style={[styles.menuItemTitle, { color: colors.text }]}>Import from Spreadsheet</Text>
+                <Text style={[styles.menuItemDescription, { color: colors.textSecondary }]}>Upload Excel or CSV file</Text>
               </View>
               <ChevronRight color={colors.textSecondary} size={20} />
             </TouchableOpacity>

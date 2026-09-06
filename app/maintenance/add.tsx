@@ -38,6 +38,7 @@ import { useFarmData } from '@/contexts/FarmDataContext';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import Paywall from '@/components/Paywall';
 import { useRateAppPrompt } from '@/hooks/useRateAppPrompt';
+import { TRIAL_LIMITS, isCapError, capErrorMessage } from '@/constants/trialLimits';
 import { MaintenanceLog, Consumable, ServiceRoutine, ChecklistItem, EquipmentAttachment, ConsumableCategory, CONSUMABLE_CATEGORIES } from '@/types/equipment';
 import { uploadAttachment } from '@/utils/attachmentUpload';
 import { generateId } from '@/utils/helpers';
@@ -57,9 +58,11 @@ const PERFORMER_OPTIONS: { value: MaintenanceLog['performedBy']; label: string }
 export default function AddMaintenanceScreen() {
   const router = useRouter();
   const { equipmentId: preselectedEquipmentId } = useLocalSearchParams<{ equipmentId?: string }>();
-  const { farmId, equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines, updateEquipment, addConsumable, isDemoMode } = useFarmData();
+  const { farmId, equipment, addMaintenanceLog, updateInterval, getIntervalsForEquipment, consumables, deductConsumables, serviceRoutines, updateEquipment, addConsumable, isDemoMode, maintenanceLogs } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
   const { maybeShowRatePrompt } = useRateAppPrompt();
+  const limitsActive = !isSubscribed && (isTrial || isDemoMode);
+  const [showCapPaywall, setShowCapPaywall] = useState(false);
 
   const [selectedEquipmentId, setSelectedEquipmentId] = useState(preselectedEquipmentId ?? '');
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
@@ -276,6 +279,9 @@ export default function AddMaintenanceScreen() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (limitsActive && maintenanceLogs.length >= TRIAL_LIMITS.MAX_MAINTENANCE_LOGS) {
+        throw new Error('LOG_CAP_REACHED');
+      }
       if (!selectedEquipmentId) {
         throw new Error('Please select equipment');
       }
@@ -372,12 +378,23 @@ export default function AddMaintenanceScreen() {
       }
     },
     onError: (error: Error) => {
+      if (isCapError(error.message)) {
+        Alert.alert('Limit reached', capErrorMessage(error.message), [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Subscribe', onPress: () => setShowCapPaywall(true) },
+        ]);
+        return;
+      }
       Alert.alert('Error', error.message);
     },
   });
 
-  if (!isSubscribed && (isTrial || isDemoMode)) {
+  if (!isSubscribed && !isTrial && !isDemoMode) {
     return <Paywall onDismiss={() => router.back()} />;
+  }
+
+  if (showCapPaywall) {
+    return <Paywall onDismiss={() => setShowCapPaywall(false)} />;
   }
 
   const handleSave = () => {

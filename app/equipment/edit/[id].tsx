@@ -56,7 +56,7 @@ export default function EditEquipmentScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { getEquipmentById, updateEquipment, isLoading, isDemoMode } = useFarmData();
-  const { isSubscribed } = usePurchases();
+  const { isSubscribed, isTrial } = usePurchases();
 
   const equipment = getEquipmentById(id ?? '');
 
@@ -196,7 +196,7 @@ export default function EditEquipmentScreen() {
     saveMutation.mutate();
   };
 
-  if (!isSubscribed && isDemoMode) {
+  if (!isSubscribed && !isTrial && !isDemoMode) {
     return <Paywall onDismiss={() => router.back()} />;
   }
 

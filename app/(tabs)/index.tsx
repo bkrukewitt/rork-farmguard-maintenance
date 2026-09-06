@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,8 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { 
   Tractor, 
   Plus,
@@ -19,6 +21,8 @@ import {
   AlertTriangle,
   BarChart3,
   Fuel,
+  CheckCircle2,
+  Circle,
 } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFarmData } from '@/contexts/FarmDataContext';
@@ -26,13 +30,42 @@ import { useTheme } from '@/contexts/ThemeContext';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import PaywallModal from '@/components/PaywallModal';
 import { formatDate, formatMetric } from '@/utils/helpers';
+import { TRIAL_LIMITS } from '@/constants/trialLimits';
+
+const DEMO_CHECKLIST_KEY = 'farmguard_demo_checklist';
+
+type DemoChecklist = {
+  openedMachine: boolean;
+  loggedService: boolean;
+  openedWorkOrder: boolean;
+};
+
+const DEFAULT_CHECKLIST: DemoChecklist = {
+  openedMachine: false,
+  loggedService: false,
+  openedWorkOrder: false,
+};
 
 export default function DashboardScreen() {
   const router = useRouter();
-  const { equipment, maintenanceLogs, workOrders, employees, fuelLogs, isLoading, refreshData, deviceId, getLowStockConsumables, isDemoMode } = useFarmData();
+  const {
+    equipment,
+    maintenanceLogs,
+    workOrders,
+    employees,
+    fuelLogs,
+    isLoading,
+    refreshData,
+    deviceId,
+    getLowStockConsumables,
+    isDemoMode,
+    convertDemoToLimitedFarm,
+  } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
-  const { isTrial, isSubscribed } = usePurchases();
+  const { isTrial, isSubscribed, refreshFarmAccess, checkTrialStatus } = usePurchases();
   const [showPaywall, setShowPaywall] = useState(false);
+  const [checklist, setChecklist] = useState<DemoChecklist>(DEFAULT_CHECKLIST);
+  const [isConverting, setIsConverting] = useState(false);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -44,9 +77,89 @@ export default function DashboardScreen() {
   }, [refreshData]);
   const { colors } = useTheme();
 
-  const handleTrialAction = useCallback(() => {
-    setShowPaywall(true);
+  const loadChecklist = useCallback(async () => {
+    try {
+      const raw = await AsyncStorage.getItem(DEMO_CHECKLIST_KEY);
+      if (raw) setChecklist({ ...DEFAULT_CHECKLIST, ...JSON.parse(raw) });
+    } catch {
+      // ignore
+    }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (isDemoMode) void loadChecklist();
+    }, [isDemoMode, loadChecklist]),
+  );
+
+  useEffect(() => {
+    if (!isDemoMode) return;
+    // Auto-complete checklist from sandbox activity vs seed-ish heuristics
+    const userLogged =
+      maintenanceLogs.some(l => !l.id.startsWith('demo-log')) ||
+      maintenanceLogs.length > 3;
+    const touchedWo = workOrders.some(
+      w => w.status === 'completed' || (w.updatedAt && w.updatedAt !== w.createdAt),
+    );
+    if (userLogged || touchedWo) {
+      setChecklist(prev => {
+        const next = {
+          ...prev,
+          loggedService: prev.loggedService || userLogged,
+          openedWorkOrder: prev.openedWorkOrder || touchedWo,
+        };
+        void AsyncStorage.setItem(DEMO_CHECKLIST_KEY, JSON.stringify(next));
+        return next;
+      });
+    }
+  }, [isDemoMode, maintenanceLogs, workOrders]);
+
+  const markChecklist = useCallback(async (key: keyof DemoChecklist) => {
+    setChecklist(prev => {
+      const next = { ...prev, [key]: true };
+      void AsyncStorage.setItem(DEMO_CHECKLIST_KEY, JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const handleStartMyFarm = useCallback(async () => {
+    Alert.alert(
+      'Start your farm',
+      'This creates your own farm with a free limited trial (up to 3 machines and 5 service logs). Sample demo data will not be copied over.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Continue',
+          onPress: async () => {
+            setIsConverting(true);
+            try {
+              const { farmId, trial } = await convertDemoToLimitedFarm();
+              await AsyncStorage.removeItem(DEMO_CHECKLIST_KEY);
+              await refreshFarmAccess(farmId);
+              await checkTrialStatus(farmId);
+              if (trial?.alreadyUsed) {
+                Alert.alert(
+                  'Trial unavailable',
+                  'A free trial was already used for a farm on this account. You can subscribe for full access.',
+                  [{ text: 'Subscribe', onPress: () => setShowPaywall(true) }, { text: 'OK' }],
+                );
+              } else {
+                Alert.alert(
+                  'Your farm is ready',
+                  `Add up to ${TRIAL_LIMITS.MAX_EQUIPMENT} machines and ${TRIAL_LIMITS.MAX_MAINTENANCE_LOGS} service logs during your trial.`,
+                );
+              }
+            } catch (err) {
+              const message = err instanceof Error ? err.message : 'Could not start your farm.';
+              Alert.alert('Error', message);
+            } finally {
+              setIsConverting(false);
+            }
+          },
+        },
+      ],
+    );
+  }, [convertDemoToLimitedFarm, refreshFarmAccess, checkTrialStatus]);
 
   const navigateHeaderStat = useCallback(
     (href: string) => {
@@ -179,7 +292,7 @@ export default function DashboardScreen() {
           </View>
           {!isSubscribed && (isTrial || isDemoMode) && (
             <View style={styles.trialBadge}>
-              <Text style={styles.trialBadgeText}>PREVIEW</Text>
+              <Text style={styles.trialBadgeText}>{isDemoMode ? 'DEMO' : 'TRIAL'}</Text>
             </View>
           )}
         </View>
@@ -221,10 +334,84 @@ export default function DashboardScreen() {
       </LinearGradient>
 
       <View style={styles.content}>
+        {isDemoMode && (
+          <View style={[styles.guideCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
+            <Text style={[styles.guideTitle, { color: colors.text }]}>Try FarmGuard</Text>
+            <Text style={[styles.guideSubtitle, { color: colors.textSecondary }]}>
+              Walk through a few actions on sample data, then start your own farm.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.guideRow}
+              onPress={() => {
+                void markChecklist('openedMachine');
+                const first = equipment[0];
+                if (first) router.push(`/equipment/${first.id}` as any);
+                else router.push('/equipment' as any);
+              }}
+            >
+              {checklist.openedMachine ? (
+                <CheckCircle2 size={18} color={colors.primary} />
+              ) : (
+                <Circle size={18} color={colors.textSecondary} />
+              )}
+              <Text style={[styles.guideRowText, { color: colors.text }]}>Open a sample machine</Text>
+              <ChevronRight size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.guideRow}
+              onPress={() => {
+                void markChecklist('loggedService');
+                router.push('/maintenance/add' as any);
+              }}
+            >
+              {checklist.loggedService ? (
+                <CheckCircle2 size={18} color={colors.primary} />
+              ) : (
+                <Circle size={18} color={colors.textSecondary} />
+              )}
+              <Text style={[styles.guideRowText, { color: colors.text }]}>Log a service</Text>
+              <ChevronRight size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.guideRow}
+              onPress={() => {
+                void markChecklist('openedWorkOrder');
+                const first = workOrders[0];
+                if (first) router.push(`/workorders/${first.id}` as any);
+                else router.push('/workorders' as any);
+              }}
+            >
+              {checklist.openedWorkOrder ? (
+                <CheckCircle2 size={18} color={colors.primary} />
+              ) : (
+                <Circle size={18} color={colors.textSecondary} />
+              )}
+              <Text style={[styles.guideRowText, { color: colors.text }]}>Review a work order</Text>
+              <ChevronRight size={16} color={colors.textSecondary} />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.startFarmButton, { backgroundColor: colors.primary }]}
+              onPress={() => void handleStartMyFarm()}
+              disabled={isConverting}
+            >
+              <Text style={[styles.startFarmButtonText, { color: colors.textOnPrimary }]}>
+                {isConverting ? 'Starting…' : 'Start my farm'}
+              </Text>
+            </TouchableOpacity>
+            <Text style={[styles.guideHint, { color: colors.textSecondary }]}>
+              Limited free trial: {TRIAL_LIMITS.MAX_EQUIPMENT} machines, {TRIAL_LIMITS.MAX_MAINTENANCE_LOGS} logs.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => (!isSubscribed && isDemoMode) ? handleTrialAction() : router.push('/equipment?showAddMenu=true' as any)}
+            onPress={() => router.push('/equipment?showAddMenu=true' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: colors.primary }]}>
               <Plus color={colors.textOnPrimary} size={20} />
@@ -236,7 +423,7 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => (!isSubscribed && isDemoMode) ? handleTrialAction() : router.push('/maintenance/add' as any)}
+            onPress={() => router.push('/maintenance/add' as any)}
           >
             <View style={[styles.actionIconContainer, { backgroundColor: colors.accent }]}>
               <Wrench color={colors.textOnAccent} size={20} />
@@ -437,7 +624,7 @@ export default function DashboardScreen() {
             </Text>
             {!isSubscribed && isDemoMode && (
               <Text style={[styles.emptySubtitle, { color: colors.primary, marginTop: 12, fontWeight: '500' as const }]}>
-                Subscribe to start adding equipment
+                Sample data loads in demo — or start your farm to add your machines
               </Text>
             )}
           </View>
@@ -463,6 +650,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
+  },
+  guideCard: {
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  guideTitle: {
+    fontSize: 18,
+    fontWeight: '700' as const,
+    marginBottom: 4,
+  },
+  guideSubtitle: {
+    fontSize: 13,
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  guideRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 10,
+  },
+  guideRowText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500' as const,
+  },
+  startFarmButton: {
+    marginTop: 8,
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  startFarmButtonText: {
+    fontSize: 16,
+    fontWeight: '700' as const,
+  },
+  guideHint: {
+    marginTop: 8,
+    fontSize: 12,
+    textAlign: 'center',
   },
   headerRow: {
     flexDirection: 'row',

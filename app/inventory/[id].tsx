@@ -58,10 +58,6 @@ export default function ConsumableDetailScreen() {
   const [editImageUrl, setEditImageUrl] = useState<string | undefined>(undefined);
 
   const startEditing = () => {
-    if (!isSubscribed && isDemoMode) {
-      Alert.alert('Demo mode', 'Subscribe to edit or add inventory items.');
-      return;
-    }
     if (consumable) {
       setEditName(consumable.name);
       setEditPartNumber(consumable.partNumber);

@@ -144,6 +144,14 @@ export const [PurchasesProvider, usePurchases] = createContextHook(() => {
 
   const isSubscribed = hasActiveEntitlement || isGrandfathered || isFarmLegacyPro || adminOverride;
 
+  useEffect(() => {
+    if (isSubscribed) {
+      void AsyncStorage.removeItem('farmguard_trial_active');
+      setIsTrial(false);
+      setTrialDaysRemaining(0);
+    }
+  }, [isSubscribed]);
+
   // Unsubscribed users need packages for Paywall / PaywallModal (including read-only demo).
   // Subscribers skip this fetch via !isSubscribed.
   const shouldFetchOfferings =

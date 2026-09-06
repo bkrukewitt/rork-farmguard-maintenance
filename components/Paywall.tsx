@@ -14,6 +14,7 @@ import {
   Platform,
   Linking,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Shield, Check, Tractor, Wrench, Package, ClipboardList, Star, RefreshCw, X, Eye, MessageSquare } from 'lucide-react-native';
@@ -152,7 +153,7 @@ export default function Paywall({ onDismiss }: PaywallProps) {
     return null;
   };
 
-  const { enterDemoMode } = useFarmData();
+  const { enterDemoMode, exitDemoMode } = useFarmData();
 
   const subscriptionDisclosure = useMemo(() => {
     const pkg = selectedPackage;
@@ -160,7 +161,7 @@ export default function Paywall({ onDismiss }: PaywallProps) {
     if (!pkg) {
       return [
         `${name}: choose Monthly or Yearly to see pricing. Payment will be charged to your Apple ID. Subscription renews automatically until you cancel.`,
-        'Manage or cancel in Settings → Apple ID → Subscriptions. You can try a read-only demo (Try Demo).',
+        'Manage or cancel in Settings → Apple ID → Subscriptions. You can try an interactive demo (Try Demo).',
       ].join('\n\n');
     }
     const isAnnual = pkg.packageType === 'ANNUAL' || pkg.identifier === '$rc_annual';
@@ -213,6 +214,8 @@ export default function Paywall({ onDismiss }: PaywallProps) {
     try {
       const customerInfo = await purchasePackage(selectedPackage);
       console.log('[Paywall] Purchase completed, active entitlements:', Object.keys(customerInfo?.entitlements?.active ?? {}));
+      await exitDemoMode();
+      await AsyncStorage.removeItem('farmguard_trial_active');
     } catch (err: unknown) {
       const error = err as { userCancelled?: boolean; message?: string };
       if (!error?.userCancelled) {
@@ -224,6 +227,8 @@ export default function Paywall({ onDismiss }: PaywallProps) {
   const handleRestore = async () => {
     try {
       await restorePurchases();
+      await exitDemoMode();
+      await AsyncStorage.removeItem('farmguard_trial_active');
       Alert.alert('Purchases Restored', 'Your subscription has been restored successfully.');
     } catch {
       Alert.alert('Restore Failed', 'Could not restore purchases. Please try again.');
@@ -419,14 +424,13 @@ export default function Paywall({ onDismiss }: PaywallProps) {
           </TouchableOpacity>
 
           <View style={styles.demoSection}>
-            <Text style={styles.demoSectionTitle}>Preview the app</Text>
+            <Text style={styles.demoSectionTitle}>Try it yourself</Text>
             <Text style={styles.demoSectionBody}>
-              Walk through the real screens with sample equipment, maintenance history, inventory, and work
-              orders—so you can see how FarmGuard fits your operation.
+              Explore a sample farm: open machines, log a service, and work through orders—then start your own
+              limited free farm when you are ready.
             </Text>
             <Text style={styles.demoSectionNote}>
-              Preview is read-only: you cannot add or edit equipment, log service, import data, or save
-              changes until you subscribe.
+              Demo includes up to 3 machines and 5 service logs. Start your farm anytime to track your real equipment.
             </Text>
             <TouchableOpacity
               style={[styles.demoCtaButton, isStartingTrial && styles.demoCtaButtonDisabled]}
@@ -435,7 +439,7 @@ export default function Paywall({ onDismiss }: PaywallProps) {
               activeOpacity={0.85}
               testID="paywall-trial"
               accessibilityRole="button"
-              accessibilityLabel="Try demo preview of the app"
+              accessibilityLabel="Try interactive demo of the app"
             >
               {isStartingTrial ? (
                 <ActivityIndicator size="small" color="#1A2E10" />
