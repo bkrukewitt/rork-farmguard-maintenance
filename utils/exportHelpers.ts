@@ -389,6 +389,8 @@ export async function generateFuelExcel(
           'Fuel Type': getFuelTypeLabel(log.fuelType, log.customFuelTypeName),
           Gallons: log.gallons,
           'DEF Gallons': log.defGallons ?? 0,
+          'Cost / Gallon': log.costPerGallon ?? '',
+          'Total Cost': log.totalCost ?? '',
           'Hours at Fill-up': log.hoursAtFillUp,
           'Filled By': log.filledByName || log.filledBy,
           Notes: log.notes || '',
@@ -396,12 +398,15 @@ export async function generateFuelExcel(
 
         const totalGallons = logsForEquip.reduce((sum, l) => sum + l.gallons, 0);
         const totalDef = logsForEquip.reduce((sum, l) => sum + (l.defGallons ?? 0), 0);
+        const totalCost = logsForEquip.reduce((sum, l) => sum + (l.totalCost ?? 0), 0);
 
         rows.push({
           Date: 'TOTALS',
           'Fuel Type': '',
           Gallons: totalGallons,
           'DEF Gallons': totalDef,
+          'Cost / Gallon': '',
+          'Total Cost': totalCost || '',
           'Hours at Fill-up': 0,
           'Filled By': '',
           Notes: '',
@@ -420,6 +425,8 @@ export async function generateFuelExcel(
           'Fuel Type': getFuelTypeLabel(log.fuelType, log.customFuelTypeName),
           Gallons: log.gallons,
           'DEF Gallons': log.defGallons ?? 0,
+          'Cost / Gallon': log.costPerGallon ?? '',
+          'Total Cost': log.totalCost ?? '',
           'Hours at Fill-up': log.hoursAtFillUp,
           'Filled By': log.filledByName || log.filledBy,
           Notes: log.notes || '',
@@ -428,6 +435,7 @@ export async function generateFuelExcel(
 
       const totalGallons = filteredFuel.reduce((sum, l) => sum + l.gallons, 0);
       const totalDef = filteredFuel.reduce((sum, l) => sum + (l.defGallons ?? 0), 0);
+      const totalCost = filteredFuel.reduce((sum, l) => sum + (l.totalCost ?? 0), 0);
 
       rows.push({
         Date: 'TOTALS',
@@ -435,6 +443,8 @@ export async function generateFuelExcel(
         'Fuel Type': '',
         Gallons: totalGallons,
         'DEF Gallons': totalDef,
+        'Cost / Gallon': '',
+        'Total Cost': totalCost || '',
         'Hours at Fill-up': 0,
         'Filled By': '',
         Notes: '',

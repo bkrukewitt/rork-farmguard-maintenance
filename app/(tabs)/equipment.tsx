@@ -52,6 +52,7 @@ import {
   base64ToUint8Array,
 } from '@/utils/excelTemplateHelpers';
 import { getEquipmentListCardSubtitle } from '@/utils/equipmentFormConfig';
+import { trackUsage } from '@/utils/usageTracking';
 
 const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string; size: number }>> = {
   tractor: Tractor,
@@ -70,7 +71,7 @@ const EQUIPMENT_ICONS: Record<EquipmentType, React.ComponentType<{ color: string
 export default function EquipmentScreen() {
   const router = useRouter();
   const { showAddMenu: showAddMenuParam } = useLocalSearchParams<{ showAddMenu?: string }>();
-  const { equipment, intervals, isLoading, refreshData } = useFarmData();
+  const { equipment, intervals, isLoading, refreshData, farmId, deviceId } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
@@ -110,6 +111,7 @@ export default function EquipmentScreen() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         Alert.alert('Success', 'Excel template downloaded. Use the Type dropdown when filling it out.');
+        trackUsage(farmId, deviceId, 'template_download_equipment');
       } else {
         const fileUri = FileSystem.cacheDirectory + fileName;
         await FileSystem.writeAsStringAsync(fileUri, base64, {
@@ -123,6 +125,7 @@ export default function EquipmentScreen() {
             dialogTitle: 'Save Equipment Template',
             UTI: 'com.microsoft.excel.xlsx',
           });
+          trackUsage(farmId, deviceId, 'template_download_equipment');
         } else {
           Alert.alert('Error', 'Sharing is not available on this device.');
         }

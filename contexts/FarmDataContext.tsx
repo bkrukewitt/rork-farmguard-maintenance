@@ -1370,6 +1370,12 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     [maintenanceLogs]
   );
 
+  const getMaintenanceLogByWorkOrderId = useCallback(
+    (workOrderId: string) =>
+      maintenanceLogs.find(l => l.workOrderId === workOrderId),
+    [maintenanceLogs]
+  );
+
   const getConsumableById = useCallback(
     (id: string) => consumables.find(c => c.id === id),
     [consumables]
@@ -1397,6 +1403,20 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     },
   });
 
+  const updateFuelLogMutation = useMutation({
+    mutationFn: async (updates: Partial<FuelLog> & { id: string }) => {
+      const updated = fuelLogs.map(f =>
+        f.id === updates.id ? { ...f, ...updates } : f
+      );
+      await saveEntityData(STORAGE_KEYS.FUEL_LOGS, updated);
+      return updated.find(f => f.id === updates.id);
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['fuelLogs'] });
+      void syncToServer({ skipMerge: true });
+    },
+  });
+
   const deleteFuelLogMutation = useMutation({
     mutationFn: async (id: string) => {
       await addTombstones([id]);
@@ -1408,6 +1428,11 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
       void syncToServer({ skipMerge: true });
     },
   });
+
+  const getFuelLogById = useCallback(
+    (id: string) => fuelLogs.find(f => f.id === id),
+    [fuelLogs]
+  );
 
   const getFuelLogsForEquipment = useCallback(
     (equipmentId: string) =>
@@ -2796,6 +2821,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     updateMaintenanceLog: updateMaintenanceLogMutation.mutateAsync,
     deleteMaintenanceLog: deleteMaintenanceLogMutation.mutateAsync,
     getMaintenanceLogById,
+    getMaintenanceLogByWorkOrderId,
     addInterval: addIntervalMutation.mutateAsync,
     updateInterval: updateIntervalMutation.mutateAsync,
     getEquipmentById,
@@ -2830,7 +2856,9 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     fuelLogs,
     customFuelTypes,
     addFuelLog: addFuelLogMutation.mutateAsync,
+    updateFuelLog: updateFuelLogMutation.mutateAsync,
     deleteFuelLog: deleteFuelLogMutation.mutateAsync,
+    getFuelLogById,
     getFuelLogsForEquipment,
     addCustomFuelType: addCustomFuelTypeMutation.mutateAsync,
     deleteCustomFuelType: deleteCustomFuelTypeMutation.mutateAsync,
@@ -2854,7 +2882,7 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     equipment, maintenanceLogs, intervals, consumables, serviceRoutines, inspectionRoutines, isLoading,
     addEquipmentMutation.mutateAsync, updateEquipmentMutation.mutateAsync, deleteEquipmentMutation.mutateAsync,
     addMaintenanceLogMutation.mutateAsync, updateMaintenanceLogMutation.mutateAsync, deleteMaintenanceLogMutation.mutateAsync,
-    getMaintenanceLogById, addIntervalMutation.mutateAsync, updateIntervalMutation.mutateAsync,
+    getMaintenanceLogById, getMaintenanceLogByWorkOrderId, addIntervalMutation.mutateAsync, updateIntervalMutation.mutateAsync,
     getEquipmentById, getLogsForEquipment, getIntervalsForEquipment,
     addConsumableMutation.mutateAsync, updateConsumableMutation.mutateAsync, deleteConsumableMutation.mutateAsync,
     deductConsumablesMutation.mutateAsync, getConsumableById, getLowStockConsumables,
@@ -2867,7 +2895,8 @@ export const [FarmDataProvider, useFarmData] = createContextHook(() => {
     addWorkOrderMutation.mutateAsync, updateWorkOrderMutation.mutateAsync, deleteWorkOrderMutation.mutateAsync, getWorkOrderById,
     addEmployeeMutation.mutateAsync, updateEmployeeMutation.mutateAsync, deleteEmployeeMutation.mutateAsync, getEmployeeById,
     fuelLogs, customFuelTypes,
-    addFuelLogMutation.mutateAsync, deleteFuelLogMutation.mutateAsync, getFuelLogsForEquipment,
+    addFuelLogMutation.mutateAsync, updateFuelLogMutation.mutateAsync, deleteFuelLogMutation.mutateAsync,
+    getFuelLogById, getFuelLogsForEquipment,
     addCustomFuelTypeMutation.mutateAsync, deleteCustomFuelTypeMutation.mutateAsync,
     manualSync, refreshData, refreshFarmMembers,
   ]);

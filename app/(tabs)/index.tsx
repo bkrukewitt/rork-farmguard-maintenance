@@ -31,6 +31,12 @@ import { usePurchases } from '@/contexts/PurchasesContext';
 import PaywallModal from '@/components/PaywallModal';
 import { formatDate, formatMetric } from '@/utils/helpers';
 import { TRIAL_LIMITS } from '@/constants/trialLimits';
+import {
+  DashboardPreferences,
+  getDefaultDashboardPreferences,
+  isWidgetVisible,
+  loadDashboardPreferences,
+} from '@/utils/dashboardPreferences';
 
 const DEMO_CHECKLIST_KEY = 'farmguard_demo_checklist';
 
@@ -66,6 +72,7 @@ export default function DashboardScreen() {
   const [showPaywall, setShowPaywall] = useState(false);
   const [checklist, setChecklist] = useState<DemoChecklist>(DEFAULT_CHECKLIST);
   const [isConverting, setIsConverting] = useState(false);
+  const [dashPrefs, setDashPrefs] = useState<DashboardPreferences>(getDefaultDashboardPreferences());
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -86,10 +93,16 @@ export default function DashboardScreen() {
     }
   }, []);
 
+  const reloadDashboardPrefs = useCallback(async () => {
+    const prefs = await loadDashboardPreferences();
+    setDashPrefs(prefs);
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
+      void reloadDashboardPrefs();
       if (isDemoMode) void loadChecklist();
-    }, [isDemoMode, loadChecklist]),
+    }, [isDemoMode, loadChecklist, reloadDashboardPrefs]),
   );
 
   useEffect(() => {
@@ -187,7 +200,9 @@ export default function DashboardScreen() {
   const lowStockParts = useMemo(() => getLowStockConsumables(), [getLowStockConsumables]);
 
   const recentActivity = useMemo(() => {
-    const logItems = maintenanceLogs.map(log => ({
+    const logItems = maintenanceLogs
+      .filter(log => !log.isDraft)
+      .map(log => ({
       id: log.id,
       type: 'log' as const,
       title: log.description,
@@ -221,7 +236,7 @@ export default function DashboardScreen() {
   const monthlyLogCount = useMemo(() => {
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    return maintenanceLogs.filter(l => new Date(l.date) >= startOfMonth).length;
+    return maintenanceLogs.filter(l => !l.isDraft && new Date(l.date) >= startOfMonth).length;
   }, [maintenanceLogs]);
 
   const fuelSummary = useMemo(() => {
@@ -230,6 +245,7 @@ export default function DashboardScreen() {
     const monthLogs = fuelLogs.filter(fl => new Date(fl.date) >= startOfMonth);
     const totalGallons = monthLogs.reduce((sum, fl) => sum + fl.gallons, 0);
     const totalDef = monthLogs.reduce((sum, fl) => sum + (fl.defGallons ?? 0), 0);
+    const totalCost = monthLogs.reduce((sum, fl) => sum + (fl.totalCost ?? 0), 0);
     const byType: Record<string, number> = {};
     monthLogs.forEach(fl => {
       const label = fl.fuelType === 'custom' && fl.customFuelTypeName
@@ -239,7 +255,7 @@ export default function DashboardScreen() {
         : fl.fuelType === 'gasoline' ? 'Gasoline' : fl.fuelType;
       byType[label] = (byType[label] ?? 0) + fl.gallons;
     });
-    return { totalGallons, totalDef, fillUps: monthLogs.length, byType };
+    return { totalGallons, totalDef, totalCost, fillUps: monthLogs.length, byType };
   }, [fuelLogs]);
 
   const getPriorityColor = (priority: string) => {
@@ -408,212 +424,233 @@ export default function DashboardScreen() {
           </View>
         )}
 
-        <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => router.push('/equipment?showAddMenu=true' as any)}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: colors.primary }]}>
-              <Plus color={colors.textOnPrimary} size={20} />
-            </View>
-            <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
-              Add Equipment
-            </Text>
-          </TouchableOpacity>
+        {dashPrefs.order.map((widgetId) => {
+          if (!isWidgetVisible(dashPrefs, widgetId)) return null;
 
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => router.push('/maintenance/add' as any)}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: colors.accent }]}>
-              <Wrench color={colors.textOnAccent} size={20} />
-            </View>
-            <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
-              Log Service
-            </Text>
-          </TouchableOpacity>
+          if (widgetId === 'quickActions') {
+            return (
+              <View key={widgetId} style={styles.quickActions}>
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
+                  onPress={() => router.push('/equipment?showAddMenu=true' as any)}
+                >
+                  <View style={[styles.actionIconContainer, { backgroundColor: colors.primary }]}>
+                    <Plus color={colors.textOnPrimary} size={20} />
+                  </View>
+                  <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
+                    Add Equipment
+                  </Text>
+                </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-            onPress={() => router.push('/workorders' as any)}
-          >
-            <View style={[styles.actionIconContainer, { backgroundColor: '#3B82F6' }]}>
-              <FileText color="#FFFFFF" size={20} />
-            </View>
-            <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
-              Work Order
-            </Text>
-          </TouchableOpacity>
-        </View>
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
+                  onPress={() => router.push('/maintenance/add' as any)}
+                >
+                  <View style={[styles.actionIconContainer, { backgroundColor: colors.accent }]}>
+                    <Wrench color={colors.textOnAccent} size={20} />
+                  </View>
+                  <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
+                    Log Service
+                  </Text>
+                </TouchableOpacity>
 
-        {myWorkOrders.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>My Work Orders</Text>
-              <TouchableOpacity onPress={() => router.push('/workorders' as any)}>
-                <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
-              </TouchableOpacity>
-            </View>
-            {myWorkOrders.map((wo) => (
-              <TouchableOpacity
-                key={wo.id}
-                style={[styles.workOrderCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-                onPress={() => router.push(`/workorders/${wo.id}` as any)}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.woPriorityBar, { backgroundColor: getPriorityColor(wo.priority) }]} />
-                <View style={styles.woContent}>
-                  <Text style={[styles.woTitle, { color: colors.text }]} numberOfLines={1}>{wo.title}</Text>
-                  <View style={styles.woMeta}>
-                    <View style={[styles.woStatusBadge, { backgroundColor: wo.status === 'in_progress' ? '#3B82F620' : '#F59E0B20' }]}>
-                      <Text
-                        style={[styles.woStatusText, { color: wo.status === 'in_progress' ? '#3B82F6' : '#F59E0B' }]}
-                        numberOfLines={1}
-                      >
-                        {wo.status === 'in_progress' ? 'In Progress' : 'Pending'}
+                <TouchableOpacity
+                  style={[styles.actionButton, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
+                  onPress={() => router.push('/workorders' as any)}
+                >
+                  <View style={[styles.actionIconContainer, { backgroundColor: '#3B82F6' }]}>
+                    <FileText color="#FFFFFF" size={20} />
+                  </View>
+                  <Text style={[styles.actionText, { color: colors.text }]} numberOfLines={2}>
+                    Work Order
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            );
+          }
+
+          if (widgetId === 'myWorkOrders' && myWorkOrders.length > 0) {
+            return (
+              <View key={widgetId} style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>My Work Orders</Text>
+                  <TouchableOpacity onPress={() => router.push('/workorders' as any)}>
+                    <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+                  </TouchableOpacity>
+                </View>
+                {myWorkOrders.map((wo) => (
+                  <TouchableOpacity
+                    key={wo.id}
+                    style={[styles.workOrderCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
+                    onPress={() => router.push(`/workorders/${wo.id}` as any)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[styles.woPriorityBar, { backgroundColor: getPriorityColor(wo.priority) }]} />
+                    <View style={styles.woContent}>
+                      <Text style={[styles.woTitle, { color: colors.text }]} numberOfLines={1}>{wo.title}</Text>
+                      <View style={styles.woMeta}>
+                        <View style={[styles.woStatusBadge, { backgroundColor: wo.status === 'in_progress' ? '#3B82F620' : '#F59E0B20' }]}>
+                          <Text
+                            style={[styles.woStatusText, { color: wo.status === 'in_progress' ? '#3B82F6' : '#F59E0B' }]}
+                            numberOfLines={1}
+                          >
+                            {wo.status === 'in_progress' ? 'In Progress' : 'Pending'}
+                          </Text>
+                        </View>
+                        {wo.dueDate && (
+                          <Text style={[styles.woDate, { color: colors.textSecondary }]}>{formatDate(wo.dueDate)}</Text>
+                        )}
+                      </View>
+                    </View>
+                    <ChevronRight color={colors.textSecondary} size={18} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            );
+          }
+
+          if (widgetId === 'fuelMonth' && fuelLogs.length > 0) {
+            return (
+              <View key={widgetId} style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Fuel This Month</Text>
+                  <TouchableOpacity onPress={() => router.push('/maintenance/add-fuel' as any)}>
+                    <Text style={[styles.seeAllText, { color: colors.primary }]}>Log Fuel</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.fuelCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
+                  <View style={styles.fuelCardHeader}>
+                    <View style={[styles.fuelIconWrap, { backgroundColor: '#05966915' }]}>
+                      <Fuel color="#059669" size={20} />
+                    </View>
+                    <View style={styles.fuelCardStats}>
+                      <Text style={[styles.fuelCardNumber, { color: colors.text }]}>
+                        {fuelSummary.totalGallons.toFixed(1)} gal
+                        {fuelSummary.totalCost > 0 ? ` · $${fuelSummary.totalCost.toFixed(2)}` : ''}
+                      </Text>
+                      <Text style={[styles.fuelCardSub, { color: colors.textSecondary }]}>
+                        {fuelSummary.fillUps} fill-up{fuelSummary.fillUps !== 1 ? 's' : ''} this month
+                        {fuelSummary.totalDef > 0 ? ` • ${fuelSummary.totalDef.toFixed(1)} gal DEF` : ''}
                       </Text>
                     </View>
-                    {wo.dueDate && (
-                      <Text style={[styles.woDate, { color: colors.textSecondary }]}>{formatDate(wo.dueDate)}</Text>
-                    )}
                   </View>
-                </View>
-                <ChevronRight color={colors.textSecondary} size={18} />
-              </TouchableOpacity>
-            ))}
-          </View>
-        )}
-
-        {fuelLogs.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Fuel This Month</Text>
-              <TouchableOpacity onPress={() => router.push('/maintenance/add-fuel' as any)}>
-                <Text style={[styles.seeAllText, { color: colors.primary }]}>Log Fuel</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={[styles.fuelCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}>
-              <View style={styles.fuelCardHeader}>
-                <View style={[styles.fuelIconWrap, { backgroundColor: '#05966915' }]}>
-                  <Fuel color="#059669" size={20} />
-                </View>
-                <View style={styles.fuelCardStats}>
-                  <Text style={[styles.fuelCardNumber, { color: colors.text }]}>
-                    {fuelSummary.totalGallons.toFixed(1)} gal
-                  </Text>
-                  <Text style={[styles.fuelCardSub, { color: colors.textSecondary }]}>
-                    {fuelSummary.fillUps} fill-up{fuelSummary.fillUps !== 1 ? 's' : ''}
-                    {fuelSummary.totalDef > 0 ? ` • ${fuelSummary.totalDef.toFixed(1)} gal DEF` : ''}
-                  </Text>
-                </View>
-              </View>
-              {Object.keys(fuelSummary.byType).length > 0 && (
-                <View style={styles.fuelBreakdown}>
-                  {Object.entries(fuelSummary.byType).map(([typeName, gal]) => (
-                    <View key={typeName} style={styles.fuelBreakdownRow}>
-                      <View style={[styles.fuelDot, { backgroundColor: '#059669' }]} />
-                      <Text style={[styles.fuelBreakdownLabel, { color: colors.textSecondary }]}>{typeName}</Text>
-                      <Text style={[styles.fuelBreakdownValue, { color: colors.text }]}>{gal.toFixed(1)} gal</Text>
+                  {Object.keys(fuelSummary.byType).length > 0 && (
+                    <View style={styles.fuelBreakdown}>
+                      {Object.entries(fuelSummary.byType).map(([typeName, gal]) => (
+                        <View key={typeName} style={styles.fuelBreakdownRow}>
+                          <View style={[styles.fuelDot, { backgroundColor: '#059669' }]} />
+                          <Text style={[styles.fuelBreakdownLabel, { color: colors.textSecondary }]}>{typeName}</Text>
+                          <Text style={[styles.fuelBreakdownValue, { color: colors.text }]}>{gal.toFixed(1)} gal</Text>
+                        </View>
+                      ))}
                     </View>
-                  ))}
-                </View>
-              )}
-            </View>
-          </View>
-        )}
-
-        {lowStockParts.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Low Stock Alerts</Text>
-              <TouchableOpacity onPress={() => router.push('/inventory' as any)}>
-                <Text style={[styles.seeAllText, { color: colors.primary }]}>View Inventory</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={[styles.lowStockContainer, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B30' }]}>
-              <AlertTriangle color="#F59E0B" size={18} />
-              <View style={styles.lowStockContent}>
-                <Text style={[styles.lowStockTitle, { color: '#92400E' }]}>
-                  {lowStockParts.length} part{lowStockParts.length > 1 ? 's' : ''} running low
-                </Text>
-                <Text style={[styles.lowStockNames, { color: '#A16207' }]} numberOfLines={2}>
-                  {lowStockParts.map(p => p.name).join(', ')}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
-
-        {topEquipment.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Fleet Overview</Text>
-              <TouchableOpacity onPress={() => router.push('/equipment' as any)}>
-                <Text style={[styles.seeAllText, { color: colors.primary }]}>All Equipment</Text>
-              </TouchableOpacity>
-            </View>
-            {topEquipment.map((eq) => {
-              const eqLogCount = maintenanceLogs.filter(l => l.equipmentId === eq.id).length;
-              return (
-                <TouchableOpacity
-                  key={eq.id}
-                  style={[styles.equipmentCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
-                  onPress={() => router.push(`/equipment/${eq.id}` as any)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.equipmentIcon, { backgroundColor: colors.primary + '12' }]}>
-                    <Tractor color={colors.primary} size={22} />
-                  </View>
-                  <View style={styles.equipmentInfo}>
-                    <Text style={[styles.equipmentName, { color: colors.text }]} numberOfLines={1}>{eq.name}</Text>
-                    <Text style={[styles.equipmentMeta, { color: colors.textSecondary }]}>
-                      {formatMetric(eq.currentHours, eq.metric)} • {eqLogCount} service{eqLogCount !== 1 ? 's' : ''}
-                    </Text>
-                  </View>
-                  <View style={styles.equipmentHoursContainer}>
-                    <BarChart3 color={colors.textSecondary} size={14} />
-                    <Text style={[styles.equipmentHours, { color: colors.textSecondary }]}>
-                      {formatMetric(eq.currentHours, eq.metric)}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
-
-        {recentActivity.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Activity</Text>
-              <TouchableOpacity onPress={() => router.push('/maintenance' as any)}>
-                <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
-              </TouchableOpacity>
-            </View>
-            {recentActivity.map((item) => {
-              const { icon: Icon, color: iconColor } = getActivityIcon(item.logType);
-              return (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[styles.activityCard, { backgroundColor: colors.surface }]}
-                  onPress={() => router.push(
-                    item.type === 'workorder' ? `/workorders/${item.id}` as any : `/maintenance/${item.id}` as any
                   )}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.activityIcon, { backgroundColor: iconColor + '15' }]}>
-                    <Icon color={iconColor} size={16} />
+                </View>
+              </View>
+            );
+          }
+
+          if (widgetId === 'lowStock' && lowStockParts.length > 0) {
+            return (
+              <View key={widgetId} style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Low Stock Alerts</Text>
+                  <TouchableOpacity onPress={() => router.push('/inventory' as any)}>
+                    <Text style={[styles.seeAllText, { color: colors.primary }]}>View Inventory</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.lowStockContainer, { backgroundColor: '#FEF3C7', borderColor: '#F59E0B30' }]}>
+                  <AlertTriangle color="#F59E0B" size={18} />
+                  <View style={styles.lowStockContent}>
+                    <Text style={[styles.lowStockTitle, { color: '#92400E' }]}>
+                      {lowStockParts.length} part{lowStockParts.length > 1 ? 's' : ''} running low
+                    </Text>
+                    <Text style={[styles.lowStockNames, { color: '#A16207' }]} numberOfLines={2}>
+                      {lowStockParts.map(p => p.name).join(', ')}
+                    </Text>
                   </View>
-                  <View style={styles.activityContent}>
-                    <Text style={[styles.activityTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
-                    <Text style={[styles.activitySubtitle, { color: colors.textSecondary }]}>{item.subtitle}</Text>
-                  </View>
-                  <Text style={[styles.activityDate, { color: colors.textSecondary }]}>{formatDate(item.date)}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        )}
+                </View>
+              </View>
+            );
+          }
+
+          if (widgetId === 'fleetOverview' && topEquipment.length > 0) {
+            return (
+              <View key={widgetId} style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Fleet Overview</Text>
+                  <TouchableOpacity onPress={() => router.push('/equipment' as any)}>
+                    <Text style={[styles.seeAllText, { color: colors.primary }]}>All Equipment</Text>
+                  </TouchableOpacity>
+                </View>
+                {topEquipment.map((eq) => {
+                  const eqLogCount = maintenanceLogs.filter(l => l.equipmentId === eq.id && !l.isDraft).length;
+                  return (
+                    <TouchableOpacity
+                      key={eq.id}
+                      style={[styles.equipmentCard, { backgroundColor: colors.surface, shadowColor: colors.cardShadow }]}
+                      onPress={() => router.push(`/equipment/${eq.id}` as any)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.equipmentIcon, { backgroundColor: colors.primary + '12' }]}>
+                        <Tractor color={colors.primary} size={22} />
+                      </View>
+                      <View style={styles.equipmentInfo}>
+                        <Text style={[styles.equipmentName, { color: colors.text }]} numberOfLines={1}>{eq.name}</Text>
+                        <Text style={[styles.equipmentMeta, { color: colors.textSecondary }]}>
+                          {formatMetric(eq.currentHours, eq.metric)} • {eqLogCount} service{eqLogCount !== 1 ? 's' : ''}
+                        </Text>
+                      </View>
+                      <View style={styles.equipmentHoursContainer}>
+                        <BarChart3 color={colors.textSecondary} size={14} />
+                        <Text style={[styles.equipmentHours, { color: colors.textSecondary }]}>
+                          {formatMetric(eq.currentHours, eq.metric)}
+                        </Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            );
+          }
+
+          if (widgetId === 'recentActivity' && recentActivity.length > 0) {
+            return (
+              <View key={widgetId} style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <Text style={[styles.sectionTitle, { color: colors.text }]}>Recent Activity</Text>
+                  <TouchableOpacity onPress={() => router.push('/maintenance' as any)}>
+                    <Text style={[styles.seeAllText, { color: colors.primary }]}>See All</Text>
+                  </TouchableOpacity>
+                </View>
+                {recentActivity.map((item) => {
+                  const { icon: Icon, color: iconColor } = getActivityIcon(item.logType);
+                  return (
+                    <TouchableOpacity
+                      key={item.id}
+                      style={[styles.activityCard, { backgroundColor: colors.surface }]}
+                      onPress={() => router.push(
+                        item.type === 'workorder' ? `/workorders/${item.id}` as any : `/maintenance/${item.id}` as any
+                      )}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.activityIcon, { backgroundColor: iconColor + '15' }]}>
+                        <Icon color={iconColor} size={16} />
+                      </View>
+                      <View style={styles.activityContent}>
+                        <Text style={[styles.activityTitle, { color: colors.text }]} numberOfLines={1}>{item.title}</Text>
+                        <Text style={[styles.activitySubtitle, { color: colors.textSecondary }]}>{item.subtitle}</Text>
+                      </View>
+                      <Text style={[styles.activityDate, { color: colors.textSecondary }]}>{formatDate(item.date)}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            );
+          }
+
+          return null;
+        })}
 
         {equipment.length === 0 && (
           <View style={styles.emptyState}>

@@ -69,7 +69,9 @@ export default function MaintenanceScreen() {
   const [showEquipmentFilter, setShowEquipmentFilter] = useState(false);
 
   const combinedItems = useMemo(() => {
-    const logItems: CombinedLogItem[] = maintenanceLogs.map(log => ({
+    const logItems: CombinedLogItem[] = maintenanceLogs
+      .filter(log => !log.isDraft)
+      .map(log => ({
       id: log.id,
       type: 'log' as const,
       date: log.date,
@@ -100,11 +102,14 @@ export default function MaintenanceScreen() {
         : fl.fuelType === 'off_road_diesel' ? 'Off-Road Diesel'
         : fl.fuelType === 'on_road_diesel' ? 'On-Road Diesel'
         : fl.fuelType === 'gasoline' ? 'Gasoline' : fl.fuelType;
+      const costLabel = fl.totalCost != null && fl.totalCost > 0
+        ? ` • $${fl.totalCost.toFixed(2)}`
+        : '';
       return {
         id: fl.id,
         type: 'fuel' as const,
         date: fl.date,
-        title: `${fl.gallons} gal ${fuelTypeName}${fl.defGallons ? ` + ${fl.defGallons} gal DEF` : ''}`,
+        title: `${fl.gallons} gal ${fuelTypeName}${fl.defGallons ? ` + ${fl.defGallons} gal DEF` : ''}${costLabel}`,
         subtitle: equipment.find(e => e.id === fl.equipmentId)?.name ?? 'Unknown Equipment',
         logType: 'fuel',
         equipmentId: fl.equipmentId,
@@ -210,7 +215,11 @@ export default function MaintenanceScreen() {
           if (item.type === 'workorder') {
             router.push(`/workorders/${item.id}` as any);
           } else {
-            router.push(`/maintenance/${item.id}` as any);
+            router.push(
+              item.type === 'fuel'
+                ? `/maintenance/add-fuel?id=${item.id}` as any
+                : `/maintenance/${item.id}` as any
+            );
           }
         }}
         activeOpacity={0.7}

@@ -56,11 +56,17 @@ export default function WorkOrderDetailScreen() {
     deleteWorkOrder,
     addEmployee,
     isDemoMode,
+    addMaintenanceLog,
+    updateMaintenanceLog,
+    deductConsumables,
+    getMaintenanceLogByWorkOrderId,
+    getEquipmentById,
   } = useFarmData();
   const { isSubscribed } = usePurchases();
   const { maybeShowRatePrompt } = useRateAppPrompt();
   
   const workOrder = getWorkOrderById(id);
+  const linkedLog = workOrder ? getMaintenanceLogByWorkOrderId(workOrder.id) : undefined;
   
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState('');
@@ -181,19 +187,119 @@ export default function WorkOrderDetailScreen() {
     );
   };
 
-  const handleQuickStatusChange = async (newStatus: WorkOrderStatus) => {
+  const ensureEquipmentForWork = (): string | null => {
+    const equipmentId = workOrder.equipmentId || selectedEquipmentId;
+    if (!equipmentId) {
+      Alert.alert(
+        'Equipment required',
+        'Link this work order to a piece of equipment before starting work.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Edit work order', onPress: () => setIsEditing(true) },
+        ]
+      );
+      return null;
+    }
+    return equipmentId;
+  };
+
+  const handleStartWork = async () => {
+    const equipmentId = ensureEquipmentForWork();
+    if (!equipmentId) return;
+
     try {
-      const becameCompleted = newStatus === 'completed' && workOrder.status !== 'completed';
+      let logId = linkedLog?.id;
+      if (!logId) {
+        const equip = getEquipmentById(equipmentId);
+        const assignee = workOrder.assignedTo?.[0]
+          ? employees.find(e => e.id === workOrder.assignedTo![0])
+          : undefined;
+        const newLog = await addMaintenanceLog({
+          equipmentId,
+          date: new Date().toISOString().split('T')[0],
+          hoursAtService: equip?.currentHours ?? 0,
+          type: 'repair',
+          description: workOrder.title,
+          consumablesUsed: [],
+          performedBy: assignee ? 'employee' : 'owner',
+          performedByName: assignee?.name,
+          notes: [workOrder.description, workOrder.notes].filter(Boolean).join('\n\n') || undefined,
+          workOrderId: workOrder.id,
+          isDraft: true,
+        });
+        logId = newLog.id;
+      }
+
+      if (workOrder.status === 'pending') {
+        await updateWorkOrder({
+          id: workOrder.id,
+          status: 'in_progress',
+          equipmentId,
+        });
+      }
+
+      router.push(`/maintenance/edit/${logId}` as any);
+    } catch (error) {
+      console.error('Error starting work:', error);
+      Alert.alert('Error', 'Could not start work. Please try again.');
+    }
+  };
+
+  const handleContinueLogging = () => {
+    if (linkedLog) {
+      router.push(`/maintenance/edit/${linkedLog.id}` as any);
+    } else {
+      void handleStartWork();
+    }
+  };
+
+  const handleFinishWork = async () => {
+    try {
+      if (linkedLog?.isDraft) {
+        await updateMaintenanceLog({
+          id: linkedLog.id,
+          isDraft: false,
+        });
+        if (linkedLog.consumablesUsed.length > 0) {
+          await deductConsumables(
+            linkedLog.consumablesUsed.map(c => ({
+              consumableId: c.consumableId,
+              quantity: c.quantity,
+            }))
+          );
+        }
+      } else if (!linkedLog) {
+        const equipmentId = ensureEquipmentForWork();
+        if (!equipmentId) return;
+        const equip = getEquipmentById(equipmentId);
+        const assignee = workOrder.assignedTo?.[0]
+          ? employees.find(e => e.id === workOrder.assignedTo![0])
+          : undefined;
+        await addMaintenanceLog({
+          equipmentId,
+          date: new Date().toISOString().split('T')[0],
+          hoursAtService: equip?.currentHours ?? 0,
+          type: 'repair',
+          description: workOrder.title,
+          consumablesUsed: [],
+          performedBy: assignee ? 'employee' : 'owner',
+          performedByName: assignee?.name,
+          notes: [workOrder.description, workOrder.notes].filter(Boolean).join('\n\n') || undefined,
+          workOrderId: workOrder.id,
+          isDraft: false,
+        });
+      }
+
       await updateWorkOrder({
         id: workOrder.id,
-        status: newStatus,
-        completedAt: newStatus === 'completed' ? new Date().toISOString() : undefined,
+        status: 'completed',
+        completedAt: new Date().toISOString(),
       });
-      if (becameCompleted) {
-        maybeShowRatePrompt();
-      }
+      maybeShowRatePrompt();
+      Alert.alert('Work complete', 'The work order was finished and saved to maintenance history.');
     } catch (error) {
-      console.error('Error updating status:', error);
+      console.error('Error finishing work:', error);
+      Alert.alert('Error', 'Could not finish work. Please try again.');
     }
   };
 
@@ -748,27 +854,47 @@ export default function WorkOrderDetailScreen() {
           )}
 
           <View style={styles.quickActions}>
-            {workOrder.status !== 'completed' && (
+            {workOrder.status !== 'completed' && workOrder.status !== 'cancelled' && (
               <>
                 {workOrder.status === 'pending' && (
                   <TouchableOpacity
                     style={[styles.quickActionButton, { backgroundColor: '#3B82F6' }]}
-                    onPress={() => handleQuickStatusChange('in_progress')}
+                    onPress={() => void handleStartWork()}
                   >
                     <Clock color="#fff" size={16} />
                     <Text style={styles.quickActionText}>Start Work</Text>
                   </TouchableOpacity>
                 )}
                 {workOrder.status === 'in_progress' && (
-                  <TouchableOpacity
-                    style={[styles.quickActionButton, { backgroundColor: '#10B981' }]}
-                    onPress={() => handleQuickStatusChange('completed')}
-                  >
-                    <Check color="#fff" size={16} />
-                    <Text style={styles.quickActionText}>Mark Complete</Text>
-                  </TouchableOpacity>
+                  <>
+                    <TouchableOpacity
+                      style={[styles.quickActionButton, { backgroundColor: '#3B82F6' }]}
+                      onPress={handleContinueLogging}
+                    >
+                      <Wrench color="#fff" size={16} />
+                      <Text style={styles.quickActionText}>
+                        {linkedLog ? 'Continue Logging' : 'Open Log'}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.quickActionButton, { backgroundColor: '#10B981' }]}
+                      onPress={() => void handleFinishWork()}
+                    >
+                      <Check color="#fff" size={16} />
+                      <Text style={styles.quickActionText}>Finish & Save</Text>
+                    </TouchableOpacity>
+                  </>
                 )}
               </>
+            )}
+            {linkedLog && workOrder.status === 'completed' && (
+              <TouchableOpacity
+                style={[styles.quickActionButton, { backgroundColor: Colors.primary }]}
+                onPress={() => router.push(`/maintenance/${linkedLog.id}` as any)}
+              >
+                <Wrench color="#fff" size={16} />
+                <Text style={styles.quickActionText}>View Maintenance Log</Text>
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -965,6 +1091,7 @@ const styles = StyleSheet.create({
   },
   quickActions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     marginTop: 16,
     gap: 12,
   },

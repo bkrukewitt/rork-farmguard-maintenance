@@ -33,7 +33,8 @@ import { useAdminAccess } from '@/contexts/AdminAccessContext';
 import { buildSupportDebugText } from '@/utils/supportDebugInfo';
 import PaywallModal from '@/components/PaywallModal';
 
-type SuperAdminTab = 'danger' | 'members' | 'password' | 'recovery' | 'announce' | 'debug';
+type SuperAdminTab = 'usage' | 'danger' | 'members' | 'password' | 'recovery' | 'announce' | 'debug';
+type UsageFarmFilter = 'all' | 'active7d' | 'hasPhotos' | 'hasRoutines' | 'hasWorkOrders';
 
 export default function SuperAdminPanel() {
   const { colors } = useTheme();
@@ -85,10 +86,13 @@ export default function SuperAdminPanel() {
   const [superAdminResetExpiresAt, setSuperAdminResetExpiresAt] = useState('');
   const [superAdminResetError, setSuperAdminResetError] = useState('');
   const [legacyProFarmId, setLegacyProFarmId] = useState('');
-    const [superAdminTab, setSuperAdminTab] = useState<SuperAdminTab>('danger');
+    const [superAdminTab, setSuperAdminTab] = useState<SuperAdminTab>('usage');
   const [auditFarmFilter, setAuditFarmFilter] = useState('');
   const [announceBody, setAnnounceBody] = useState('');
   const [announceDurationHours, setAnnounceDurationHours] = useState(48);
+  const [usageFarmFilter, setUsageFarmFilter] = useState('');
+  const [usageQuickFilter, setUsageQuickFilter] = useState<UsageFarmFilter>('all');
+  const [expandedUsageFarmId, setExpandedUsageFarmId] = useState<string | null>(null);
   const passwordProtectedFarmsQuery = trpc.farm.listPasswordProtectedFarms.useQuery(
     { superAdminPin: effectiveSuperAdminPin },
     { enabled: isSuperAdmin }
@@ -98,7 +102,12 @@ export default function SuperAdminPanel() {
     { superAdminPin: effectiveSuperAdminPin, limit: 50 },
     { enabled: isSuperAdmin }
   );
+  const usageStatsQuery = trpc.farm.getUsageStats.useQuery(
+    { superAdminPin: effectiveSuperAdminPin, recentEventLimit: 40 },
+    { enabled: isSuperAdmin && superAdminTab === 'usage' }
+  );
   const refetchPasswordAudit = passwordResetAuditQuery.refetch;
+  const refetchUsageStats = usageStatsQuery.refetch;
 
   const filteredAuditEvents = useMemo(() => {
     const list = passwordResetAuditQuery.data?.events ?? [];
@@ -107,10 +116,37 @@ export default function SuperAdminPanel() {
     return list.filter((ev) => ev.farmId.toLowerCase().includes(q));
   }, [passwordResetAuditQuery.data?.events, auditFarmFilter]);
 
+  const filteredUsageFarms = useMemo(() => {
+    const list = usageStatsQuery.data?.farms ?? [];
+    const q = usageFarmFilter.trim().toLowerCase();
+    return list.filter((farm) => {
+      if (q && !farm.farmId.toLowerCase().includes(q)) return false;
+      if (usageQuickFilter === 'active7d' && farm.activeDevices7d <= 0) {
+        const updatedMs = farm.updatedAt ? Date.parse(farm.updatedAt) : NaN;
+        if (Number.isNaN(updatedMs) || Date.now() - updatedMs > 7 * 24 * 60 * 60 * 1000) {
+          return false;
+        }
+      }
+      if (usageQuickFilter === 'hasPhotos') {
+        if (farm.equipmentWithPhotos + farm.partsWithPhotos + farm.workOrdersWithImages <= 0) return false;
+      }
+      if (usageQuickFilter === 'hasRoutines') {
+        if (farm.serviceRoutineCount + farm.inspectionRoutineCount <= 0) return false;
+      }
+      if (usageQuickFilter === 'hasWorkOrders' && farm.workOrderCount <= 0) return false;
+      return true;
+    });
+  }, [usageStatsQuery.data?.farms, usageFarmFilter, usageQuickFilter]);
+
   useEffect(() => {
     if (!isSuperAdmin || superAdminTab !== 'recovery') return;
     void refetchPasswordAudit();
   }, [isSuperAdmin, superAdminTab, refetchPasswordAudit]);
+
+  useEffect(() => {
+    if (!isSuperAdmin || superAdminTab !== 'usage') return;
+    void refetchUsageStats();
+  }, [isSuperAdmin, superAdminTab, refetchUsageStats]);
 
   const forceSetFarmPasswordMutation = trpc.farm.forceSetFarmPassword.useMutation({
     onSuccess: () => {
@@ -186,6 +222,21 @@ export default function SuperAdminPanel() {
     },
     onError: (error) => {
       Alert.alert('Error', error.message || 'Failed to update legacy Pro flag.');
+    },
+  });
+
+  const superAdminSetExtractionQuotaExemptMutation = trpc.farm.superAdminSetExtractionQuotaExempt.useMutation({
+    onSuccess: (data) => {
+      void legacyProLookupQuery.refetch();
+      Alert.alert(
+        'Updated',
+        data.extractionQuotaExempt
+          ? `Farm ${legacyProFarmId.trim()} can go past the monthly bill-extraction limit.`
+          : `Farm ${legacyProFarmId.trim()} is back on the normal extraction quota.`,
+      );
+    },
+    onError: (error) => {
+      Alert.alert('Error', error.message || 'Failed to update extraction quota flag.');
     },
   });
   const handleFetchAdminFarmMembers = async () => {
@@ -473,6 +524,7 @@ export default function SuperAdminPanel() {
             contentContainerStyle={styles.superAdminTabRow}
           >
             {([
+              { id: 'usage' as SuperAdminTab, label: 'Usage' },
               { id: 'danger' as SuperAdminTab, label: 'Danger' },
               { id: 'members' as SuperAdminTab, label: 'Members' },
               { id: 'password' as SuperAdminTab, label: 'Passwords' },
@@ -499,6 +551,189 @@ export default function SuperAdminPanel() {
               );
             })}
           </ScrollView>
+
+          {superAdminTab === 'usage' && (
+          <>
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Usage overview</Text>
+              <TouchableOpacity
+                onPress={() => void refetchUsageStats()}
+                hitSlop={8}
+                disabled={usageStatsQuery.isFetching}
+              >
+                <RefreshCw color={colors.primary} size={16} />
+              </TouchableOpacity>
+            </View>
+            {usageStatsQuery.isLoading ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : usageStatsQuery.error ? (
+              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>
+                Failed to load usage stats.
+              </Text>
+            ) : (
+              <>
+                {(() => {
+                  const s = usageStatsQuery.data?.summary;
+                  if (!s) return null;
+                  const pct = (n: number) => (s.totalFarms > 0 ? Math.round((n / s.totalFarms) * 100) : 0);
+                  const chips: { label: string; value: string }[] = [
+                    { label: 'Farms', value: String(s.totalFarms) },
+                    { label: 'Active 7d', value: String(s.activeFarms7d) },
+                    { label: 'Active 30d', value: String(s.activeFarms30d) },
+                    { label: 'Work orders', value: `${s.farmsWithWorkOrders} (${pct(s.farmsWithWorkOrders)}%)` },
+                    { label: 'Maintenance', value: `${s.farmsWithMaintenance} (${pct(s.farmsWithMaintenance)}%)` },
+                    { label: 'Fuel', value: `${s.farmsWithFuel} (${pct(s.farmsWithFuel)}%)` },
+                    { label: 'Inventory', value: `${s.farmsWithInventory} (${pct(s.farmsWithInventory)}%)` },
+                    { label: 'Photos', value: `${s.farmsWithPhotos} (${pct(s.farmsWithPhotos)}%)` },
+                    { label: 'Attachments', value: `${s.farmsWithAttachments} (${pct(s.farmsWithAttachments)}%)` },
+                    { label: 'Svc routines', value: `${s.farmsWithServiceRoutines} (${pct(s.farmsWithServiceRoutines)}%)` },
+                    { label: 'Insp routines', value: `${s.farmsWithInspectionRoutines} (${pct(s.farmsWithInspectionRoutines)}%)` },
+                    { label: 'Custom fuel', value: `${s.farmsWithCustomFuelTypes} (${pct(s.farmsWithCustomFuelTypes)}%)` },
+                    { label: 'Employees', value: `${s.farmsWithEmployees} (${pct(s.farmsWithEmployees)}%)` },
+                    { label: 'Password', value: `${s.farmsPasswordProtected}` },
+                    { label: 'Recovery email', value: `${s.farmsWithRecoveryEmail}` },
+                  ];
+                  return (
+                    <View style={styles.usageChipWrap}>
+                      {chips.map((chip) => (
+                        <View
+                          key={chip.label}
+                          style={[styles.usageChip, { backgroundColor: colors.background, borderColor: colors.border }]}
+                        >
+                          <Text style={[styles.usageChipValue, { color: colors.text }]}>{chip.value}</Text>
+                          <Text style={[styles.usageChipLabel, { color: colors.textSecondary }]}>{chip.label}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  );
+                })()}
+                {usageStatsQuery.data?.summary.eventTotals30d ? (
+                  <View style={{ marginTop: 4, gap: 4 }}>
+                    <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Events (30d)</Text>
+                    <Text style={[styles.debugText, { color: colors.text }]}>
+                      Templates: eq {usageStatsQuery.data.summary.eventTotals30d.template_download_equipment} / parts {usageStatsQuery.data.summary.eventTotals30d.template_download_parts}
+                    </Text>
+                    <Text style={[styles.debugText, { color: colors.text }]}>
+                      Imports: eq {usageStatsQuery.data.summary.eventTotals30d.import_equipment} / parts {usageStatsQuery.data.summary.eventTotals30d.import_parts}
+                    </Text>
+                    <Text style={[styles.debugText, { color: colors.text }]}>
+                      Exports: maint {usageStatsQuery.data.summary.eventTotals30d.export_maintenance_pdf} / fuel pdf {usageStatsQuery.data.summary.eventTotals30d.export_fuel_pdf} / fuel xlsx {usageStatsQuery.data.summary.eventTotals30d.export_fuel_excel} / low stock {usageStatsQuery.data.summary.eventTotals30d.export_low_stock} / backup {usageStatsQuery.data.summary.eventTotals30d.export_backup_json}
+                    </Text>
+                    <Text style={[styles.debugText, { color: colors.text }]}>
+                      Restores: {usageStatsQuery.data.summary.eventTotals30d.restore_backup}
+                    </Text>
+                  </View>
+                ) : null}
+              </>
+            )}
+          </View>
+
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Farms</Text>
+            <View style={[styles.joinInput, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <TextInput
+                style={[styles.joinInputText, { color: colors.text }]}
+                placeholder="Filter by Farm ID"
+                placeholderTextColor={colors.textSecondary}
+                value={usageFarmFilter}
+                onChangeText={setUsageFarmFilter}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.usageFilterRow}>
+              {([
+                { id: 'all' as UsageFarmFilter, label: 'All' },
+                { id: 'active7d' as UsageFarmFilter, label: 'Active 7d' },
+                { id: 'hasPhotos' as UsageFarmFilter, label: 'Photos' },
+                { id: 'hasRoutines' as UsageFarmFilter, label: 'Routines' },
+                { id: 'hasWorkOrders' as UsageFarmFilter, label: 'Work orders' },
+              ]).map((f) => {
+                const active = usageQuickFilter === f.id;
+                return (
+                  <TouchableOpacity
+                    key={f.id}
+                    style={[
+                      styles.usageFilterPill,
+                      {
+                        backgroundColor: active ? colors.primary : colors.background,
+                        borderColor: active ? colors.primary : colors.border,
+                      },
+                    ]}
+                    onPress={() => setUsageQuickFilter(f.id)}
+                  >
+                    <Text style={{ color: active ? '#fff' : colors.text, fontSize: 12, fontWeight: '600' }}>{f.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+              Showing {filteredUsageFarms.length} farm{filteredUsageFarms.length === 1 ? '' : 's'}
+            </Text>
+            {filteredUsageFarms.map((farm) => {
+              const expanded = expandedUsageFarmId === farm.farmId;
+              return (
+                <View key={farm.farmId} style={[styles.usageFarmCard, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                  <TouchableOpacity
+                    onPress={() => setExpandedUsageFarmId(expanded ? null : farm.farmId)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.memberDeviceId, { color: colors.text }]} numberOfLines={1}>{farm.farmId}</Text>
+                    <Text style={[styles.memberJoinDate, { color: colors.textSecondary }]}>
+                      Sync {farm.updatedAt ? new Date(farm.updatedAt).toLocaleDateString() : '—'}
+                      {' · '}{farm.memberCount} member{farm.memberCount === 1 ? '' : 's'}
+                      {' · '}{farm.activeDevices7d} active 7d
+                    </Text>
+                    <Text style={[styles.memberJoinDate, { color: colors.textSecondary }]}>
+                      EQ {farm.equipmentCount} · Maint {farm.maintenanceLogCount} · WO {farm.workOrderCount} · Fuel {farm.fuelLogCount} · Parts {farm.consumableCount}
+                    </Text>
+                    <Text style={[styles.memberJoinDate, { color: colors.textSecondary }]}>
+                      Photos {farm.equipmentWithPhotos + farm.partsWithPhotos + farm.workOrdersWithImages}
+                      {' · '}Att {farm.equipmentAttachmentCount + farm.maintenanceAttachmentCount}
+                      {' · '}Routines {farm.serviceRoutineCount + farm.inspectionRoutineCount}
+                      {farm.passwordProtected ? ' · PW' : ''}
+                      {farm.recoveryEmailSet ? ' · Recovery' : ''}
+                      {farm.legacyPro ? ' · LegacyPro' : ''}
+                    </Text>
+                  </TouchableOpacity>
+                  {expanded ? (
+                    <View style={{ marginTop: 8, gap: 2 }}>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Equipment photos: {farm.equipmentWithPhotos} (cloud {farm.equipmentWithRemotePhotos})</Text>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Parts photos: {farm.partsWithPhotos} · WO images: {farm.workOrdersWithImages}</Text>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Attachments: equip {farm.equipmentAttachmentCount} · maint {farm.maintenanceAttachmentCount}</Text>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Service routines: {farm.serviceRoutineCount} · Inspection: {farm.inspectionRoutineCount}</Text>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Custom fuel types: {farm.customFuelTypeCount} · Logs w/ custom: {farm.fuelLogsWithCustomType}</Text>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Employees: {farm.employeeCount} · Linked devices: {farm.employeesLinkedToDevice} · WO assigned: {farm.workOrdersWithAssignees}</Text>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Miles equip: {farm.milesEquipmentCount} · Buildings: {farm.buildingEquipmentCount} · Intervals: {farm.intervalCount}</Text>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Last maint: {farm.lastMaintenanceAt ? new Date(farm.lastMaintenanceAt).toLocaleDateString() : '—'}</Text>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Last WO: {farm.lastWorkOrderAt ? new Date(farm.lastWorkOrderAt).toLocaleDateString() : '—'}</Text>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Last fuel: {farm.lastFuelAt ? new Date(farm.lastFuelAt).toLocaleDateString() : '—'}</Text>
+                      <Text style={[styles.debugText, { color: colors.text }]}>Last member seen: {farm.lastMemberSeenAt ? new Date(farm.lastMemberSeenAt).toLocaleString() : '—'}</Text>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })}
+          </View>
+
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Recent events</Text>
+            {(usageStatsQuery.data?.recentEvents ?? []).length === 0 ? (
+              <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>No usage events yet.</Text>
+            ) : (
+              (usageStatsQuery.data?.recentEvents ?? []).slice(0, 25).map((ev) => (
+                <View key={ev.id} style={{ paddingVertical: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
+                  <Text style={[styles.debugText, { color: colors.text }]}>{ev.event}</Text>
+                  <Text style={[styles.memberJoinDate, { color: colors.textSecondary }]}>
+                    {ev.farmId} · {new Date(ev.at).toLocaleString()}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+          </>
+          )}
 
           {superAdminTab === 'danger' && (
           <>
@@ -1074,6 +1309,9 @@ export default function SuperAdminPanel() {
             {legacyProFarmId.trim().length > 0 && legacyProLookupQuery.data ? (
               <Text style={[styles.debugText, { color: colors.text, marginTop: 8 }]}>
                 Status: {legacyProLookupQuery.data.legacyPro ? 'Legacy Pro ON' : 'Legacy Pro OFF'}
+                {' · '}
+                Extraction over-quota:{' '}
+                {legacyProLookupQuery.data.extractionQuotaExempt ? 'ALLOWED' : 'capped'}
                 {legacyProLookupQuery.data.trialActive
                   ? ` · Trial ${legacyProLookupQuery.data.trialDaysRemaining}d`
                   : ''}
@@ -1114,6 +1352,51 @@ export default function SuperAdminPanel() {
               disabled={superAdminSetLegacyProMutation.isPending}
             >
               <Text style={styles.superAdminButtonText}>Remove legacy Pro</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>
+              Bill extraction over-quota (farm flag)
+            </Text>
+            <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+              Uses the Farm ID above. When ON, that farm can exceed the normal monthly bill-extraction limit (e.g. 25) if they ask you for an exception.
+            </Text>
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.primary, marginTop: 8 }]}
+              onPress={() => {
+                const targetId = legacyProFarmId.trim();
+                if (!targetId) {
+                  Alert.alert('Farm ID required', 'Enter a farm ID in the Legacy Pro field above first.');
+                  return;
+                }
+                superAdminSetExtractionQuotaExemptMutation.mutate({
+                  superAdminPin: effectiveSuperAdminPin,
+                  farmId: targetId,
+                  extractionQuotaExempt: true,
+                });
+              }}
+              disabled={superAdminSetExtractionQuotaExemptMutation.isPending}
+            >
+              <Text style={styles.superAdminButtonText}>Allow over-quota extractions</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.superAdminButton, { backgroundColor: colors.statusOverdue + 'CC', marginTop: 8 }]}
+              onPress={() => {
+                const targetId = legacyProFarmId.trim();
+                if (!targetId) {
+                  Alert.alert('Farm ID required', 'Enter a farm ID in the Legacy Pro field above first.');
+                  return;
+                }
+                superAdminSetExtractionQuotaExemptMutation.mutate({
+                  superAdminPin: effectiveSuperAdminPin,
+                  farmId: targetId,
+                  extractionQuotaExempt: false,
+                });
+              }}
+              disabled={superAdminSetExtractionQuotaExemptMutation.isPending}
+            >
+              <Text style={styles.superAdminButtonText}>Enforce normal quota</Text>
             </TouchableOpacity>
           </View>
 
@@ -1249,4 +1532,34 @@ const styles = StyleSheet.create({
   memberJoinDate: { fontSize: 11, marginTop: 4 },
   copyButton: { padding: 8, borderRadius: 8 },
   removeMemberBtn: { padding: 8, borderRadius: 8 },
+  usageChipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  usageChip: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minWidth: 88,
+  },
+  usageChipValue: { fontSize: 14, fontWeight: '700' as const },
+  usageChipLabel: { fontSize: 10, marginTop: 2 },
+  usageFilterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  usageFilterPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  usageFarmCard: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+  },
 });

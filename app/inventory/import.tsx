@@ -36,6 +36,7 @@ import { useFarmData } from '@/contexts/FarmDataContext';
 import { parseCSV, ParsedPart } from '@/utils/csvHelpers';
 import { readSpreadsheetAsCsv, responseToCsv } from '@/utils/spreadsheetImport';
 import { CONSUMABLE_CATEGORIES, ConsumableCategory } from '@/types/equipment';
+import { trackUsage } from '@/utils/usageTracking';
 
 interface ProcessedPart extends ParsedPart {
   matchedEquipmentIds: string[];
@@ -45,7 +46,7 @@ interface ProcessedPart extends ParsedPart {
 
 export default function ImportInventoryScreen() {
   const router = useRouter();
-  const { bulkAddConsumables, equipment } = useFarmData();
+  const { bulkAddConsumables, equipment, farmId, deviceId } = useFarmData();
   
   const [parsedData, setParsedData] = useState<ProcessedPart[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
@@ -390,6 +391,7 @@ export default function ImportInventoryScreen() {
       return validParts.length;
     },
     onSuccess: (count) => {
+      trackUsage(farmId, deviceId, 'import_parts', { count });
       Alert.alert(
         'Import Successful',
         `Successfully imported ${count} part${count > 1 ? 's' : ''} to your inventory.`,

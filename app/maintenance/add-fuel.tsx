@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import KeyboardAwareScrollView from '@/components/KeyboardAwareScrollView';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
 import {
   Fuel,
   ChevronDown,
@@ -29,16 +29,24 @@ import { FuelType, BUILT_IN_FUEL_TYPES, FUEL_FILLER_OPTIONS } from '@/types/equi
 
 export default function AddFuelLogScreen() {
   const router = useRouter();
-  const { equipmentId: preselectedEquipmentId } = useLocalSearchParams<{ equipmentId?: string }>();
+  const { equipmentId: preselectedEquipmentId, id: editId } = useLocalSearchParams<{
+    equipmentId?: string;
+    id?: string;
+  }>();
   const {
     equipment,
     addFuelLog,
+    updateFuelLog,
+    getFuelLogById,
     updateEquipment,
     customFuelTypes,
     addCustomFuelType,
     isDemoMode,
   } = useFarmData();
   const { isTrial, isSubscribed } = usePurchases();
+
+  const existingLog = editId ? getFuelLogById(editId) : undefined;
+  const isEditing = !!existingLog;
 
   const [selectedEquipmentId, setSelectedEquipmentId] = useState(preselectedEquipmentId ?? '');
   const [showEquipmentPicker, setShowEquipmentPicker] = useState(false);
@@ -52,9 +60,28 @@ export default function AddFuelLogScreen() {
   const [filledBy, setFilledBy] = useState<'owner' | 'dealer' | 'employee'>('owner');
   const [filledByName, setFilledByName] = useState('');
   const [notes, setNotes] = useState('');
+  const [costPerGallon, setCostPerGallon] = useState('');
+  const [totalCost, setTotalCost] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [showAddCustomFuelModal, setShowAddCustomFuelModal] = useState(false);
   const [newCustomFuelInput, setNewCustomFuelInput] = useState('');
+
+  useEffect(() => {
+    if (!existingLog) return;
+    setSelectedEquipmentId(existingLog.equipmentId);
+    setFuelType(existingLog.fuelType);
+    setCustomFuelTypeName(existingLog.customFuelTypeName ?? '');
+    setGallons(String(existingLog.gallons));
+    setDefGallons(existingLog.defGallons != null ? String(existingLog.defGallons) : '');
+    setShowDefInput(!!(existingLog.defGallons != null && existingLog.defGallons > 0));
+    setHoursAtFillUp(String(existingLog.hoursAtFillUp));
+    setDate(existingLog.date.slice(0, 10));
+    setFilledBy(existingLog.filledBy);
+    setFilledByName(existingLog.filledByName ?? '');
+    setNotes(existingLog.notes ?? '');
+    setCostPerGallon(existingLog.costPerGallon != null ? String(existingLog.costPerGallon) : '');
+    setTotalCost(existingLog.totalCost != null ? String(existingLog.totalCost) : '');
+  }, [existingLog]);
 
   const selectedEquipment = useMemo(
     () => equipment.find(e => e.id === selectedEquipmentId),
@@ -66,6 +93,24 @@ export default function AddFuelLogScreen() {
     const custom = customFuelTypes.map(ct => ({ value: 'custom' as FuelType, label: ct.name }));
     return [...built, ...custom];
   }, [customFuelTypes]);
+
+  const handleGallonsChange = (value: string) => {
+    setGallons(value);
+    const g = parseFloat(value);
+    const rate = parseFloat(costPerGallon);
+    if (!isNaN(g) && g > 0 && !isNaN(rate) && rate >= 0) {
+      setTotalCost((g * rate).toFixed(2));
+    }
+  };
+
+  const handleCostPerGallonChange = (value: string) => {
+    setCostPerGallon(value);
+    const g = parseFloat(gallons);
+    const rate = parseFloat(value);
+    if (!isNaN(g) && g > 0 && !isNaN(rate) && rate >= 0) {
+      setTotalCost((g * rate).toFixed(2));
+    }
+  };
 
   if (!isSubscribed && !isTrial && !isDemoMode) {
     return <Paywall onDismiss={() => router.back()} />;
@@ -88,8 +133,9 @@ export default function AddFuelLogScreen() {
     setIsSaving(true);
     try {
       const resolvedCustomName = fuelType === 'custom' ? customFuelTypeName : undefined;
-
-      await addFuelLog({
+      const parsedRate = costPerGallon.trim() ? parseFloat(costPerGallon) : undefined;
+      const parsedTotal = totalCost.trim() ? parseFloat(totalCost) : undefined;
+      const payload = {
         equipmentId: selectedEquipmentId,
         date,
         fuelType,
@@ -100,7 +146,17 @@ export default function AddFuelLogScreen() {
         filledBy,
         filledByName: filledBy === 'employee' ? filledByName.trim() || undefined : undefined,
         notes: notes.trim() || undefined,
-      });
+        costPerGallon: parsedRate != null && !isNaN(parsedRate) ? parsedRate : undefined,
+        totalCost: parsedTotal != null && !isNaN(parsedTotal) ? parsedTotal : undefined,
+      };
+
+      if (isEditing && existingLog) {
+        await updateFuelLog({ id: existingLog.id, ...payload });
+        router.back();
+        return;
+      }
+
+      await addFuelLog(payload);
 
       const equip = selectedEquipment;
       const newHours = parseFloat(hoursAtFillUp);
@@ -151,12 +207,13 @@ export default function AddFuelLogScreen() {
 
   return (
     <KeyboardAwareScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <Stack.Screen options={{ title: isEditing ? 'Edit Fuel Log' : 'Log Fuel' }} />
       <View style={styles.headerCard}>
         <View style={styles.headerIcon}>
           <Fuel color="#059669" size={32} />
         </View>
-        <Text style={styles.headerTitle}>Log Fuel Fill-Up</Text>
-        <Text style={styles.headerSubtitle}>Record fuel and DEF usage for your equipment</Text>
+        <Text style={styles.headerTitle}>{isEditing ? 'Edit Fuel Fill-Up' : 'Log Fuel Fill-Up'}</Text>
+        <Text style={styles.headerSubtitle}>Record fuel, DEF, and cost for your equipment</Text>
       </View>
 
       <View style={styles.formSection}>
@@ -224,8 +281,32 @@ export default function AddFuelLogScreen() {
         <TextInput
           style={styles.input}
           value={gallons}
-          onChangeText={setGallons}
+          onChangeText={handleGallonsChange}
           placeholder="e.g., 50"
+          placeholderTextColor={Colors.textSecondary}
+          keyboardType="decimal-pad"
+        />
+      </View>
+
+      <View style={styles.formSection}>
+        <Text style={styles.label}>Cost / gallon (optional)</Text>
+        <TextInput
+          style={styles.input}
+          value={costPerGallon}
+          onChangeText={handleCostPerGallonChange}
+          placeholder="e.g., 3.45"
+          placeholderTextColor={Colors.textSecondary}
+          keyboardType="decimal-pad"
+        />
+      </View>
+
+      <View style={styles.formSection}>
+        <Text style={styles.label}>Total cost (optional)</Text>
+        <TextInput
+          style={styles.input}
+          value={totalCost}
+          onChangeText={setTotalCost}
+          placeholder="Auto-fills from rate × gallons"
           placeholderTextColor={Colors.textSecondary}
           keyboardType="decimal-pad"
         />

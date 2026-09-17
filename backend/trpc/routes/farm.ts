@@ -2,7 +2,7 @@ import * as z from "zod";
 import { TRPCError } from "@trpc/server";
 import { createTRPCRouter, publicProcedure } from "../create-context";
 import { getFarmData, upsertFarmData, getFarmMembers, upsertFarmMember, updateMemberActivity, getValue, setValue } from "../../utils/rork-db";
-import { verifyFarmAccess, getFarmPasswordFromDb, listPasswordProtectedFarmsFromDb, setFarmPasswordInDb, requestFarmPasswordResetInDb, completeFarmPasswordResetInDb, getFarmLegacyProFromDb, setFarmLegacyProInDb } from "../../utils/supabase-server";
+import { verifyFarmAccess, getFarmPasswordFromDb, listPasswordProtectedFarmsFromDb, setFarmPasswordInDb, requestFarmPasswordResetInDb, completeFarmPasswordResetInDb, getFarmLegacyProFromDb, setFarmLegacyProInDb, getFarmExtractionQuotaExemptFromDb, setFarmExtractionQuotaExemptInDb, getFarmUsageStatsFromDb } from "../../utils/supabase-server";
 import { sanitizeObject } from "../../utils/sanitize";
 import { requireSubscription, startTrial, getTrialInfo, verifySubscription } from "../../utils/revenuecat";
 import { checkRateLimit, getClientIdentifier } from "../../utils/rate-limiter";
@@ -60,6 +60,8 @@ const MaintenanceLogSchema = z.object({
   downtimeHours: z.number().optional(),
   notes: z.string().optional(),
   attachments: z.array(AttachmentSchema).optional(),
+  workOrderId: z.string().optional(),
+  isDraft: z.boolean().optional(),
   createdAt: z.string(),
 });
 
@@ -272,6 +274,91 @@ async function fetchRecentPasswordResetAuditEvents(limit: number): Promise<Passw
   return events;
 }
 
+export const USAGE_EVENT_NAMES = [
+  "template_download_equipment",
+  "template_download_parts",
+  "import_equipment",
+  "import_parts",
+  "export_maintenance_pdf",
+  "export_fuel_pdf",
+  "export_fuel_excel",
+  "export_low_stock",
+  "export_backup_json",
+  "restore_backup",
+] as const;
+
+export type UsageEventName = (typeof USAGE_EVENT_NAMES)[number];
+
+const UsageEventNameSchema = z.enum(USAGE_EVENT_NAMES);
+
+interface UsageEventRecord {
+  id: string;
+  farmId: string;
+  deviceId?: string;
+  event: UsageEventName;
+  at: string;
+  metadata?: Record<string, unknown>;
+}
+
+type UsageEventRollups = Record<UsageEventName, number>;
+
+function emptyUsageEventRollups(): UsageEventRollups {
+  return {
+    template_download_equipment: 0,
+    template_download_parts: 0,
+    import_equipment: 0,
+    import_parts: 0,
+    export_maintenance_pdf: 0,
+    export_fuel_pdf: 0,
+    export_fuel_excel: 0,
+    export_low_stock: 0,
+    export_backup_json: 0,
+    restore_backup: 0,
+  };
+}
+
+async function appendUsageEvent(event: Omit<UsageEventRecord, "id" | "at">): Promise<UsageEventRecord> {
+  const eventId = `ue_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const fullEvent: UsageEventRecord = {
+    id: eventId,
+    at: new Date().toISOString(),
+    ...event,
+  };
+  await setValue(`usage_event:${eventId}`, fullEvent);
+  const indexKey = "usage_event_index";
+  const existing = (await getValue<string[]>(indexKey)) ?? [];
+  existing.push(eventId);
+  const trimmed = existing.slice(-500);
+  await setValue(indexKey, trimmed);
+  return fullEvent;
+}
+
+async function fetchRecentUsageEvents(limit: number): Promise<UsageEventRecord[]> {
+  const indexKey = "usage_event_index";
+  const ids = (await getValue<string[]>(indexKey)) ?? [];
+  const slice = ids.slice(-limit).reverse();
+  const events: UsageEventRecord[] = [];
+  for (const id of slice) {
+    const ev = await getValue<UsageEventRecord>(`usage_event:${id}`);
+    if (ev) {
+      events.push(ev);
+    }
+  }
+  return events;
+}
+
+function rollupUsageEvents(events: UsageEventRecord[], sinceMs: number): UsageEventRollups {
+  const rollups = emptyUsageEventRollups();
+  for (const ev of events) {
+    const atMs = Date.parse(ev.at);
+    if (Number.isNaN(atMs) || atMs < sinceMs) continue;
+    if (ev.event in rollups) {
+      rollups[ev.event] += 1;
+    }
+  }
+  return rollups;
+}
+
 async function sendPasswordResetEmail(toEmail: string, farmId: string, code: string, expiresAt: string): Promise<boolean> {
   const resendApiKey = process.env.RESEND_API_KEY;
   const fromEmail = process.env.RESET_EMAIL_FROM || "FarmGuard <no-reply@farmguard.app>";
@@ -429,6 +516,52 @@ export const farmRouter = createTRPCRouter({
       requireSuperAdminPin(input.superAdminPin);
       const farms = await listPasswordProtectedFarmsFromDb();
       return { farms };
+    }),
+
+  trackUsageEvent: publicProcedure
+    .input(z.object({
+      farmId: z.string().min(1),
+      deviceId: z.string().optional(),
+      event: UsageEventNameSchema,
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    }))
+    .mutation(async ({ input, ctx }) => {
+      const clientId = getClientIdentifier(ctx.req);
+      const limit = checkRateLimit(`usage:${input.farmId}:${clientId}`, 60, 60 * 1000);
+      if (!limit.allowed) {
+        return { success: true as const, rateLimited: true as const };
+      }
+      await appendUsageEvent({
+        farmId: input.farmId.trim(),
+        deviceId: input.deviceId?.trim() || undefined,
+        event: input.event,
+        metadata: input.metadata,
+      });
+      return { success: true as const, rateLimited: false as const };
+    }),
+
+  getUsageStats: publicProcedure
+    .input(z.object({
+      superAdminPin: z.string().min(1),
+      recentEventLimit: z.number().min(1).max(100).optional().default(50),
+    }))
+    .query(async ({ input }) => {
+      requireSuperAdminPin(input.superAdminPin);
+      const [adoption, recentEvents] = await Promise.all([
+        getFarmUsageStatsFromDb(),
+        fetchRecentUsageEvents(500),
+      ]);
+      const since30d = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      const eventTotals30d = rollupUsageEvents(recentEvents, since30d);
+      const recentLimit = input.recentEventLimit ?? 50;
+      return {
+        summary: {
+          ...adoption.summary,
+          eventTotals30d,
+        },
+        farms: adoption.farms,
+        recentEvents: recentEvents.slice(0, recentLimit),
+      };
     }),
 
   forceSetFarmPassword: publicProcedure
@@ -643,9 +776,11 @@ export const farmRouter = createTRPCRouter({
     .input(z.object({ farmId: z.string().min(1) }))
     .query(async ({ input }) => {
       const legacyPro = await getFarmLegacyProFromDb(input.farmId);
+      const extractionQuotaExempt = await getFarmExtractionQuotaExemptFromDb(input.farmId);
       const trial = await getTrialInfo(input.farmId);
       return {
         legacyPro,
+        extractionQuotaExempt,
         trialActive: trial.active,
         trialDaysRemaining: trial.daysRemaining,
         trialAlreadyUsed: trial.alreadyUsed,
@@ -671,6 +806,27 @@ export const farmRouter = createTRPCRouter({
       }
       console.log(`[Farm] Legacy Pro for ${input.farmId} set to ${input.legacyPro}`);
       return { success: true as const, legacyPro: input.legacyPro };
+    }),
+
+  superAdminSetExtractionQuotaExempt: publicProcedure
+    .input(
+      z.object({
+        superAdminPin: z.string().min(1),
+        farmId: z.string().min(1),
+        extractionQuotaExempt: z.boolean(),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      requireSuperAdminPin(input.superAdminPin);
+      const ok = await setFarmExtractionQuotaExemptInDb(input.farmId, input.extractionQuotaExempt);
+      if (!ok) {
+        throw new TRPCError({
+          code: 'INTERNAL_SERVER_ERROR',
+          message: 'Failed to update extraction quota exempt flag for this farm.',
+        });
+      }
+      console.log(`[Farm] Extraction quota exempt for ${input.farmId} set to ${input.extractionQuotaExempt}`);
+      return { success: true as const, extractionQuotaExempt: input.extractionQuotaExempt };
     }),
 
   startTrial: publicProcedure

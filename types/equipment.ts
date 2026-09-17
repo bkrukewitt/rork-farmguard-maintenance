@@ -107,6 +107,10 @@ export interface MaintenanceLog {
   downtimeHours?: number;
   notes?: string;
   attachments?: EquipmentAttachment[];
+  /** When set, this log was created from a work order (Start Work flow). */
+  workOrderId?: string;
+  /** True while work is in progress; hidden from main history until finished. */
+  isDraft?: boolean;
   createdAt: string;
 }
 
@@ -218,6 +222,10 @@ export interface FuelLog {
   filledBy: 'owner' | 'dealer' | 'employee';
   filledByName?: string;
   notes?: string;
+  /** Dollars per gallon (optional). */
+  costPerGallon?: number;
+  /** Total cost for this fill-up; prefer storing even if derived from rate × gallons. */
+  totalCost?: number;
   createdAt: string;
 }
 

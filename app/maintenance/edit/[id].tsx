@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -32,9 +32,11 @@ import {
 } from 'lucide-react-native';
 import Colors from '@/constants/colors';
 import { useFarmData } from '@/contexts/FarmDataContext';
-import { MaintenanceLog, EquipmentAttachment } from '@/types/equipment';
+import { MaintenanceLog, EquipmentAttachment, Consumable } from '@/types/equipment';
 import { uploadAttachment, getAttachmentPublicUrl } from '@/utils/attachmentUpload';
 import { generateId } from '@/utils/helpers';
+import { useRateAppPrompt } from '@/hooks/useRateAppPrompt';
+import { ChevronDown, Search } from 'lucide-react-native';
 
 const SERVICE_TYPES: { value: MaintenanceLog['type']; label: string; Icon: React.ComponentType<{ color: string; size: number }> }[] = [
   { value: 'routine', label: 'Routine Service', Icon: Wrench },
@@ -51,10 +53,21 @@ const PERFORMER_OPTIONS: { value: MaintenanceLog['performedBy']; label: string }
 export default function EditMaintenanceScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { farmId, getMaintenanceLogById, getEquipmentById, updateMaintenanceLog, isLoading } = useFarmData();
+  const {
+    farmId,
+    getMaintenanceLogById,
+    getEquipmentById,
+    updateMaintenanceLog,
+    updateWorkOrder,
+    deductConsumables,
+    consumables,
+    isLoading,
+  } = useFarmData();
+  const { maybeShowRatePrompt } = useRateAppPrompt();
 
   const log = getMaintenanceLogById(id ?? '');
   const equipment = log ? getEquipmentById(log.equipmentId) : undefined;
+  const isDraftFromWorkOrder = !!(log?.isDraft && log?.workOrderId);
 
   const [type, setType] = useState<MaintenanceLog['type']>('routine');
   const [description, setDescription] = useState('');
@@ -67,6 +80,11 @@ export default function EditMaintenanceScreen() {
   const [showAttachmentLabelModal, setShowAttachmentLabelModal] = useState(false);
   const [pendingAttachment, setPendingAttachment] = useState<{ uri: string; name: string } | null>(null);
   const [attachmentLabel, setAttachmentLabel] = useState('');
+  const [selectedConsumables, setSelectedConsumables] = useState<
+    { consumableId: string; name: string; quantity: number }[]
+  >([]);
+  const [showConsumablesPicker, setShowConsumablesPicker] = useState(false);
+  const [consumableSearch, setConsumableSearch] = useState('');
 
   // Initialize form from log data
   useEffect(() => {
@@ -78,8 +96,18 @@ export default function EditMaintenanceScreen() {
       setPerformedBy(log.performedBy);
       setNotes(log.notes ?? '');
       setExistingAttachments(log.attachments ?? []);
+      setSelectedConsumables(log.consumablesUsed ?? []);
     }
   }, [log]);
+
+  const filteredConsumables = useMemo(() => {
+    const searchLower = consumableSearch.toLowerCase().trim();
+    if (!searchLower) return consumables;
+    return consumables.filter((item: Consumable) =>
+      item.name.toLowerCase().includes(searchLower) ||
+      item.partNumber.toLowerCase().includes(searchLower)
+    );
+  }, [consumables, consumableSearch]);
 
   const handlePickAttachment = async () => {
     try {
@@ -248,17 +276,20 @@ export default function EditMaintenanceScreen() {
   };
 
   const saveMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (options?: { finishWork?: boolean }) => {
       if (!description.trim()) {
         throw new Error('Description is required');
       }
+      if (!log) {
+        throw new Error('Maintenance record not found');
+      }
 
-      // Save any new attachment files
       const savedNewAttachments = newAttachments.length > 0
         ? await saveNewAttachmentFiles()
         : [];
 
       const allAttachments = [...existingAttachments, ...savedNewAttachments];
+      const finishWork = options?.finishWork === true;
 
       await updateMaintenanceLog({
         id: id ?? '',
@@ -269,9 +300,33 @@ export default function EditMaintenanceScreen() {
         performedBy,
         notes: notes.trim() || undefined,
         attachments: allAttachments.length > 0 ? allAttachments : undefined,
+        consumablesUsed: selectedConsumables,
+        isDraft: finishWork ? false : log.isDraft,
       });
+
+      if (finishWork && log.workOrderId) {
+        if (selectedConsumables.length > 0) {
+          await deductConsumables(
+            selectedConsumables.map(c => ({
+              consumableId: c.consumableId,
+              quantity: c.quantity,
+            }))
+          );
+        }
+        await updateWorkOrder({
+          id: log.workOrderId,
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+        });
+      }
+
+      return { finishWork };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
+      if (result?.finishWork) {
+        maybeShowRatePrompt();
+        Alert.alert('Work complete', 'Saved to maintenance history and marked the work order complete.');
+      }
       router.back();
     },
     onError: (error: Error) => {
@@ -280,7 +335,18 @@ export default function EditMaintenanceScreen() {
   });
 
   const handleSave = () => {
-    saveMutation.mutate();
+    saveMutation.mutate({});
+  };
+
+  const handleFinishWork = () => {
+    Alert.alert(
+      'Finish work?',
+      'This saves the maintenance log and marks the work order complete. Parts used will be deducted from inventory.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Finish', onPress: () => saveMutation.mutate({ finishWork: true }) },
+      ]
+    );
   };
 
   if (isLoading) {
@@ -304,7 +370,7 @@ export default function EditMaintenanceScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Edit Service Record' }} />
+      <Stack.Screen options={{ title: isDraftFromWorkOrder ? 'Log Work in Progress' : 'Edit Service Record' }} />
       <KeyboardAwareScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -316,19 +382,51 @@ export default function EditMaintenanceScreen() {
             >
               <Text style={styles.cancelButtonText}>Cancel</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.saveButton, saveMutation.isPending && styles.saveButtonDisabled]}
-              onPress={handleSave}
-              disabled={saveMutation.isPending}
-            >
-              <Check color={Colors.textOnPrimary} size={20} />
-              <Text style={styles.saveButtonText}>
-                {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
-              </Text>
-            </TouchableOpacity>
+            {isDraftFromWorkOrder ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.saveButton, styles.saveProgressButton, saveMutation.isPending && styles.saveButtonDisabled]}
+                  onPress={handleSave}
+                  disabled={saveMutation.isPending}
+                >
+                  <Check color={Colors.textOnPrimary} size={20} />
+                  <Text style={styles.saveButtonText}>
+                    {saveMutation.isPending ? 'Saving...' : 'Save Progress'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.saveButton, styles.finishButton, saveMutation.isPending && styles.saveButtonDisabled]}
+                  onPress={handleFinishWork}
+                  disabled={saveMutation.isPending}
+                >
+                  <Check color={Colors.textOnPrimary} size={20} />
+                  <Text style={styles.saveButtonText}>Finish Work</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <TouchableOpacity
+                style={[styles.saveButton, saveMutation.isPending && styles.saveButtonDisabled]}
+                onPress={handleSave}
+                disabled={saveMutation.isPending}
+              >
+                <Check color={Colors.textOnPrimary} size={20} />
+                <Text style={styles.saveButtonText}>
+                  {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
       >
+          {isDraftFromWorkOrder && (
+            <View style={styles.draftBanner}>
+              <Text style={styles.draftBannerTitle}>Work in progress</Text>
+              <Text style={styles.draftBannerText}>
+                Add notes, hours, and parts used. Save progress anytime, or Finish Work to complete the work order.
+              </Text>
+            </View>
+          )}
+
           {/* Equipment (read-only) */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Equipment</Text>
@@ -448,6 +546,108 @@ export default function EditMaintenanceScreen() {
                 textAlignVertical="top"
               />
             </View>
+          </View>
+
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Parts Used</Text>
+            <TouchableOpacity
+              style={styles.pickerButton}
+              onPress={() => setShowConsumablesPicker(!showConsumablesPicker)}
+            >
+              <Text style={[
+                styles.pickerButtonText,
+                selectedConsumables.length === 0 && styles.pickerPlaceholder,
+              ]}>
+                {selectedConsumables.length > 0
+                  ? `${selectedConsumables.length} part(s) selected`
+                  : 'Select parts used...'}
+              </Text>
+              <ChevronDown color={Colors.textSecondary} size={20} />
+            </TouchableOpacity>
+
+            {showConsumablesPicker && (
+              <View style={styles.pickerDropdown}>
+                <View style={styles.consumablesSearchContainer}>
+                  <Search color={Colors.textSecondary} size={18} />
+                  <TextInput
+                    style={styles.consumablesSearchInput}
+                    value={consumableSearch}
+                    onChangeText={setConsumableSearch}
+                    placeholder="Search by part # or name..."
+                    placeholderTextColor={Colors.textSecondary}
+                  />
+                </View>
+                {filteredConsumables.length === 0 ? (
+                  <Text style={styles.emptyPartsText}>No parts in inventory</Text>
+                ) : (
+                  filteredConsumables.slice(0, 40).map((item) => {
+                    const selected = selectedConsumables.find(c => c.consumableId === item.id);
+                    return (
+                      <TouchableOpacity
+                        key={item.id}
+                        style={[styles.pickerOption, selected && styles.pickerOptionActive]}
+                        onPress={() => {
+                          if (selected) {
+                            setSelectedConsumables(prev =>
+                              prev.filter(c => c.consumableId !== item.id)
+                            );
+                          } else {
+                            setSelectedConsumables(prev => [
+                              ...prev,
+                              { consumableId: item.id, name: item.name, quantity: 1 },
+                            ]);
+                          }
+                        }}
+                      >
+                        <Text style={styles.pickerOptionText}>{item.name}</Text>
+                        <Text style={styles.pickerOptionSubtext}>
+                          #{item.partNumber} • {item.quantity} in stock
+                          {selected ? ` • qty ${selected.quantity}` : ''}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })
+                )}
+              </View>
+            )}
+
+            {selectedConsumables.map((item) => (
+              <View key={item.consumableId} style={styles.selectedPartRow}>
+                <Text style={styles.selectedPartName}>{item.name}</Text>
+                <View style={styles.qtyControls}>
+                  <TouchableOpacity
+                    style={styles.qtyButton}
+                    onPress={() => {
+                      setSelectedConsumables(prev =>
+                        prev
+                          .map(c =>
+                            c.consumableId === item.consumableId
+                              ? { ...c, quantity: Math.max(1, c.quantity - 1) }
+                              : c
+                          )
+                      );
+                    }}
+                  >
+                    <Text style={styles.qtyButtonText}>-</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.qtyValue}>{item.quantity}</Text>
+                  <TouchableOpacity
+                    style={styles.qtyButton}
+                    onPress={() => {
+                      setSelectedConsumables(prev =>
+                        prev.map(c =>
+                          c.consumableId === item.consumableId
+                            ? { ...c, quantity: c.quantity + 1 }
+                            : c
+                        )
+                      );
+                    }}
+                  >
+                    <Text style={styles.qtyButtonText}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
           </View>
 
           {/* Attachments */}
@@ -725,6 +925,7 @@ const styles = StyleSheet.create({
   },
   footer: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     padding: 16,
     paddingBottom: 32,
     backgroundColor: Colors.surface,
@@ -733,7 +934,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   cancelButton: {
-    flex: 1,
+    flexGrow: 1,
+    minWidth: 90,
     paddingVertical: 16,
     borderRadius: 12,
     borderWidth: 1,
@@ -746,7 +948,8 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   saveButton: {
-    flex: 2,
+    flexGrow: 2,
+    minWidth: 120,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -755,6 +958,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     gap: 8,
   },
+  saveProgressButton: {
+    backgroundColor: Colors.primary,
+  },
+  finishButton: {
+    backgroundColor: '#10B981',
+    width: '100%',
+    flexGrow: 0,
+  },
   saveButtonDisabled: {
     opacity: 0.6,
   },
@@ -762,6 +973,136 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600' as const,
     color: Colors.textOnPrimary,
+  },
+  draftBanner: {
+    backgroundColor: '#EFF6FF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    padding: 14,
+    marginBottom: 20,
+  },
+  draftBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700' as const,
+    color: '#1D4ED8',
+    marginBottom: 4,
+  },
+  draftBannerText: {
+    fontSize: 13,
+    color: '#1E40AF',
+    lineHeight: 18,
+  },
+  pickerButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  pickerButtonText: {
+    fontSize: 16,
+    color: Colors.text,
+    flex: 1,
+  },
+  pickerPlaceholder: {
+    color: Colors.textSecondary,
+  },
+  pickerDropdown: {
+    marginTop: 8,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 12,
+    overflow: 'hidden',
+    maxHeight: 280,
+  },
+  pickerOption: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  pickerOptionActive: {
+    backgroundColor: Colors.primary + '12',
+  },
+  pickerOptionText: {
+    fontSize: 15,
+    color: Colors.text,
+    fontWeight: '500' as const,
+  },
+  pickerOptionSubtext: {
+    fontSize: 12,
+    color: Colors.textSecondary,
+    marginTop: 2,
+  },
+  consumablesSearchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderLight,
+  },
+  consumablesSearchInput: {
+    flex: 1,
+    fontSize: 15,
+    color: Colors.text,
+    paddingVertical: 4,
+  },
+  emptyPartsText: {
+    padding: 16,
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  selectedPartRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 10,
+    backgroundColor: Colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  selectedPartName: {
+    flex: 1,
+    fontSize: 14,
+    color: Colors.text,
+    fontWeight: '500' as const,
+  },
+  qtyControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  qtyButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qtyButtonText: {
+    fontSize: 18,
+    fontWeight: '600' as const,
+    color: Colors.text,
+  },
+  qtyValue: {
+    fontSize: 15,
+    fontWeight: '600' as const,
+    color: Colors.text,
+    minWidth: 20,
+    textAlign: 'center',
   },
   attachFileButton: {
     flexDirection: 'row',

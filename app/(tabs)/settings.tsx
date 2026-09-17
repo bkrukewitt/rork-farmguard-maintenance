@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -68,6 +68,16 @@ import { PRIVACY_POLICY_URL, TERMS_OF_USE_URL, SUPPORT_FEEDBACK_FORM_URL } from 
 import { usePurchases } from '@/contexts/PurchasesContext';
 import { useAdminAccess } from '@/contexts/AdminAccessContext';
 import { buildSupportDebugText } from '@/utils/supportDebugInfo';
+import { trackUsage } from '@/utils/usageTracking';
+import {
+  DASHBOARD_WIDGETS,
+  DashboardPreferences,
+  DashboardWidgetId,
+  getDefaultDashboardPreferences,
+  loadDashboardPreferences,
+  moveWidget,
+  saveDashboardPreferences,
+} from '@/utils/dashboardPreferences';
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -128,6 +138,7 @@ export default function SettingsScreen() {
   const { isSuperAdmin, isDebugMode, handleFooterTap } = useAdminAccess();
   const queryClient = useQueryClient();
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
+  const [dashPrefs, setDashPrefs] = useState<DashboardPreferences>(getDefaultDashboardPreferences());
   const [isExporting, setIsExporting] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [isRestoring, setIsRestoring] = useState(false);
@@ -172,6 +183,29 @@ export default function SettingsScreen() {
   const [fuelExportRange, setFuelExportRange] = useState<'ytd' | 'lifetime' | 'custom'>('ytd');
   const [fuelExportStartDate, setFuelExportStartDate] = useState('');
   const [fuelExportEndDate, setFuelExportEndDate] = useState('');
+
+  useEffect(() => {
+    void loadDashboardPreferences().then(setDashPrefs);
+  }, []);
+
+  const persistDashPrefs = async (next: DashboardPreferences) => {
+    setDashPrefs(next);
+    await saveDashboardPreferences(next);
+  };
+
+  const toggleDashboardWidget = async (id: DashboardWidgetId) => {
+    const hidden = dashPrefs.hidden.includes(id)
+      ? dashPrefs.hidden.filter(h => h !== id)
+      : [...dashPrefs.hidden, id];
+    await persistDashPrefs({ ...dashPrefs, hidden });
+  };
+
+  const reorderDashboardWidget = async (id: DashboardWidgetId, direction: 'up' | 'down') => {
+    await persistDashPrefs({
+      ...dashPrefs,
+      order: moveWidget(dashPrefs.order, id, direction),
+    });
+  };
   const [showManageFuelTypesModal, setShowManageFuelTypesModal] = useState(false);
   const [newCustomFuelName, setNewCustomFuelName] = useState('');
   const {
@@ -369,6 +403,7 @@ export default function SettingsScreen() {
         link.click();
         URL.revokeObjectURL(url);
         Alert.alert('Success', 'Backup file downloaded successfully.');
+        trackUsage(farmId, deviceId, 'export_backup_json');
       } else {
         const fileUri = FileSystem.cacheDirectory + fileName;
         await FileSystem.writeAsStringAsync(fileUri, jsonString, {
@@ -382,8 +417,10 @@ export default function SettingsScreen() {
             dialogTitle: 'Save FarmGuard Backup',
             UTI: 'public.json',
           });
+          trackUsage(farmId, deviceId, 'export_backup_json');
         } else {
           Alert.alert('Success', `Backup saved to ${fileUri}`);
+          trackUsage(farmId, deviceId, 'export_backup_json');
         }
       }
     } catch (error) {
@@ -444,6 +481,12 @@ export default function SettingsScreen() {
               await AsyncStorage.setItem('farmguard_inspection_routines', JSON.stringify(data.inspectionRoutines || []));
 
               void queryClient.invalidateQueries();
+
+              trackUsage(farmId, deviceId, 'restore_backup', {
+                equipment: data.equipment?.length || 0,
+                maintenanceLogs: data.maintenanceLogs?.length || 0,
+                consumables: data.consumables?.length || 0,
+              });
 
               Alert.alert(
                 'Success',
@@ -961,13 +1004,15 @@ export default function SettingsScreen() {
       };
 
       const worksheetData = [
-        ['Date', 'Equipment', 'Fuel Type', 'Gallons', 'DEF Gallons', 'Hours/Miles', 'Filled By', 'Notes'],
+        ['Date', 'Equipment', 'Fuel Type', 'Gallons', 'DEF Gallons', 'Cost/Gal', 'Total Cost', 'Hours/Miles', 'Filled By', 'Notes'],
         ...logsToExport.map(fl => [
           fl.date,
           equipment.find(e => e.id === fl.equipmentId)?.name ?? 'Unknown',
           getFuelTypeName(fl),
           fl.gallons,
           fl.defGallons ?? '',
+          fl.costPerGallon ?? '',
+          fl.totalCost ?? '',
           fl.hoursAtFillUp,
           fl.filledBy + (fl.filledByName ? ` - ${fl.filledByName}` : ''),
           fl.notes ?? '',
@@ -976,8 +1021,9 @@ export default function SettingsScreen() {
 
       const totalGallons = logsToExport.reduce((s, fl) => s + fl.gallons, 0);
       const totalDef = logsToExport.reduce((s, fl) => s + (fl.defGallons ?? 0), 0);
+      const totalCost = logsToExport.reduce((s, fl) => s + (fl.totalCost ?? 0), 0);
       worksheetData.push([]);
-      worksheetData.push(['Total Fuel (gal)', '', '', totalGallons, totalDef > 0 ? totalDef : '', '', '', '']);
+      worksheetData.push(['Total Fuel (gal)', '', '', totalGallons, totalDef > 0 ? totalDef : '', '', totalCost > 0 ? totalCost : '', '', '', '']);
 
       const worksheet = XLSX.utils.aoa_to_sheet(worksheetData as unknown[][]);
       const workbook = XLSX.utils.book_new();
@@ -1017,6 +1063,7 @@ export default function SettingsScreen() {
         }
       }
 
+      trackUsage(farmId, deviceId, 'export_fuel_excel', { count: logsToExport.length });
       setShowFuelExportModal(false);
     } catch (error) {
       console.error('Error exporting fuel data:', error);
@@ -1115,6 +1162,7 @@ export default function SettingsScreen() {
           Alert.alert('Success', `Exported ${lowStockParts.length} low stock part${lowStockParts.length !== 1 ? 's' : ''} to ${fileUri}`);
         }
       }
+      trackUsage(farmId, deviceId, 'export_low_stock', { count: lowStockParts.length });
     } catch (error) {
       console.error('Error exporting low stock parts:', error);
       Alert.alert('Error', 'Failed to export low stock parts. Please try again.');
@@ -1454,6 +1502,55 @@ export default function SettingsScreen() {
           </View>
           <ChevronRight color={colors.textSecondary} size={20} />
         </TouchableOpacity>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Dashboard</Text>
+        <Text style={[styles.settingDescription, { color: colors.textSecondary, marginBottom: 8, paddingHorizontal: 4 }]}>
+          Choose which sections appear on your home screen, and use the arrows to change their order.
+        </Text>
+        {dashPrefs.order.map((id, index) => {
+          const meta = DASHBOARD_WIDGETS.find(w => w.id === id);
+          if (!meta) return null;
+          const visible = !dashPrefs.hidden.includes(id);
+          return (
+            <View
+              key={id}
+              style={[styles.settingRow, { backgroundColor: colors.surface, marginBottom: 8 }]}
+            >
+              <View style={[styles.settingLeft, { flex: 1 }]}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingLabel, { color: colors.text }]}>{meta.label}</Text>
+                  <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                    {meta.description}
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                <TouchableOpacity
+                  onPress={() => void reorderDashboardWidget(id, 'up')}
+                  disabled={index === 0}
+                  style={{ padding: 6, opacity: index === 0 ? 0.3 : 1 }}
+                >
+                  <Text style={{ color: colors.primary, fontWeight: '700' as const }}>↑</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => void reorderDashboardWidget(id, 'down')}
+                  disabled={index === dashPrefs.order.length - 1}
+                  style={{ padding: 6, opacity: index === dashPrefs.order.length - 1 ? 0.3 : 1 }}
+                >
+                  <Text style={{ color: colors.primary, fontWeight: '700' as const }}>↓</Text>
+                </TouchableOpacity>
+                <Switch
+                  value={visible}
+                  onValueChange={() => void toggleDashboardWidget(id)}
+                  trackColor={{ false: colors.border, true: colors.primary + '60' }}
+                  thumbColor={visible ? colors.primary : colors.textSecondary}
+                />
+              </View>
+            </View>
+          );
+        })}
       </View>
 
       <View style={styles.section}>

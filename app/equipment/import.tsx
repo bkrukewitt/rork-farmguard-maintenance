@@ -36,10 +36,11 @@ import { useFarmData } from '@/contexts/FarmDataContext';
 import { parseEquipmentCSV, ParsedEquipment } from '@/utils/csvHelpers';
 import { readSpreadsheetAsCsv, responseToCsv } from '@/utils/spreadsheetImport';
 import { EQUIPMENT_TYPES, EquipmentType } from '@/types/equipment';
+import { trackUsage } from '@/utils/usageTracking';
 
 export default function ImportEquipmentScreen() {
   const router = useRouter();
-  const { bulkAddEquipment } = useFarmData();
+  const { bulkAddEquipment, farmId, deviceId } = useFarmData();
   
   const [parsedData, setParsedData] = useState<ParsedEquipment[]>([]);
   const [parseErrors, setParseErrors] = useState<string[]>([]);
@@ -267,6 +268,7 @@ export default function ImportEquipmentScreen() {
       return validEquipment.length;
     },
     onSuccess: (count) => {
+      trackUsage(farmId, deviceId, 'import_equipment', { count });
       Alert.alert(
         'Import Successful',
         `Successfully imported ${count} piece${count > 1 ? 's' : ''} of equipment.`,

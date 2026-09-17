@@ -39,10 +39,11 @@ import {
   generatePartsExcelTemplateBase64,
   base64ToUint8Array,
 } from '@/utils/excelTemplateHelpers';
+import { trackUsage } from '@/utils/usageTracking';
 
 export default function InventoryScreen() {
   const router = useRouter();
-  const { consumables, equipment, isLoading, getLowStockConsumables, refreshData } = useFarmData();
+  const { consumables, equipment, isLoading, getLowStockConsumables, refreshData, farmId, deviceId } = useFarmData();
   const [refreshing, setRefreshing] = useState(false);
 
   const onRefresh = useCallback(async () => {
@@ -78,6 +79,7 @@ export default function InventoryScreen() {
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
         Alert.alert('Success', 'Excel template downloaded. Use the Category dropdown when filling it out.');
+        trackUsage(farmId, deviceId, 'template_download_parts');
       } else {
         const fileUri = FileSystem.cacheDirectory + fileName;
         await FileSystem.writeAsStringAsync(fileUri, base64, {
@@ -91,6 +93,7 @@ export default function InventoryScreen() {
             dialogTitle: 'Save Parts Template',
             UTI: 'com.microsoft.excel.xlsx',
           });
+          trackUsage(farmId, deviceId, 'template_download_parts');
         } else {
           Alert.alert('Error', 'Sharing is not available on this device.');
         }

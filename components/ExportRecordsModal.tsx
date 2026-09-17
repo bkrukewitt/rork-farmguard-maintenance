@@ -42,6 +42,7 @@ import {
   GeneratePdfOptions,
 } from '@/utils/exportHelpers';
 import { generateMaintenancePdfHtml, generateFuelOnlyPdfHtml, sanitizeFileName } from '@/utils/pdfTemplate';
+import { trackUsage } from '@/utils/usageTracking';
 
 type ExportMode = 'maintenance' | 'fuel';
 type DatePreset = 'ytd' | 'last12' | 'alltime' | 'custom';
@@ -56,7 +57,7 @@ interface ExportRecordsModalProps {
 
 export default function ExportRecordsModal({ visible, onDismiss }: ExportRecordsModalProps) {
   const { colors, currentScheme } = useTheme();
-  const { equipment, maintenanceLogs, fuelLogs, consumables, farmId } = useFarmData();
+  const { equipment, maintenanceLogs, fuelLogs, consumables, farmId, deviceId } = useFarmData();
 
   // Step tracking
   const [step, setStep] = useState<'mode' | 'options' | 'preview'>('mode');
@@ -267,6 +268,7 @@ export default function ExportRecordsModal({ visible, onDismiss }: ExportRecords
           } else {
             await shareFile(uri, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
           }
+          trackUsage(farmId, deviceId, 'export_fuel_excel', { method });
         } else {
           const uri = await generateFuelPdf({
             equipment: targetEquip, fuelLogs,
@@ -281,6 +283,7 @@ export default function ExportRecordsModal({ visible, onDismiss }: ExportRecords
           } else {
             await shareFile(uri, 'application/pdf');
           }
+          trackUsage(farmId, deviceId, 'export_fuel_pdf', { method });
         }
       } else {
         if (batchMode === 'separate' && targetEquip.length > 1) {
@@ -326,6 +329,7 @@ export default function ExportRecordsModal({ visible, onDismiss }: ExportRecords
             await shareFile(uri, 'application/pdf');
           }
         }
+        trackUsage(farmId, deviceId, 'export_maintenance_pdf', { method, batchMode });
       }
       Alert.alert('Success', 'Export completed successfully!');
     } catch (error) {
