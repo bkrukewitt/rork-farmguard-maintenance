@@ -326,7 +326,8 @@ async function appendUsageEvent(event: Omit<UsageEventRecord, "id" | "at">): Pro
   };
   await setValue(`usage_event:${eventId}`, fullEvent);
   const indexKey = "usage_event_index";
-  const existing = (await getValue<string[]>(indexKey)) ?? [];
+  const existingRaw = await getValue<unknown>(indexKey);
+  const existing = Array.isArray(existingRaw) ? (existingRaw as string[]) : [];
   existing.push(eventId);
   const trimmed = existing.slice(-500);
   await setValue(indexKey, trimmed);
@@ -335,13 +336,20 @@ async function appendUsageEvent(event: Omit<UsageEventRecord, "id" | "at">): Pro
 
 async function fetchRecentUsageEvents(limit: number): Promise<UsageEventRecord[]> {
   const indexKey = "usage_event_index";
-  const ids = (await getValue<string[]>(indexKey)) ?? [];
-  const slice = ids.slice(-limit).reverse();
+  const idsRaw = await getValue<unknown>(indexKey);
+  const ids = Array.isArray(idsRaw) ? (idsRaw as string[]) : [];
+  const slice = ids.slice(-Math.max(1, Math.min(limit, 100))).reverse();
   const events: UsageEventRecord[] = [];
-  for (const id of slice) {
-    const ev = await getValue<UsageEventRecord>(`usage_event:${id}`);
-    if (ev) {
-      events.push(ev);
+  const chunkSize = 10;
+  for (let i = 0; i < slice.length; i += chunkSize) {
+    const chunk = slice.slice(i, i + chunkSize);
+    const loaded = await Promise.all(
+      chunk.map((id) => getValue<UsageEventRecord>(`usage_event:${id}`)),
+    );
+    for (const ev of loaded) {
+      if (ev && typeof ev.event === "string") {
+        events.push(ev);
+      }
     }
   }
   return events;
@@ -543,25 +551,52 @@ export const farmRouter = createTRPCRouter({
   getUsageStats: publicProcedure
     .input(z.object({
       superAdminPin: z.string().min(1),
-      recentEventLimit: z.number().min(1).max(100).optional().default(50),
+      recentEventLimit: z.number().min(1).max(100).optional(),
     }))
     .query(async ({ input }) => {
       requireSuperAdminPin(input.superAdminPin);
-      const [adoption, recentEvents] = await Promise.all([
-        getFarmUsageStatsFromDb(),
-        fetchRecentUsageEvents(500),
-      ]);
-      const since30d = Date.now() - (30 * 24 * 60 * 60 * 1000);
-      const eventTotals30d = rollupUsageEvents(recentEvents, since30d);
-      const recentLimit = input.recentEventLimit ?? 50;
-      return {
-        summary: {
-          ...adoption.summary,
-          eventTotals30d,
-        },
-        farms: adoption.farms,
-        recentEvents: recentEvents.slice(0, recentLimit),
-      };
+      try {
+        const recentLimit = input.recentEventLimit ?? 50;
+        // Keep event fan-out small — Rork DB is one GET per event id.
+        const eventFetchLimit = Math.max(recentLimit, 100);
+
+        let adoption: Awaited<ReturnType<typeof getFarmUsageStatsFromDb>>;
+        try {
+          adoption = await getFarmUsageStatsFromDb();
+        } catch (err) {
+          console.error("[Farm] getFarmUsageStatsFromDb failed:", err);
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: err instanceof Error ? `Usage adoption failed: ${err.message}` : "Usage adoption failed.",
+          });
+        }
+
+        let recentEvents: UsageEventRecord[] = [];
+        try {
+          recentEvents = await fetchRecentUsageEvents(eventFetchLimit);
+        } catch (err) {
+          console.error("[Farm] fetchRecentUsageEvents failed:", err);
+          recentEvents = [];
+        }
+
+        const since30d = Date.now() - (30 * 24 * 60 * 60 * 1000);
+        const eventTotals30d = rollupUsageEvents(recentEvents, since30d);
+        return {
+          summary: {
+            ...adoption.summary,
+            eventTotals30d,
+          },
+          farms: adoption.farms,
+          recentEvents: recentEvents.slice(0, recentLimit),
+        };
+      } catch (err) {
+        if (err instanceof TRPCError) throw err;
+        console.error("[Farm] getUsageStats failed:", err);
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: err instanceof Error ? err.message : "Failed to load usage stats.",
+        });
+      }
     }),
 
   forceSetFarmPassword: publicProcedure

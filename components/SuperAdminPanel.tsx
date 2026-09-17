@@ -31,10 +31,27 @@ import { trpc } from '@/lib/trpc';
 import { usePurchases } from '@/contexts/PurchasesContext';
 import { useAdminAccess } from '@/contexts/AdminAccessContext';
 import { buildSupportDebugText } from '@/utils/supportDebugInfo';
+import {
+  aggregateMemberActivity,
+  buildFarmUsageRow,
+  emptyUsageEventRollups,
+  sortFarmsByActivity,
+  summarizeFarmUsageRows,
+  type FarmUsageRow,
+  type FarmUsageSummary,
+  type UsageEventRollups,
+} from '@/utils/farmUsageStats';
 import PaywallModal from '@/components/PaywallModal';
 
 type SuperAdminTab = 'usage' | 'danger' | 'members' | 'password' | 'recovery' | 'announce' | 'debug';
 type UsageFarmFilter = 'all' | 'active7d' | 'hasPhotos' | 'hasRoutines' | 'hasWorkOrders';
+
+type UsagePanelData = {
+  summary: FarmUsageSummary & { eventTotals30d: UsageEventRollups };
+  farms: FarmUsageRow[];
+  recentEvents: Array<{ id: string; farmId: string; event: string; at: string }>;
+  source: 'api' | 'client';
+};
 
 export default function SuperAdminPanel() {
   const { colors } = useTheme();
@@ -93,6 +110,9 @@ export default function SuperAdminPanel() {
   const [usageFarmFilter, setUsageFarmFilter] = useState('');
   const [usageQuickFilter, setUsageQuickFilter] = useState<UsageFarmFilter>('all');
   const [expandedUsageFarmId, setExpandedUsageFarmId] = useState<string | null>(null);
+  const [clientUsage, setClientUsage] = useState<UsagePanelData | null>(null);
+  const [clientUsageLoading, setClientUsageLoading] = useState(false);
+  const [clientUsageError, setClientUsageError] = useState('');
   const passwordProtectedFarmsQuery = trpc.farm.listPasswordProtectedFarms.useQuery(
     { superAdminPin: effectiveSuperAdminPin },
     { enabled: isSuperAdmin }
@@ -104,10 +124,91 @@ export default function SuperAdminPanel() {
   );
   const usageStatsQuery = trpc.farm.getUsageStats.useQuery(
     { superAdminPin: effectiveSuperAdminPin, recentEventLimit: 40 },
-    { enabled: isSuperAdmin && superAdminTab === 'usage' }
+    { enabled: isSuperAdmin && superAdminTab === 'usage', retry: 1 }
   );
   const refetchPasswordAudit = passwordResetAuditQuery.refetch;
   const refetchUsageStats = usageStatsQuery.refetch;
+
+  const loadClientUsage = useCallback(async () => {
+    setClientUsageLoading(true);
+    setClientUsageError('');
+    try {
+      const pageSize = 50;
+      const farmRows: Array<{ farm_id: string; updated_at: string | null; data: unknown }> = [];
+      for (let from = 0; ; from += pageSize) {
+        const to = from + pageSize - 1;
+        const { data, error } = await supabase
+          .from('farm_data')
+          .select('farm_id, updated_at, data')
+          .order('updated_at', { ascending: false })
+          .range(from, to);
+        if (error) throw error;
+        const batch = data ?? [];
+        farmRows.push(...batch);
+        if (batch.length < pageSize) break;
+        if (farmRows.length >= 2000) break;
+      }
+
+      let memberRows: Array<{ farm_id: string; last_active_at?: string | null; app_last_seen?: string | null }> = [];
+      const withMeta = await supabase
+        .from('farm_members')
+        .select('farm_id, last_active_at, app_last_seen');
+      if (withMeta.error) {
+        const fallback = await supabase
+          .from('farm_members')
+          .select('farm_id, last_active_at');
+        if (fallback.error) throw fallback.error;
+        memberRows = fallback.data ?? [];
+      } else {
+        memberRows = withMeta.data ?? [];
+      }
+
+      const membersByFarm = aggregateMemberActivity(memberRows);
+      const farms = sortFarmsByActivity(
+        farmRows.map((row) =>
+          buildFarmUsageRow(
+            row.farm_id,
+            row.updated_at ?? null,
+            row.data,
+            membersByFarm.get(row.farm_id) ?? {
+              memberCount: 0,
+              activeDevices7d: 0,
+              activeDevices30d: 0,
+              lastMemberSeenAt: null,
+            },
+          ),
+        ),
+      );
+
+      setClientUsage({
+        summary: {
+          ...summarizeFarmUsageRows(farms),
+          eventTotals30d: emptyUsageEventRollups(),
+        },
+        farms,
+        recentEvents: [],
+        source: 'client',
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load usage from Supabase.';
+      setClientUsageError(msg);
+      setClientUsage(null);
+    } finally {
+      setClientUsageLoading(false);
+    }
+  }, []);
+
+  const usagePanelData: UsagePanelData | null = useMemo(() => {
+    if (usageStatsQuery.data) {
+      return {
+        summary: usageStatsQuery.data.summary,
+        farms: usageStatsQuery.data.farms,
+        recentEvents: usageStatsQuery.data.recentEvents ?? [],
+        source: 'api',
+      };
+    }
+    return clientUsage;
+  }, [usageStatsQuery.data, clientUsage]);
 
   const filteredAuditEvents = useMemo(() => {
     const list = passwordResetAuditQuery.data?.events ?? [];
@@ -117,7 +218,7 @@ export default function SuperAdminPanel() {
   }, [passwordResetAuditQuery.data?.events, auditFarmFilter]);
 
   const filteredUsageFarms = useMemo(() => {
-    const list = usageStatsQuery.data?.farms ?? [];
+    const list = usagePanelData?.farms ?? [];
     const q = usageFarmFilter.trim().toLowerCase();
     return list.filter((farm) => {
       if (q && !farm.farmId.toLowerCase().includes(q)) return false;
@@ -136,7 +237,7 @@ export default function SuperAdminPanel() {
       if (usageQuickFilter === 'hasWorkOrders' && farm.workOrderCount <= 0) return false;
       return true;
     });
-  }, [usageStatsQuery.data?.farms, usageFarmFilter, usageQuickFilter]);
+  }, [usagePanelData?.farms, usageFarmFilter, usageQuickFilter]);
 
   useEffect(() => {
     if (!isSuperAdmin || superAdminTab !== 'recovery') return;
@@ -146,7 +247,13 @@ export default function SuperAdminPanel() {
   useEffect(() => {
     if (!isSuperAdmin || superAdminTab !== 'usage') return;
     void refetchUsageStats();
-  }, [isSuperAdmin, superAdminTab, refetchUsageStats]);
+    void loadClientUsage();
+  }, [isSuperAdmin, superAdminTab, refetchUsageStats, loadClientUsage]);
+
+  const refreshUsage = useCallback(() => {
+    void refetchUsageStats();
+    void loadClientUsage();
+  }, [refetchUsageStats, loadClientUsage]);
 
   const forceSetFarmPasswordMutation = trpc.farm.forceSetFarmPassword.useMutation({
     onSuccess: () => {
@@ -558,24 +665,35 @@ export default function SuperAdminPanel() {
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Usage overview</Text>
               <TouchableOpacity
-                onPress={() => void refetchUsageStats()}
+                onPress={refreshUsage}
                 hitSlop={8}
-                disabled={usageStatsQuery.isFetching}
+                disabled={usageStatsQuery.isFetching || clientUsageLoading}
               >
                 <RefreshCw color={colors.primary} size={16} />
               </TouchableOpacity>
             </View>
-            {usageStatsQuery.isLoading ? (
+            {(usageStatsQuery.isLoading && !usagePanelData) || (clientUsageLoading && !usagePanelData) ? (
               <ActivityIndicator size="small" color={colors.primary} />
-            ) : usageStatsQuery.error ? (
-              <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>
-                Failed to load usage stats.
-              </Text>
+            ) : !usagePanelData ? (
+              <View style={{ gap: 6 }}>
+                <Text style={[styles.farmIdErrorText, { color: colors.statusOverdue }]}>
+                  Failed to load usage stats.
+                </Text>
+                <Text style={[styles.debugText, { color: colors.textSecondary }]}>
+                  {usageStatsQuery.error?.message || clientUsageError || 'Unknown error'}
+                </Text>
+              </View>
             ) : (
               <>
+                {usagePanelData.source === 'client' ? (
+                  <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>
+                    Showing live Supabase adoption data
+                    {usageStatsQuery.error ? ` (API: ${usageStatsQuery.error.message})` : ''}.
+                    Event totals need the backend getUsageStats endpoint.
+                  </Text>
+                ) : null}
                 {(() => {
-                  const s = usageStatsQuery.data?.summary;
-                  if (!s) return null;
+                  const s = usagePanelData.summary;
                   const pct = (n: number) => (s.totalFarms > 0 ? Math.round((n / s.totalFarms) * 100) : 0);
                   const chips: { label: string; value: string }[] = [
                     { label: 'Farms', value: String(s.totalFarms) },
@@ -608,20 +726,20 @@ export default function SuperAdminPanel() {
                     </View>
                   );
                 })()}
-                {usageStatsQuery.data?.summary.eventTotals30d ? (
+                {usagePanelData.summary.eventTotals30d ? (
                   <View style={{ marginTop: 4, gap: 4 }}>
                     <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Events (30d)</Text>
                     <Text style={[styles.debugText, { color: colors.text }]}>
-                      Templates: eq {usageStatsQuery.data.summary.eventTotals30d.template_download_equipment} / parts {usageStatsQuery.data.summary.eventTotals30d.template_download_parts}
+                      Templates: eq {usagePanelData.summary.eventTotals30d.template_download_equipment} / parts {usagePanelData.summary.eventTotals30d.template_download_parts}
                     </Text>
                     <Text style={[styles.debugText, { color: colors.text }]}>
-                      Imports: eq {usageStatsQuery.data.summary.eventTotals30d.import_equipment} / parts {usageStatsQuery.data.summary.eventTotals30d.import_parts}
+                      Imports: eq {usagePanelData.summary.eventTotals30d.import_equipment} / parts {usagePanelData.summary.eventTotals30d.import_parts}
                     </Text>
                     <Text style={[styles.debugText, { color: colors.text }]}>
-                      Exports: maint {usageStatsQuery.data.summary.eventTotals30d.export_maintenance_pdf} / fuel pdf {usageStatsQuery.data.summary.eventTotals30d.export_fuel_pdf} / fuel xlsx {usageStatsQuery.data.summary.eventTotals30d.export_fuel_excel} / low stock {usageStatsQuery.data.summary.eventTotals30d.export_low_stock} / backup {usageStatsQuery.data.summary.eventTotals30d.export_backup_json}
+                      Exports: maint {usagePanelData.summary.eventTotals30d.export_maintenance_pdf} / fuel pdf {usagePanelData.summary.eventTotals30d.export_fuel_pdf} / fuel xlsx {usagePanelData.summary.eventTotals30d.export_fuel_excel} / low stock {usagePanelData.summary.eventTotals30d.export_low_stock} / backup {usagePanelData.summary.eventTotals30d.export_backup_json}
                     </Text>
                     <Text style={[styles.debugText, { color: colors.text }]}>
-                      Restores: {usageStatsQuery.data.summary.eventTotals30d.restore_backup}
+                      Restores: {usagePanelData.summary.eventTotals30d.restore_backup}
                     </Text>
                   </View>
                 ) : null}
@@ -719,10 +837,10 @@ export default function SuperAdminPanel() {
 
           <View style={[styles.superAdminCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.superAdminLabel, { color: colors.textSecondary }]}>Recent events</Text>
-            {(usageStatsQuery.data?.recentEvents ?? []).length === 0 ? (
+            {(usagePanelData?.recentEvents ?? []).length === 0 ? (
               <Text style={[styles.settingDescription, { color: colors.textSecondary }]}>No usage events yet.</Text>
             ) : (
-              (usageStatsQuery.data?.recentEvents ?? []).slice(0, 25).map((ev) => (
+              (usagePanelData?.recentEvents ?? []).slice(0, 25).map((ev) => (
                 <View key={ev.id} style={{ paddingVertical: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border }}>
                   <Text style={[styles.debugText, { color: colors.text }]}>{ev.event}</Text>
                   <Text style={[styles.memberJoinDate, { color: colors.textSecondary }]}>
