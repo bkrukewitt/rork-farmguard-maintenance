@@ -55,7 +55,7 @@ type UsagePanelData = {
 
 export default function SuperAdminPanel() {
   const { colors } = useTheme();
-  const { effectiveSuperAdminPin, exitSuperAdmin, isSuperAdmin } = useAdminAccess();
+  const { enteredSuperAdminPin, exitSuperAdmin, isSuperAdmin } = useAdminAccess();
   const {
     equipment,
     maintenanceLogs,
@@ -114,12 +114,12 @@ export default function SuperAdminPanel() {
   const [clientUsageLoading, setClientUsageLoading] = useState(false);
   const [clientUsageError, setClientUsageError] = useState('');
   const passwordProtectedFarmsQuery = trpc.farm.listPasswordProtectedFarms.useQuery(
-    { superAdminPin: effectiveSuperAdminPin },
+    { superAdminPin: enteredSuperAdminPin },
     { enabled: isSuperAdmin }
   );
 
   const passwordResetAuditQuery = trpc.farm.listPasswordResetAuditEvents.useQuery(
-    { superAdminPin: effectiveSuperAdminPin, limit: 50 },
+    { superAdminPin: enteredSuperAdminPin, limit: 50 },
     { enabled: isSuperAdmin }
   );
   const usageStatsQuery = trpc.farm.getUsageStats.useQuery(
@@ -404,12 +404,12 @@ export default function SuperAdminPanel() {
 
     setPasswordAdminError('');
     await forceSetFarmPasswordMutation.mutateAsync({
-      superAdminPin: effectiveSuperAdminPin,
+      superAdminPin: enteredSuperAdminPin,
       farmId: targetId,
       newPassword: pw,
     });
   }, [
-    effectiveSuperAdminPin,
+    enteredSuperAdminPin,
     forceSetFarmPasswordMutation,
     superAdminFarmIdForPassword,
     superAdminNewPassword,
@@ -424,10 +424,10 @@ export default function SuperAdminPanel() {
     }
     setSuperAdminResetError('');
     await superAdminGenerateResetCodeMutation.mutateAsync({
-      superAdminPin: effectiveSuperAdminPin,
+      superAdminPin: enteredSuperAdminPin,
       farmId: targetId,
     });
-  }, [effectiveSuperAdminPin, superAdminGenerateResetCodeMutation, superAdminResetFarmId]);
+  }, [enteredSuperAdminPin, superAdminGenerateResetCodeMutation, superAdminResetFarmId]);
 
   const handleAdminChangeRole = async (member: FarmMember) => {
     const newRole = member.role === 'admin' ? 'member' : 'admin';
@@ -1364,7 +1364,7 @@ export default function SuperAdminPanel() {
               disabled={superAdminSetAnnouncementMutation.isPending || !announceBody.trim()}
               onPress={() => {
                 superAdminSetAnnouncementMutation.mutate({
-                  superAdminPin: effectiveSuperAdminPin,
+                  superAdminPin: enteredSuperAdminPin,
                   message: announceBody.trim(),
                   durationHours: announceDurationHours,
                 });
@@ -1390,7 +1390,7 @@ export default function SuperAdminPanel() {
                       style: 'destructive',
                       onPress: () =>
                         superAdminClearAnnouncementMutation.mutate({
-                          superAdminPin: effectiveSuperAdminPin,
+                          superAdminPin: enteredSuperAdminPin,
                         }),
                     },
                   ]
@@ -1444,7 +1444,7 @@ export default function SuperAdminPanel() {
                   return;
                 }
                 superAdminSetLegacyProMutation.mutate({
-                  superAdminPin: effectiveSuperAdminPin,
+                  superAdminPin: enteredSuperAdminPin,
                   farmId: targetId,
                   legacyPro: true,
                 });
@@ -1462,7 +1462,7 @@ export default function SuperAdminPanel() {
                   return;
                 }
                 superAdminSetLegacyProMutation.mutate({
-                  superAdminPin: effectiveSuperAdminPin,
+                  superAdminPin: enteredSuperAdminPin,
                   farmId: targetId,
                   legacyPro: false,
                 });
