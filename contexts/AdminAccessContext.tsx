@@ -16,11 +16,10 @@ import {
 import { X } from 'lucide-react-native';
 import { useTheme } from '@/contexts/ThemeContext';
 
-export const SUPER_ADMIN_PIN = '9173';
 export const DEBUG_PIN = '1847';
 
-function getEffectiveSuperAdminPin(): string {
-  return process.env.EXPO_PUBLIC_SUPER_ADMIN_PIN || SUPER_ADMIN_PIN;
+function getConfiguredSuperAdminPin(): string {
+  return process.env.EXPO_PUBLIC_SUPER_ADMIN_PIN || '';
 }
 
 export const [AdminAccessProvider, useAdminAccess] = createContextHook(() => {
@@ -32,6 +31,7 @@ export const [AdminAccessProvider, useAdminAccess] = createContextHook(() => {
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState('');
+  const [enteredSuperAdminPin, setEnteredSuperAdminPin] = useState('');
 
   const footerTapCountRef = useRef(0);
   const footerTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -39,6 +39,7 @@ export const [AdminAccessProvider, useAdminAccess] = createContextHook(() => {
   const exitSuperAdmin = useCallback(() => {
     setIsSuperAdmin(false);
     setIsDebugMode(false);
+    setEnteredSuperAdminPin('');
   }, []);
 
   const handleFooterTap = useCallback(() => {
@@ -61,11 +62,12 @@ export const [AdminAccessProvider, useAdminAccess] = createContextHook(() => {
   }, [isSuperAdmin, isDebugMode, exitSuperAdmin]);
 
   const submitPin = useCallback(() => {
-    const effectiveSuperAdminPin = getEffectiveSuperAdminPin();
-    if (pinInput === SUPER_ADMIN_PIN || pinInput === effectiveSuperAdminPin) {
+    const configuredPin = getConfiguredSuperAdminPin();
+    if (configuredPin && pinInput === configuredPin) {
       setIsSuperAdmin(true);
       setIsDebugMode(false);
       setShowPinModal(false);
+      setEnteredSuperAdminPin(pinInput);
       setPinInput('');
       setPinError('');
       router.push('/(tabs)/admin' as never);
@@ -165,11 +167,11 @@ export const [AdminAccessProvider, useAdminAccess] = createContextHook(() => {
     () => ({
       isSuperAdmin,
       isDebugMode,
-      effectiveSuperAdminPin: getEffectiveSuperAdminPin(),
+      enteredSuperAdminPin,
       handleFooterTap,
       exitSuperAdmin,
       pinModal,
     }),
-    [isSuperAdmin, isDebugMode, handleFooterTap, exitSuperAdmin, pinModal],
+    [isSuperAdmin, isDebugMode, enteredSuperAdminPin, handleFooterTap, exitSuperAdmin, pinModal],
   );
 });
